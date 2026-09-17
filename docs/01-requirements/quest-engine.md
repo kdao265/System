@@ -6,7 +6,7 @@ Owner: Human Product Owner. Date: 2026-09-17. Related issue: not supplied.
 
 Sources: [project context](../PROJECT_CONTEXT.md), [vision](../00-product/vision.md), [V1 scope](../00-product/scope-v1.md), [requirements format](README.md), and [ADRs 001–011](../02-architecture/decisions.md).
 
-Normative requirements below incorporate all twelve Product Owner resolutions into the V1 contract. No database layout, API, dependency, or UI implementation is prescribed.
+Normative requirements below incorporate the twelve product resolutions and the four domain-model resolutions into the V1 contract. See the [Quest domain model](../02-architecture/quest-domain-model.md). No database layout, API, dependency, or UI implementation is prescribed.
 
 ## 1. Purpose
 
@@ -22,7 +22,7 @@ Player/EXP, Goals/Projects, Calendar, Health/Recovery, Penalty, Criteria/Evidenc
 
 | Term | Meaning |
 | --- | --- |
-| Quest | A concrete actionable thing the user intends to complete |
+| Quest / Quest Definition | Logical actionable task with reusable/default configuration; executable behavior belongs to its occurrences |
 | Goal | An outcome, such as IELTS 6.5+ |
 | Project | A structured body of work, such as Prepare for IELTS |
 | Example Quest | Complete one Reading practice test, contributing toward that Project and Goal |
@@ -31,13 +31,16 @@ Player/EXP, Goals/Projects, Calendar, Health/Recovery, Penalty, Criteria/Evidenc
 | Evidence | Proof used to verify criterion satisfaction |
 | Calendar Event | A calendar representation of an event or time allocation, distinct from a Quest |
 | Recurring definition/template | The reusable intent and schedule used to identify individual occurrences |
-| Occurrence | One independently actionable Quest in a recurring series, with its own status, history and reward entitlement |
+| Occurrence | One executable instance with fixed execution configuration, status and history; a one-off Quest also has one occurrence |
+| Completion Event | A distinct stable identifier for one accepted transition of an occurrence into completed; a completed QuestEvent, not a request identifier |
 | Missed deadline / overdue | A time condition on an unfinished Quest, not a persistent lifecycle state or automatic punishment |
 | Failure reason | Context explaining why work was missed or not completed; separate from lifecycle and penalty outcome |
-| Reward entitlement | A Quest/occurrence's completion credit; retries never duplicate it, and explicit undo uses a compensating reversal rather than erasing the credit |
+| Reward entitlement | One credit per accepted Completion Event and reward reason/type; an occurrence has at most one unreversed completion entitlement at any moment |
 | Reschedule / defer | An event changing the plan; neither is a separate persistent state |
 
 Quest != Activity != Criterion != Evidence. A Quest can contribute to these concepts without becoming them. One Activity may satisfy multiple Criteria, but formal verification belongs elsewhere.
+
+In user stories and lifecycle examples, “create/complete a Quest” is shorthand for creating its definition and executable occurrence, or completing that occurrence. A one-off definition has one occurrence; a recurring definition has independently materialized occurrences. Execution status never belongs to the definition.
 
 ## 4. User Stories
 
@@ -66,7 +69,7 @@ Quest != Activity != Criterion != Evidence. A Quest can contribute to these conc
 | FR-02 | Support independent importance and recurrence dimensions, defaulting to side and one_off |
 | FR-03 | Schedule, activate, reschedule and defer Quests according to the state model; preserve earlier plans in history |
 | FR-04 | Enforce allowed lifecycle transitions and reject invalid or stale conflicting actions without partial effects |
-| FR-05 | Complete each eligible Quest or occurrence idempotently, record completion time, and grant its EXP exactly once |
+| FR-05 | Complete each eligible occurrence idempotently, create one stable Completion Event per accepted transition, record completion time, and grant that event's EXP exactly once |
 | FR-06 | Recognize missed deadlines independently of whether the app was open, without automatic punitive failure |
 | FR-07 | Record failure context and an explicit resolution; keep penalty assessment separate from Quest status |
 | FR-08 | Support daily, weekly, monthly and bounded custom recurrence with independent, historically preserved occurrences |
@@ -78,6 +81,8 @@ Quest != Activity != Criterion != Evidence. A Quest can contribute to these conc
 | FR-14 | Preserve attributable lifecycle, scheduling, reward and integration history; show completed Quests in history |
 | FR-15 | Restrict access and actions to authorized application users; do not bypass Supabase RLS or trust client claims of earned rewards |
 | FR-16 | Allow explicit audited corrections/reopening; reverse undone completion EXP with an idempotent compensating record, and archive Quests with meaningful history instead of hard-deleting them |
+| FR-17 | Fix execution-critical values at occurrence materialization; definition edits affect only not-yet-materialized occurrences, with explicit audited occurrence-specific changes permitted |
+| FR-18 | Separate stopping from archiving: stop preserves existing instances; archive blocks on active instances, stops generation and cancels future not-started draft/scheduled instances with history retained |
 
 ## 6. Quest Types
 
@@ -92,7 +97,7 @@ Main identifies a principal commitment; Side identifies a supporting or optional
 
 ## 7. Quest Data Requirements
 
-Names describe information, not required database column names. Optional means absence is permitted, not that the field may be silently invented.
+Names describe information, not required database column names. Optional means absence is permitted, not that the field may be silently invented. Definition fields provide defaults; occurrence fields own execution status, schedule, deadline, completion times and failure details. Definitions never have execution/completion status.
 
 | Information | Requirement / validation |
 | --- | --- |
@@ -105,7 +110,7 @@ Names describe information, not required database column names. Optional means a
 | Difficulty | Optional; when supplied, integer 1–5; no automatic EXP formula |
 | Planned start time | Optional; temporal context must be unambiguous |
 | Deadline | Optional; if both times exist, deadline must not precede planned start |
-| Estimated duration | Optional nonnegative integer minutes; UI may offer 5-minute increments without restricting valid stored minutes to multiples of five |
+| Estimated duration | Nullable; null means unknown. If supplied, positive integer minutes greater than zero; UI may offer 5-minute increments, but valid values need not be multiples of five |
 | User-reported completion time | May be backdated; conceptually distinct from authoritative recording time; preserve its user-reported provenance |
 | Authoritative processing/recording time | System-recorded time of accepted completion; cannot be overwritten by a user-reported time |
 | EXP reward | Nonnegative integer explicitly assigned by creator/system before completion, including zero; no implicit late reduction |
@@ -118,11 +123,13 @@ Names describe information, not required database column names. Optional means a
 | Notes | Optional user context |
 | Lifecycle and audit metadata | Creation/update times, transition history, reason/resolution where applicable, completion/reward reference and relevant integration references |
 
-Changing editable metadata must not rewrite previous completion or reward facts. Reject invalid ranges, out-of-range scales, fractional values for integer fields and invalid negative duration/rewards with an actionable explanation. No additional strict text limits are specified. Explicit corrections append audit records rather than replacing historical facts.
+Reject invalid ranges, out-of-range scales, fractional values for integer fields, zero/negative supplied duration and negative rewards with an actionable explanation. No additional strict text limits are specified. Explicit corrections append audit records rather than replacing historical facts.
+
+At materialization, snapshot or otherwise fix each occurrence's reward_exp, difficulty, estimated_duration_minutes, energy_cost, focus_demand, direct Goal/Project contribution attribution and applicable Penalty Rule version/snapshot, including absent optional values. Scheduling/deadline data is occurrence-owned. Later definition edits affect only future occurrences not yet materialized, never silently changing existing unfinished occurrences. An intentional edit to an existing occurrence is an explicit occurrence-specific change with meaningful audit history. Completed historical reward amounts, parent attribution, penalty snapshots and workload values remain immutable; corrections preserve the original facts.
 
 ## 8. Quest State Model
 
-Six persistent states keep the model small:
+Six persistent occurrence states keep the model small; the Quest Definition has no execution state:
 
 | State | Meaning |
 | --- | --- |
@@ -145,6 +152,8 @@ Six persistent states keep the model small:
 | completed | Repeat completion request | completed | Return existing outcome; no new reward or contribution |
 | completed, failed, cancelled | Explicit reopen/correction to unfinished work | draft, scheduled or active | Audit prior/new outcome; satisfy target-state guards; reverse completed EXP if undoing completion |
 
+Archiving a definition is blocked while any occurrence is active; the user must explicitly complete, fail or cancel it first. Once permitted, archive stops recurrence and cancels future not-started draft/scheduled occurrences with cancellation records preserved. It retains completed/failed/cancelled history and never automatically reverses earned EXP. Archive remains distinct from occurrence status and from the stop-only action in section 11.
+
 Rescheduled is an event resulting in `scheduled`, not a persistent state. Deferring with a new date uses the reschedule transition; deferring without a date uses `draft`. No pause state is introduced. Reaching a start time does not itself assert that the user began work.
 
 Completed, failed and cancelled end ordinary execution but allow explicit audited correction/reopening. Ordinary completion or cancellation requests cannot silently reopen a terminal outcome. A correction may amend recorded information without changing state; a lifecycle correction reopens to a valid unfinished state before an ordinary transition is applied. Undoing completion requires the compensating EXP reversal in section 9. Transitions not listed above are rejected. Nonterminal metadata edits preserve state unless an explicit scheduling action changes it. Archiving is a retention action, not a replacement lifecycle state, and does not erase or undo outcomes.
@@ -155,9 +164,9 @@ A deadline passing adds an overdue condition to scheduled/active work; it does n
 
 **CR-01:** Accept completion only for an authorized, eligible nonterminal Quest or occurrence. Direct completion does not require a ceremonial activation step.
 
-**CR-02:** A successful completion must consistently establish completed status, authoritative recording time, user-reported completion time when provided, an immutable resolved EXP amount, one completion reward event/transaction reference, and a history entry. Backdated user reports are allowed but never replace authoritative recording time. These facts must not contradict each other after a failure or retry. Do not acknowledge success with a lost reward entitlement or grant EXP without an accepted completion.
+**CR-02:** Every accepted transition into completed creates a distinct stable Completion Event identifier, completed occurrence status, authoritative recording time, user-reported completion time when provided, the immutable reward amount from the occurrence's fixed configuration, and a reward source/history reference. Backdated reports never replace authoritative recording time. These facts must remain consistent after failures/retries. Do not acknowledge success with a lost entitlement or grant EXP without an accepted Completion Event.
 
-**CR-03:** Reward attribution must distinguish the Quest/occurrence and its accepted completion from a request identifier. Repeated, concurrent, double-clicked, retried or replayed requests for that completion must return the recorded result and grant no additional EXP, even with different request identifiers. Zero EXP still has one recorded completion/reward outcome. An explicit reopen is a new audited lifecycle action; replaying an earlier completion after reopening must not reapply its old credit or silently complete the reopened Quest.
+**CR-03:** EXP credit idempotency is based on accepted Completion Event ID plus reward reason/type, not on a lifetime occurrence-only key or a client request ID. Five retries of the same completion produce one Completion Event and one credit, including when request IDs differ. Zero EXP still has one recorded outcome. A later legitimate completion after an explicit reopen creates a new Completion Event with its own independently idempotent credit. Stale requests cannot create a new event, reapply an old credit or silently complete reopened work. At any moment an occurrence must have at most one unreversed completion entitlement.
 
 **CR-04:** Player/EXP applies the resolved amount exactly once. A temporary processing failure must be recoverable without a second grant. This is a consistency requirement, not a prescription for database transactions, queues or API design.
 
@@ -165,7 +174,7 @@ A deadline passing adds an overdue condition to scheduled/active work; it does n
 
 **CR-06:** Expose accepted completion for a later completion UI/notification. Presentation failure or a replayed notification must not repeat domain completion. Notification channels and visual behavior are outside this specification.
 
-**CR-07:** Explicit undo of completion must reverse exactly the previously granted EXP through a linked compensating/reversal record. Preserve the original completion and credit. Repeated or concurrent undo must not reverse twice; a failed/interrupted correction must be recoverable consistently. A later intentional completion after reopening is independently audited and credited once, with the earlier credit remaining reversed; it must not accumulate duplicate net rewards. Expose the correction reference to downstream consumers so they can reconcile their contributions under their own rules, without erasing history.
+**CR-07:** Explicit undo preserves the original Completion Event and EXP transaction, creates a linked compensating reversal of exactly the granted EXP and records audited correction/reopening before the occurrence becomes executable again. Repeated/concurrent undo must not reverse twice; interrupted correction must recover consistently. A later intentional completion creates a NEW Completion Event and may receive its own once-only credit, while the old credit remains reversed. Reopening and reward processing must preserve the at-most-one-unreversed-entitlement invariant at all times. Expose correction references to downstream consumers for their own reconciliation without erasing history.
 
 ## 10. Failure Rules
 
@@ -183,19 +192,21 @@ When the app returns after a deadline, show the unresolved missed condition base
 
 **RR-02:** Support daily, selected weekdays (weekly), monthly, every N days and every N weeks (custom), with N a positive integer. Support an optional end date and optional positive occurrence count. When both are supplied, neither limit may be exceeded. An unrestricted scheduling language is outside V1.
 
-**RR-03:** Recurring scheduling uses local time in the user's profile timezone and identifies intended occurrence slots. The current owner's initial/default timezone may be `Asia/Ho_Chi_Minh`; this must not be hard-coded as a universal application timezone. One-off timestamps retain their absolute instants. Repeated generation/loading must not duplicate a slot or its reward entitlement. No generation algorithm or precreation horizon is mandated.
+**RR-03:** Recurring scheduling uses local time in the user's profile timezone for unmaterialized future slots. The current owner's initial/default timezone may be `Asia/Ho_Chi_Minh`; it is not a universal application timezone. One-off timestamps and already-materialized occurrence schedules retain their absolute instants when the profile timezone changes. Explicit occurrence-specific rescheduling is separate. Repeated generation/loading must not duplicate a slot or its reward entitlement. No generation algorithm or precreation horizon is mandated.
 
 **RR-04:** Completing today's occurrence never completes, rewards or cancels another occurrence. Rescheduling one occurrence retains its identity and original slot relationship, so retries cannot turn it into a new entitlement. Changing the series is a distinct action.
 
 **RR-05:** Existing skipped or missed occurrences remain identifiable in history and use ordinary failure resolution; they are not automatically completed, punished or deleted. The next scheduled occurrence remains independent. Returning after inactivity must not generate a bulk historical backlog of actionable catch-up Quests or cascading penalties solely because recurrence slots were missed; preserve existing history without manufacturing obligations for every unmaterialized past slot.
 
-**RR-06:** Rule changes record the prior rule and effective boundary and affect future occurrences only. Historical and completed occurrences remain unchanged, including past missed work. Future pending occurrences may be adjusted to the new schedule or explicitly cancelled as part of the recorded change; do not treat already-executed work as pending or duplicate an existing slot. Make the affected future work explicit.
+**RR-06:** Rule/definition changes record the old/new configuration and effective boundary and affect future occurrences not yet materialized. Existing occurrences retain fixed execution values and absolute schedules, even when unfinished. Changing an existing occurrence requires an explicit occurrence-specific edit/reschedule/cancellation with meaningful audit history; it is not automatic propagation of a template edit. Historical completed values remain immutable and original slot identity is preserved.
 
-**RR-07:** Stopping a series prevents new occurrences. Future pending occurrences may be cancelled explicitly; preserve historical/completed outcomes. For a monthly date absent from a month, use that month's last valid day (for example, day 31 becomes February 28 or 29). Retain the intended day for later months. Never shift historical completions or duplicate a slot's reward. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time, not a new travel-aware scheduling system.
+**RR-07:** Stopping recurrence prevents generation of new future occurrences but keeps the definition available and does not archive it, remove existing materialized occurrences or change completed history. A separate explicit action may cancel pending work. Archiving instead follows section 18, including automatic stopping and cancellation of future not-started draft/scheduled occurrences. For an absent monthly date, use the month's last valid day, retain the intended day for subsequent months and never duplicate slots. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time.
 
 ## 12. Reward Rules
 
 EXP is V1's primary Quest reward. The accepted completion records the resolved amount and its source sufficiently to explain it later. Subsequent edits to Quest/template reward settings do not alter an already granted reward or make another grant possible.
+
+The definition supplies default reward_exp; materialization fixes it for the occurrence. Definition edits cannot change even an unfinished occurrence's reward. Only an explicit occurrence-specific edit may change its executable configuration, preserving prior history. Player/EXP owns append-only credits/reversals. “One reward per occurrence” means one credit per accepted Completion Event/cycle and reason, not one lifetime credit for the occurrence. Old credits and reversals are never deleted.
 
 The creator/system explicitly assigns a nonnegative integer EXP reward. V1 defines no complex automatic formula or implicit late-completion reduction. Future balancing/formulas belong to Player/EXP requirements. An undo reverses the original granted amount through a compensating record, even if the current configured reward has changed. A penalty EXP deduction is a separate attributable effect; neither a deduction nor a reversal rewrites the original credit.
 
@@ -215,7 +226,7 @@ Financial penalties in V1 are tracking/accounting obligations only, not automati
 
 ## 14. Health Integration
 
-Provide estimated duration, energy cost, focus demand, scheduling information and lifecycle status to Health so it can estimate workload. Missing metadata is unknown. Quest does not define Health's formula or interpret an estimate as diagnosis.
+Provide occurrence-fixed estimated duration, difficulty, energy cost, focus demand, schedule and lifecycle status to Health. Missing metadata is unknown; historical workload uses preserved occurrence values, not current definition defaults. Quest does not define Health's formula or interpret an estimate as diagnosis.
 
 Health may recommend a waiver using workload/recovery estimates. The user confirms the failure reason; penalty assessment requires explicit determination. Health must not automatically punish, change Quest status or make medical conclusions. Missing metadata means neither assumed overload nor assumed misconduct.
 
@@ -234,6 +245,8 @@ A Quest may belong to one Project OR directly to one Goal, or have no parent. Wh
 Archiving a parent preserves Quest identity, completion/reward history and the historical relationship. It must not silently complete, cancel or reward linked work. Archived parents receive no new progress contribution, including delayed delivery after archival; Quest completion and EXP remain independently valid. Preserve the contribution outcome without falsely reporting progress applied to the archived parent.
 
 Nested Quests/subquests may be considered later; no hierarchy or dependency graph is required for V1.
+
+Direct contribution attribution is fixed at occurrence materialization with at most one direct parent. Changing the definition's parent only affects not-yet-materialized occurrences; it cannot retarget existing or completed contributions. Explicit occurrence-specific changes preserve meaningful history, and historical completed attribution remains immutable.
 
 ## 17. Criteria / Evidence Integration
 
@@ -255,6 +268,8 @@ Completed, failed and cancelled lifecycle history must be preserved. Explicit co
 
 Journal and Achievement reference Quest outcomes from their own domains as needed; this does not automatically create journal entries or grant achievements. They own their behavior and consume stable references rather than recompleting the Quest.
 
+Archive retires the Quest Definition from normal active use. If any occurrence is active, reject archival until it is explicitly completed, failed or cancelled. Otherwise automatically stop recurrence generation and cancel future not-started occurrences in draft/scheduled state, preserving cancellation events and all completed/failed/cancelled outcomes and audit history. Archive never automatically reverses earned EXP. Stop alone keeps the definition available and existing occurrences unchanged. Archival is not deletion. Record Completion Event identifiers and occurrence-specific snapshot changes so configuration, execution and correction remain distinguishable.
+
 ## 19. Edge Cases
 
 | Case | Expected behavior |
@@ -264,12 +279,12 @@ Journal and Achievement reference Quest outcomes from their own domains as neede
 | Deadline passes while app is closed | Recognize overdue work on return/reconciliation; preserve state until explicit resolution; no automatic punishment |
 | User completes after deadline | Accept eligible completion without implicit EXP reduction; preserve reported and recording times; failed/cancelled work requires explicit audited reopening first |
 | Recurring occurrence is skipped | Preserve that occurrence and reason/resolution independently; do not affect later occurrences |
-| User changes recurrence rule | Affect future occurrences only; record the boundary and pending work affected; preserve historical/completed occurrences |
+| User changes recurrence rule | Affect only not-yet-materialized occurrences; existing values/schedules remain unless explicitly edited per occurrence with audit history |
 | Completed Quest is deleted/cancelled | Reject hard deletion and ordinary cancellation; archive for retention, or explicitly correct/reopen with an audited EXP reversal if undoing completion |
 | Parent Goal is archived | Preserve relationship/history with no implicit Quest transition; no new progress contribution to the archived parent |
 | Penalty Rule is removed | Retained version/snapshot still governs the assigned Quest and pending obligation; source removal does not alter them |
 | EXP reward changes after completion | Retain the original granted amount and reference; repeat completion grants nothing |
-| Profile timezone changes | One-off absolute timestamps and historical instants remain unchanged; future recurrence uses local profile time without duplicating slots; advanced travel/per-series/DST policy is outside V1 |
+| Profile timezone changes | One-off and already-materialized occurrence timestamps remain unchanged; unmaterialized future slots use local profile time without duplication; advanced travel/per-series/DST policy is outside V1 |
 | Delayed request or offline-originated replay arrives | Validate against current authoritative lifecycle; return an existing completion outcome or reject a stale conflict without new effects. A reported backdated time is separate from recording time. Full offline capture/sync is future scope |
 | Completion races with cancellation/failure | One valid authoritative result; rejected action has no reward or penalty side effects |
 | Downstream progress consumer is unavailable | Preserve accepted completion and reward entitlement; expose pending/failed delivery separately and recover without duplication |
@@ -279,6 +294,10 @@ Journal and Achievement reference Quest outcomes from their own domains as neede
 | Undo is retried, then Quest is intentionally completed again | Reverse the earlier credit once with linked history; a new intentional completion is credited once; stale earlier requests cannot restore or duplicate the reversed credit |
 | Reward amount changed before undo | Reverse the original granted amount, not the current configuration |
 | Long period of missed recurrence | Preserve existing occurrences without generating a bulk catch-up backlog or cascading penalties |
+| Definition configuration changes before execution | Already-materialized reward, workload, parent and penalty values remain fixed; only unmaterialized occurrences inherit new defaults |
+| Archive requested with an active occurrence | Reject until that occurrence is explicitly completed, failed or cancelled; do not silently resolve it |
+| Archive succeeds without active occurrences | Stop generation; cancel future not-started draft/scheduled instances with audit records; preserve all terminal history and earned EXP |
+| Stop recurrence only | Definition remains available, unarchived; materialized occurrences remain unchanged |
 
 ## 20. Acceptance Criteria
 
@@ -297,7 +316,7 @@ These criteria test the resolved V1 product behavior without prescribing impleme
 | AC-09 | Given scheduled/active work, when rescheduled, then it becomes scheduled with the new plan and old plan in history; when deferred without a replacement plan, then it becomes draft with prior dates retained only as history | FR-03, FR-14 |
 | AC-10 | Given a recurring definition, when one occurrence completes, then only that occurrence is completed/rewarded; reprocessing its scheduled slot creates no second occurrence entitlement | FR-08; RR-01–04 |
 | AC-11 | Given a skipped occurrence, when explicitly resolved as failed or cancelled, then its history remains and the next occurrence remains independently actionable | FR-07–08 |
-| AC-12 | Given historical/completed occurrences and future pending work, when a series rule changes, then only future occurrences are affected and the boundary is recorded; stopping the series generates no new occurrences and permits explicit cancellation of future pending work while preserving history | FR-08, FR-14; RR-06–07 |
+| AC-12 | Given materialized occurrences and future slots, when the rule changes, then only unmaterialized occurrences use the new rule; materialized schedules/values remain unless explicitly edited per occurrence; stopping alone creates no new occurrences and does not archive or remove existing work | FR-08, FR-14, FR-17–18; RR-06–07 |
 | AC-13 | Given a completed Quest, when cancellation or ordinary recompletion is requested or reward settings change, then cancellation is rejected, recompletion returns the existing outcome and the original reward remains unchanged | FR-04–05, FR-14 |
 | AC-14 | Given a Quest linked to a Project or directly to a Goal, when completion is delivered twice, then the owning engine applies applicable progress once; an archived parent receives no new contribution, while Quest history/status and EXP remain independently valid | FR-09, FR-12 |
 | AC-15 | Given workload metadata or its absence, when Health reads it, then fields are estimates and absence means neither overload nor misconduct; Health may recommend a waiver but makes no medical conclusion or automatic punishment | FR-10–11 |
@@ -309,9 +328,9 @@ These criteria test the resolved V1 product behavior without prescribing impleme
 | AC-21 | Given a delayed/offline or stale action, when authoritative state conflicts, then the invalid transition is rejected without additional effects; if already completed, completion replay returns the existing outcome | FR-04–05 |
 | AC-22 | Given a user without ownership/access, when attempting to read or mutate a Quest or its history/rewards, then access is denied and no state or reward changes | FR-15 |
 | AC-23 | Given an explicit zero-EXP Quest, when completed and retried, then one completion/reward outcome is retained and the EXP balance does not increase | FR-05; CR-03 |
-| AC-24 | Given field input, when validating, then title lengths of 120 and description lengths of 4000 are accepted and longer values rejected; priority accepts only low/medium/high/critical, supplied difficulty/energy/focus accept integers 1–5, duration accepts nonnegative integer minutes including 7, and EXP accepts nonnegative integers but rejects negatives/fractions | FR-01–02 |
+| AC-24 | Given field input, when validating, then title lengths of 120 and description lengths of 4000 are accepted and longer values rejected; priority accepts only low/medium/high/critical, supplied difficulty/energy/focus accept integers 1–5; duration accepts null or positive integer minutes including 1 and 7, rejects zero/negative/fractional values, and EXP accepts nonnegative integers but rejects negatives/fractions | FR-01–02 |
 | AC-25 | Given completion reported today as having happened yesterday, when accepted, then yesterday remains the user-reported time and today's authoritative recording time remains separately preserved; replay does not change either accepted fact or reward | FR-05, FR-14; CR-02–03 |
-| AC-26 | Given a completed Quest credited 50 EXP whose current reward setting is 80, when explicitly undone and retried, then exactly one linked reversal of 50 EXP is recorded, the original credit/history remain, and reopening is audited; subsequent intentional completion applies its resolved reward once while stale old requests grant nothing | FR-05, FR-16; CR-07 |
+| AC-26 | Given occurrence O completed as event C1 for 50 EXP and a definition default later changed to 80, when O is undone/retried, then exactly one -50 reversal links to C1's preserved credit and reopening is audited; legitimate recompletion creates C2 for O's unchanged 50 EXP snapshot, with one independently idempotent credit. C1, its credit and reversal remain; stale retries create no event/credit and O never has more than one unreversed entitlement | FR-05, FR-16–17; CR-03, CR-07 |
 | AC-27 | Given failed/cancelled work, when explicitly reopened to a valid unfinished state, then prior outcome and correction actor/time remain in history; no EXP is reversed if no completion credit was granted | FR-04, FR-14, FR-16 |
 | AC-28 | Given a Quest with meaningful execution/history, when removal is requested, then hard deletion is prohibited and archiving preserves history without reversing rewards; a Quest without meaningful history may be deleted | FR-14, FR-16 |
 | AC-29 | Given an assigned Penalty Rule snapshot and pending obligation, when the source rule changes or is deleted, then the Quest and obligation retain the original applicable rule | FR-11 |
@@ -320,6 +339,10 @@ These criteria test the resolved V1 product behavior without prescribing impleme
 | AC-32 | Given monthly recurrence on day 31, when February is scheduled, then the occurrence uses February 28 or 29 and March still uses day 31; changing profile timezone does not change one-off absolute timestamps or historical instants | FR-08; RR-03, RR-07 |
 | AC-33 | Given an extended absence with missed recurrence slots, when the app resumes, then existing history remains and no bulk historical catch-up backlog or cascading penalties are created solely from those missed slots | FR-06–08, FR-11; RR-05 |
 | AC-34 | Given failure reason input, when the user confirms procrastinated, forgotten, overloaded, recovery_needed, emergency, no_longer_relevant or other, then that reason is retained; missing Health metadata supplies neither a reason nor an automatic penalty decision | FR-07, FR-10–11 |
+| AC-35 | Given a newly materialized occurrence, when definition reward, difficulty, duration, energy, focus, direct parent or penalty configuration changes, then all seven occurrence values remain fixed (including nulls); a newly materialized instance inherits the new defaults. An explicit occurrence-specific edit records meaningful history, and completed historical values remain immutable | FR-17 |
+| AC-36 | Given no active occurrences and future not-started draft/scheduled work, when the definition is archived, then generation stops, that future work is cancelled with retained cancellation records, terminal outcomes/events remain and earned EXP is not reversed | FR-16, FR-18 |
+| AC-37 | Given any active occurrence, when archive is requested, then archive is rejected without automatic resolution; after explicit completion/failure/cancellation, archive may proceed subject to all remaining active occurrences | FR-18 |
+| AC-38 | Given an eligible occurrence, when Complete is retried five times including concurrent requests with different IDs, then one stable Completion Event and one credit for its event ID plus reward reason exist; only a legitimate new transition after audited reopen may create a new Completion Event | FR-05; CR-02–03 |
 
 ## 21. Out of Scope for V1
 
@@ -339,4 +362,4 @@ Explicit audited corrections/reopening and compensating EXP reversals are in V1.
 
 ## 22. Open Questions
 
-There are no blocking Quest Engine V1 product questions remaining. The Human Product Owner's twelve resolutions are incorporated into the normative sections and acceptance criteria above. Future-scope items remain outside this V1 contract.
+There are no blocking Quest Engine V1 questions remaining. The twelve product resolutions and DQ-01 through DQ-04 are incorporated into the normative sections and acceptance criteria, consistent with the domain model. Future-scope items remain outside this V1 contract.

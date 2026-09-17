@@ -1,0 +1,47 @@
+name: Research
+description: Investigate a bounded question before deciding on implementation
+title: "[Research] "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+      description: State the decision this research should inform.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Scope, time budget, product rules and excluded work.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources / documentation to investigate
+      description: Link primary documentation, repository files or other relevant sources.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output
+      description: For example, a sourced comparison, recommendation, open questions or proposed ADR.
+    validations:
+      required: true
+  - type: dropdown
+    id: implementation
+    attributes:
+      label: Is implementation prohibited?
+      description: Explicitly select the allowed boundary. Research does not authorize unlisted implementation.
+      options:
+        - "Yes — research/documentation only; implementation prohibited"
+        - "No — only the implementation scope specified below is allowed"
+    validations:
+      required: true
+  - type: textarea
+    id: allowed_scope
+    attributes:
+      label: Allowed implementation scope
+      description: If implementation is not prohibited, define its exact boundary and acceptance criteria. Otherwise write Not applicable.

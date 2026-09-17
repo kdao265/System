@@ -1,0 +1,47 @@
+name: Feature
+description: Propose a scoped product change
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / goal
+      description: Explain the user need and intended outcome. An idea does not automatically enter V1.
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      placeholder: Quest Engine, Planning, Finance, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Link the requirement document and relevant business rules or ADRs. Identify open questions.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes that determine completion.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Related issues, decisions or integrations; write None if applicable.
+  - type: textarea
+    id: design
+    attributes:
+      label: Screenshots / design references
+      description: Attach relevant references with sensitive information removed.
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Constraints, exclusions and proposed approach. Architectural changes need a proposed ADR before implementation.

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function HomePage() {
   return (
     <main className="flex min-h-svh items-center justify-center px-6 py-16">
@@ -14,6 +16,9 @@ export default function HomePage() {
         <p className="mt-10 border-t border-zinc-800 pt-6 text-sm text-zinc-400">
           Your system is taking shape.
         </p>
+        <Link href="/login" className="mt-6 inline-block text-sm underline underline-offset-4">
+          Sign in
+        </Link>
       </div>
     </main>
   );

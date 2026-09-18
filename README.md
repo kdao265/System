@@ -9,8 +9,10 @@ TypeScript, Tailwind CSS and ESLint, following the existing
 [architecture](docs/02-architecture/overview.md) and
 [product vision](docs/00-product/vision.md). Acceptance checks are dependency
 installation, lint and a production build on the installed Node.js 24 runtime.
-No domain behavior, authentication flows or remote Supabase operations are part
-of this foundation. Existing database migrations retain their semantics.
+The subsequent [Auth application milestone](docs/04-development/auth-application-layer.md)
+adds email/password signup, login, logout and a protected minimal dashboard.
+Profile onboarding and other domain workflows remain deferred. Existing database
+migrations retain their semantics; development validation uses only local Supabase.
 
 ## Local development
 
@@ -18,11 +20,13 @@ Use Node.js 24 LTS and npm. From the repository root:
 
 ```sh
 npm install
+# Configure the two public Supabase values in a Git-ignored .env.local first.
 npm run dev
 ```
 
-Open http://localhost:3000. The placeholder page works without Supabase environment
-variables and does not initialize a Supabase client.
+Open http://localhost:3000. The home page remains public; `/login` and `/signup`
+lead to the protected `/dashboard`. Startup and builds validate required Supabase
+configuration and fail with a safe, explicit message if it is missing.
 
 ```sh
 npm run lint
@@ -31,14 +35,27 @@ npm run start
 ```
 
 The production build checks TypeScript. Lint runs separately through ESLint.
-No automated application test suite is configured yet.
+The local HTTP integration test can be run with a production server on port 3100:
+
+```sh
+npm run start -- --port 3100
+# In another terminal:
+node --env-file=.env.local tests/auth-smoke.mjs
+```
+
+It requires running local Supabase with the existing migrations applied. It refuses
+remote Supabase URLs and creates one synthetic local Auth user/profile per run,
+which it leaves in place. It never prints credentials or resets the database.
 
 ## Structure
 
 ```text
 src/
-  app/                  # App Router layout, home page and global styles
-  lib/supabase/         # Lazy Supabase client factory
+  app/                  # Public home, login, signup and protected dashboard
+  features/auth/        # Auth actions, server identity checks and form components
+  lib/supabase/         # Cookie-aware browser/server clients and config validation
+  proxy.ts              # Session refresh before auth-route rendering
+tests/auth-smoke.mjs     # Local HTTP form/session integration checks
 docs/                   # Product, requirements and architecture documentation
 supabase/               # Existing local configuration and migrations
 ```
@@ -51,15 +68,22 @@ Business rules belong in domain/application services, outside UI components.
 
 `.env.example` lists `NEXT_PUBLIC_SUPABASE_URL` and
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Both are public client configuration, never
-service-role credentials. Configure them locally only when integration work is
-authorized; secret environment files are Git-ignored. This milestone creates no
-real `.env.local` and makes no Supabase requests.
+service-role credentials. Configure them for your local Supabase instance in
+`.env.local`; secret environment files are Git-ignored and must never be committed.
+Do not point local tests at a remote instance.
 
-`createSupabaseClient` validates configuration when called. It has no module-load
-side effects, session persistence, automatic token refresh or auth callback
-handling. It is infrastructure for future use, not an authentication solution.
-RLS remains the database access boundary. Cookie-aware server authentication and
-generated database types are deferred to their respective milestones.
+Browser and request-scoped server helpers use `@supabase/ssr` cookie storage.
+`src/proxy.ts` refreshes sessions and forwards cookies to both rendering and the
+browser. Server pages verify identity using Auth `getUser()`; browser-provided IDs
+and unverified session contents do not authorize access. Auth responses are private
+and uncached. RLS remains the database access boundary.
+
+Signup uses Auth only: the existing database trigger provisions Profile. With an
+immediate session it redirects to `/dashboard`; otherwise it asks the user to
+confirm email if required, then sign in with their password. It does not promise
+that a generic signup response created an account. No automatic confirmation-code
+exchange, Profile onboarding, password recovery or OAuth is included. Logout ends
+the current session, clears its cookies and returns to `/login`.
 
 ## Dependency rationale
 
@@ -67,10 +91,11 @@ Next.js and React provide the requested App Router runtime; TypeScript and its
 Node/React declarations support strict type checking. Tailwind CSS and its
 PostCSS integration provide the requested styling pipeline. ESLint and Next's
 configuration supply framework and TypeScript checks. The official
-`@supabase/supabase-js` package provides future database client infrastructure.
+`@supabase/supabase-js` package provides the official Auth/data client.
 The existing Supabase CLI development dependency is retained. These packages
 bring build/runtime weight but avoid bespoke framework, styling and API-client
-implementations; no UI kit, state library or auth package is added.
+implementations. `@supabase/ssr` supplies the official cookie/session adapter instead
+of custom token storage or deprecated auth helpers. No UI kit or state library is added.
 
 Next.js 16.3.5, React 19.3.0, Tailwind 4.3.3 and Supabase JS 2.116.0 were
 selected from npm stable releases. ESLint 9.39.5 and TypeScript 6.0.3 satisfy

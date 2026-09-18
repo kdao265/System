@@ -13,4 +13,4 @@
 
 ## Repository commands
 
-The application foundation uses `npm run dev`, `npm run lint`, `npm run build` and `npm run start`. The production build includes TypeScript checking; lint is a separate check. No automated test suite is configured yet. See the [root README](../../README.md) for setup and dependency rationale.
+The application uses `npm run dev`, `npm run lint`, `npm run build` and `npm run start`. The production build includes TypeScript checking; lint is a separate check. A local Auth HTTP integration script is documented in the [root README](../../README.md), along with setup and dependency rationale.

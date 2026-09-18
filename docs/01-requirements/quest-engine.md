@@ -6,7 +6,7 @@ Owner: Human Product Owner. Date: 2026-09-17. Related issue: not supplied.
 
 Sources: [project context](../PROJECT_CONTEXT.md), [vision](../00-product/vision.md), [V1 scope](../00-product/scope-v1.md), [requirements format](README.md), and [ADRs 001–011](../02-architecture/decisions.md).
 
-Normative requirements below incorporate the twelve product resolutions and the four domain-model resolutions into the V1 contract. See the [Quest domain model](../02-architecture/quest-domain-model.md). No database layout, API, dependency, or UI implementation is prescribed.
+Normative requirements incorporate the twelve product resolutions, DQ-01–04 and SQ-01–04. See the [Quest domain model](../02-architecture/quest-domain-model.md) and [physical schema](../02-architecture/quest-database-schema.md). This document defines behavior and dependency contracts, not application code or SQL.
 
 ## 1. Purpose
 
@@ -82,7 +82,7 @@ In user stories and lifecycle examples, “create/complete a Quest” is shortha
 | FR-15 | Restrict access and actions to authorized application users; do not bypass Supabase RLS or trust client claims of earned rewards |
 | FR-16 | Allow explicit audited corrections/reopening; reverse undone completion EXP with an idempotent compensating record, and archive Quests with meaningful history instead of hard-deleting them |
 | FR-17 | Fix execution-critical values at occurrence materialization; definition edits affect only not-yet-materialized occurrences, with explicit audited occurrence-specific changes permitted |
-| FR-18 | Separate stopping from archiving: stop preserves existing instances; archive blocks on active instances, stops generation and cancels future not-started draft/scheduled instances with history retained |
+| FR-18 | Separate stop from archive: stop preserves instances; archive stops generation and cancels only clean eligible draft/scheduled work, blocking on all other unfinished work until explicit resolution under section 18 |
 
 ## 6. Quest Types
 
@@ -152,7 +152,7 @@ Six persistent occurrence states keep the model small; the Quest Definition has 
 | completed | Repeat completion request | completed | Return existing outcome; no new reward or contribution |
 | completed, failed, cancelled | Explicit reopen/correction to unfinished work | draft, scheduled or active | Audit prior/new outcome; satisfy target-state guards; reverse completed EXP if undoing completion |
 
-Archiving a definition is blocked while any occurrence is active; the user must explicitly complete, fail or cancel it first. Once permitted, archive stops recurrence and cancels future not-started draft/scheduled occurrences with cancellation records preserved. It retains completed/failed/cancelled history and never automatically reverses earned EXP. Archive remains distinct from occurrence status and from the stop-only action in section 11.
+Archiving a definition requires the full eligibility check in section 18, not just absence of active work. Unfinished active, overdue, previously started or otherwise meaningfully executed occurrences require explicit user resolution. A permitted archive stops recurrence and cancels only qualifying clean draft/scheduled work with retained history; it never reverses earned EXP automatically.
 
 Rescheduled is an event resulting in `scheduled`, not a persistent state. Deferring with a new date uses the reschedule transition; deferring without a date uses `draft`. No pause state is introduced. Reaching a start time does not itself assert that the user began work.
 
@@ -169,6 +169,8 @@ A deadline passing adds an overdue condition to scheduled/active work; it does n
 **CR-03:** EXP credit idempotency is based on accepted Completion Event ID plus reward reason/type, not on a lifetime occurrence-only key or a client request ID. Five retries of the same completion produce one Completion Event and one credit, including when request IDs differ. Zero EXP still has one recorded outcome. A later legitimate completion after an explicit reopen creates a new Completion Event with its own independently idempotent credit. Stale requests cannot create a new event, reapply an old credit or silently complete reopened work. At any moment an occurrence must have at most one unreversed completion entitlement.
 
 **CR-04:** Player/EXP applies the resolved amount exactly once. A temporary processing failure must be recoverable without a second grant. This is a consistency requirement, not a prescription for database transactions, queues or API design.
+
+Player/EXP contract: `source_type = quest_completion`, `source_id = completion_event_id`, `reason = completion_reward`, `amount = reward_exp_snapshot`. Player owns credit/reversal idempotency; a reversal references the original credit. Quest tables may be migrated before the ledger exists, but production behavior promising atomic Quest completion plus EXP credit, including completed-reopen compensation, must remain disabled until the Player Ledger schema/contract is available and integrated.
 
 **CR-05:** Make accepted completion visible in history and provide a stable completion reference to applicable progress consumers. Downstream failures must remain distinguishable from a failed Quest completion and be recoverable without repeating rewards or contribution effects. Do not falsely claim that a pending downstream update has succeeded.
 
@@ -192,7 +194,9 @@ When the app returns after a deadline, show the unresolved missed condition base
 
 **RR-02:** Support daily, selected weekdays (weekly), monthly, every N days and every N weeks (custom), with N a positive integer. Support an optional end date and optional positive occurrence count. When both are supplied, neither limit may be exceeded. An unrestricted scheduling language is outside V1.
 
-**RR-03:** Recurring scheduling uses local time in the user's profile timezone for unmaterialized future slots. The current owner's initial/default timezone may be `Asia/Ho_Chi_Minh`; it is not a universal application timezone. One-off timestamps and already-materialized occurrence schedules retain their absolute instants when the profile timezone changes. Explicit occurrence-specific rescheduling is separate. Repeated generation/loading must not duplicate a slot or its reward entitlement. No generation algorithm or precreation horizon is mandated.
+occurrence_limit counts actual materialized instances of the logical Quest, not eligible slots skipped without materialization. Skipped historical slots consume no limit and must not be backfilled into an overdue backlog. Rule edits retain the cumulative count and Quest history: with limit 10 and 3 instances materialized, changing Monday to Saturday permits at most 7 more. Completion, failure, cancellation and reopening do not replenish capacity. Generation ends at the materialized limit, end_date, explicit stop or archive, whichever applies first; changing future recurrence calculation never resets the count.
+
+**RR-03:** The authoritative timezone is the Profile-owned `profile.timezone`, a validated IANA identifier. Creating/enabling recurrence and materializing new instances require a valid value; missing/invalid zones are rejected, never guessed. One-off Quests need no recurrence configuration. `Asia/Ho_Chi_Minh` may be the current owner's initial profile value, never a universal default. Unmaterialized slots use current profile local time; one-off and already-materialized timestamps retain their absolute instants. Profile schema is designed separately. No scheduler or precreation horizon is mandated.
 
 **RR-04:** Completing today's occurrence never completes, rewards or cancels another occurrence. Rescheduling one occurrence retains its identity and original slot relationship, so retries cannot turn it into a new entitlement. Changing the series is a distinct action.
 
@@ -200,7 +204,7 @@ When the app returns after a deadline, show the unresolved missed condition base
 
 **RR-06:** Rule/definition changes record the old/new configuration and effective boundary and affect future occurrences not yet materialized. Existing occurrences retain fixed execution values and absolute schedules, even when unfinished. Changing an existing occurrence requires an explicit occurrence-specific edit/reschedule/cancellation with meaningful audit history; it is not automatic propagation of a template edit. Historical completed values remain immutable and original slot identity is preserved.
 
-**RR-07:** Stopping recurrence prevents generation of new future occurrences but keeps the definition available and does not archive it, remove existing materialized occurrences or change completed history. A separate explicit action may cancel pending work. Archiving instead follows section 18, including automatic stopping and cancellation of future not-started draft/scheduled occurrences. For an absent monthly date, use the month's last valid day, retain the intended day for subsequent months and never duplicate slots. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time.
+**RR-07:** Stopping recurrence prevents generation of new future occurrences but keeps the definition available and does not archive it, remove existing materialized occurrences or change completed history. A separate explicit action may cancel pending work. Archiving instead follows section 18, including automatic stopping and cancellation only under the clean-work predicate. For an absent monthly date, use the month's last valid day, retain the intended day for subsequent months and never duplicate slots. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time.
 
 ## 12. Reward Rules
 
@@ -224,6 +228,8 @@ Penalties must not recursively escalate. If an obligation is represented as an a
 
 Financial penalties in V1 are tracking/accounting obligations only, not automatic bank transfers and not new financial income. Finance owns any corresponding accounting semantics. Retain a version/snapshot of the rule assigned to the Quest. Later source-rule modification or deletion must not retroactively change that Quest's applicable rule or any pending penalty obligation. Preserve past decisions and assess pending work against its retained rule.
 
+The immutable Penalty snapshot envelope contains at minimum `schema_version`, optional `source_rule_id`, and the applicable rule data required to interpret the obligation. An occurrence fixes this envelope at materialization. JSONB is acceptable for the foreign-domain contract; Quest does not normalize the entire Penalty domain or require a live source rule to preserve an obligation.
+
 ## 14. Health Integration
 
 Provide occurrence-fixed estimated duration, difficulty, energy cost, focus demand, schedule and lifecycle status to Health. Missing metadata is unknown; historical workload uses preserved occurrence values, not current definition defaults. Quest does not define Health's formula or interpret an estimate as diagnosis.
@@ -241,6 +247,8 @@ The internal System Calendar remains part of the application model. Supabase rem
 ## 16. Goal / Project Integration
 
 A Quest may belong to one Project OR directly to one Goal, or have no parent. When its Project belongs to a Goal, derive that Goal relationship through the Project rather than duplicating it on the Quest. V1 does not support direct contribution to multiple Goals. Quest provides stable completion/contribution information; the Goal/Project Engine owns calculation. Do not assume identical percentages, counts or weights. Retry delivery must not count a completion twice; correction references allow the owning engine to reconcile prior contributions.
+
+Goal and Project identifiers are UUID-compatible. Nullable UUID references and occurrence attribution snapshots are valid physical representations. When target tables do not yet exist, omit their FKs and add owner-safe restrictive FKs in a later dependency migration; do not invent other domains' schemas. The at-most-one-direct-parent rule still applies, and nonnull associations require domain-level ownership validation.
 
 Archiving a parent preserves Quest identity, completion/reward history and the historical relationship. It must not silently complete, cancel or reward linked work. Archived parents receive no new progress contribution, including delayed delivery after archival; Quest completion and EXP remain independently valid. Preserve the contribution outcome without falsely reporting progress applied to the archived parent.
 
@@ -268,7 +276,9 @@ Completed, failed and cancelled lifecycle history must be preserved. Explicit co
 
 Journal and Achievement reference Quest outcomes from their own domains as needed; this does not automatically create journal entries or grant achievements. They own their behavior and consume stable references rather than recompleting the Quest.
 
-Archive retires the Quest Definition from normal active use. If any occurrence is active, reject archival until it is explicitly completed, failed or cancelled. Otherwise automatically stop recurrence generation and cancel future not-started occurrences in draft/scheduled state, preserving cancellation events and all completed/failed/cancelled outcomes and audit history. Archive never automatically reverses earned EXP. Stop alone keeps the definition available and existing occurrences unchanged. Archival is not deletion. Record Completion Event identifiers and occurrence-specific snapshot changes so configuration, execution and correction remain distinguishable.
+Archive retires the definition and automatically stops recurrence. Automatic cancellation is allowed only for an occurrence in draft/scheduled that has NEVER entered active/execution state and has scheduled_at null or strictly later than the archive decision instant. It must also be free of overdue obligations and other meaningful execution history: these exclusions override the time/status test. Preserve every cancellation record, terminal outcome and Quest Event; never automatically reverse earned EXP.
+
+Before archive succeeds, every other unfinished occurrence requires explicit user resolution: active work, overdue scheduled work, previously active work later deferred/rescheduled, and any other unfinished work with meaningful execution history. Complete, fail or cancel it, or explicitly reschedule where appropriate and re-evaluate eligibility. Rescheduling never erases previous execution; it cannot make previously started work clean. Current status alone cannot prove never-started; consult lifecycle/audit history. Stop alone leaves existing occurrences unchanged. Archival is not deletion.
 
 ## 19. Edge Cases
 
@@ -295,8 +305,8 @@ Archive retires the Quest Definition from normal active use. If any occurrence i
 | Reward amount changed before undo | Reverse the original granted amount, not the current configuration |
 | Long period of missed recurrence | Preserve existing occurrences without generating a bulk catch-up backlog or cascading penalties |
 | Definition configuration changes before execution | Already-materialized reward, workload, parent and penalty values remain fixed; only unmaterialized occurrences inherit new defaults |
-| Archive requested with an active occurrence | Reject until that occurrence is explicitly completed, failed or cancelled; do not silently resolve it |
-| Archive succeeds without active occurrences | Stop generation; cancel future not-started draft/scheduled instances with audit records; preserve all terminal history and earned EXP |
+| Archive requested with active, overdue or previously started unfinished work | Reject until explicit resolution; deferred draft/scheduled status does not erase prior execution. Rescheduling only helps if the occurrence then satisfies the full eligibility predicate |
+| Archive passes the full unfinished-work check | Stop generation; cancel only clean never-started draft/scheduled work with null/future scheduled_at and no overdue/execution blocker; preserve audit/history and earned EXP |
 | Stop recurrence only | Definition remains available, unarchived; materialized occurrences remain unchanged |
 
 ## 20. Acceptance Criteria
@@ -335,14 +345,18 @@ These criteria test the resolved V1 product behavior without prescribing impleme
 | AC-28 | Given a Quest with meaningful execution/history, when removal is requested, then hard deletion is prohibited and archiving preserves history without reversing rewards; a Quest without meaningful history may be deleted | FR-14, FR-16 |
 | AC-29 | Given an assigned Penalty Rule snapshot and pending obligation, when the source rule changes or is deleted, then the Quest and obligation retain the original applicable rule | FR-11 |
 | AC-30 | Given a parent selection, when a Project is linked, then its Goal is derived rather than directly duplicated; a simultaneous direct Goal link or multiple direct Goals is rejected | FR-12 |
-| AC-31 | Given a recurring schedule, when configured for daily, selected weekdays, monthly, every 2 days or every 2 weeks, then corresponding local profile-time slots are supported; a supplied end date/count limits generation, and no slots exceed either supplied limit | FR-08; RR-02–03 |
+| AC-31 | Given valid profile.timezone and a recurring schedule, when configured for daily, selected weekdays, monthly, every 2 days or every 2 weeks, then corresponding local-time slots are supported; no new instance is materialized beyond end_date or after the cumulative materialized count reaches occurrence_limit, and skipped slots consume no count | FR-08; RR-02–03 |
 | AC-32 | Given monthly recurrence on day 31, when February is scheduled, then the occurrence uses February 28 or 29 and March still uses day 31; changing profile timezone does not change one-off absolute timestamps or historical instants | FR-08; RR-03, RR-07 |
 | AC-33 | Given an extended absence with missed recurrence slots, when the app resumes, then existing history remains and no bulk historical catch-up backlog or cascading penalties are created solely from those missed slots | FR-06–08, FR-11; RR-05 |
 | AC-34 | Given failure reason input, when the user confirms procrastinated, forgotten, overloaded, recovery_needed, emergency, no_longer_relevant or other, then that reason is retained; missing Health metadata supplies neither a reason nor an automatic penalty decision | FR-07, FR-10–11 |
 | AC-35 | Given a newly materialized occurrence, when definition reward, difficulty, duration, energy, focus, direct parent or penalty configuration changes, then all seven occurrence values remain fixed (including nulls); a newly materialized instance inherits the new defaults. An explicit occurrence-specific edit records meaningful history, and completed historical values remain immutable | FR-17 |
-| AC-36 | Given no active occurrences and future not-started draft/scheduled work, when the definition is archived, then generation stops, that future work is cancelled with retained cancellation records, terminal outcomes/events remain and earned EXP is not reversed | FR-16, FR-18 |
-| AC-37 | Given any active occurrence, when archive is requested, then archive is rejected without automatic resolution; after explicit completion/failure/cancellation, archive may proceed subject to all remaining active occurrences | FR-18 |
+| AC-36 | Given only clean never-started draft/scheduled unfinished work whose scheduled_at is null or strictly future, and no overdue/meaningful-execution blocker, when archive succeeds, then generation stops and qualifying instances are cancelled with records retained; terminal history/events remain and EXP is not reversed | FR-16, FR-18 |
+| AC-37 | Given active work, overdue scheduled work, formerly active work deferred to draft/scheduled or other unfinished meaningful execution history, when archive is attempted, then it fails without silent cancellation. After explicit completion/failure/cancellation, or appropriate rescheduling of otherwise clean work, the full guard is re-evaluated; prior activation never disappears | FR-18 |
 | AC-38 | Given an eligible occurrence, when Complete is retried five times including concurrent requests with different IDs, then one stable Completion Event and one credit for its event ID plus reward reason exist; only a legitimate new transition after audited reopen may create a new Completion Event | FR-05; CR-02–03 |
+| AC-39 | Given missing/invalid profile.timezone, when recurrence is created/enabled or new slots materialized, then the operation is rejected without guessing a zone; one-off creation remains possible without recurrence configuration | FR-08; RR-03 |
+| AC-40 | Given a weekly series with limit 10 and three skipped unmaterialized weeks, when future work materializes, then skipped weeks consume zero capacity and create no catch-up backlog; with 3 actual instances then a Monday-to-Saturday edit, at most 7 additional instances can materialize, subject also to end_date/stop/archive | FR-08; RR-02 |
+| AC-41 | Given a Completion Event C with fixed reward 50, when the integrated ledger credits it, then source_type is quest_completion, source_id is C, reason is completion_reward and amount is 50; replay grants no extra credit. Before ledger availability, production atomic completion/EXP behavior is disabled even if Quest tables exist | FR-05; CR-04 |
+| AC-42 | Given a retained Penalty snapshot without a source_rule_id, when its schema_version and applicable rule data are valid, then it remains interpretable independently of source-rule existence; no Goal/Project FK is created until its target table exists and direct parent exclusivity still holds | FR-11–12 |
 
 ## 21. Out of Scope for V1
 
@@ -362,4 +376,4 @@ Explicit audited corrections/reopening and compensating EXP reversals are in V1.
 
 ## 22. Open Questions
 
-There are no blocking Quest Engine V1 questions remaining. The twelve product resolutions and DQ-01 through DQ-04 are incorporated into the normative sections and acceptance criteria, consistent with the domain model. Future-scope items remain outside this V1 contract.
+There are no remaining blocking Quest V1 product/database design questions. SQ-01–04 are resolved consistently with DQ-01–04 across the domain model and physical schema. Profile, Goal/Project, Penalty and Player schemas remain separately implemented dependencies; production features must honor their documented enablement gates.

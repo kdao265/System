@@ -28,6 +28,8 @@ For development, use repository code, docs, issues, tests, and git history as sh
 
 ## Read next
 
+The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical design](02-architecture/auth-profile-database-schema.md) specify the planned email/password identity foundation, automatic private profiles and the existing Quest timezone dependency. They are design documents, not implemented authentication or a Profile migration.
+
 1. [Agent instructions](../AGENTS.md) and [V1 scope](00-product/scope-v1.md).
 2. [Requirements format](01-requirements/README.md) and relevant module requirements when created.
 3. [Architecture](02-architecture/overview.md), [decisions](02-architecture/decisions.md), and [integration boundary](02-architecture/integrations.md).

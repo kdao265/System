@@ -4,6 +4,8 @@
 
 This describes intended boundaries. The application uses Next.js App Router in `src/app`, cookie-aware browser/server Supabase clients in `src/lib/supabase`, and email/password actions and forms in `src/features/auth`. Next.js 16 `src/proxy.ts` refreshes sessions before rendering; server pages independently verify identity with Supabase Auth. Existing Profile provisioning and Quest migrations remain unchanged. Profile onboarding in `src/features/profile` loads the verified owner through RLS, updates only display name/timezone, and gates dashboard access on a saved supported timezone. Missing profiles fail safely without application provisioning. Quest domain services and deployment configuration are deferred. See the [setup guide](../../README.md) and [Auth application handoff](../04-development/auth-application-layer.md).
 
+The proposed [Player/EXP foundation](player-exp-database-schema.md), with its [requirements](../01-requirements/player-exp.md), uses Auth ownership, one append-only ledger and derived current EXP. It specifies future atomic Quest credit/reversal integration; production completion remains disabled until the ledger and coordinated commands are implemented and verified.
+
 ## Intended stack and responsibilities
 
 | Technology / layer | Responsibility |

@@ -26,6 +26,8 @@ Quest, Activity, Criterion, and Evidence are distinct. One activity may satisfy 
 
 For development, use repository code, docs, issues, tests, and git history as shared evidence. Docs describe intent; code/tests describe current implementation. Surface conflicts to the Product Owner instead of silently choosing a new architecture. Agents do not share assumed conversational memory.
 
+The [Player/EXP requirements](01-requirements/player-exp.md) and [physical design](02-architecture/player-exp-database-schema.md) propose the minimal append-only ledger needed for atomic Quest completion. This is documentation only: no Player ledger or Quest completion/reopen command is implemented by the design.
+
 ## Read next
 
 The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical design](02-architecture/auth-profile-database-schema.md) specify the email/password identity foundation, automatic private profiles and the existing Quest timezone dependency. The Profile migration and basic Auth application layer now exist; the Profile onboarding layer now implements explicit timezone setup; Quest application behavior remains deferred.

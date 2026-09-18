@@ -11,7 +11,9 @@ TypeScript, Tailwind CSS and ESLint, following the existing
 installation, lint and a production build on the installed Node.js 24 runtime.
 The subsequent [Auth application milestone](docs/04-development/auth-application-layer.md)
 adds email/password signup, login, logout and a protected minimal dashboard.
-Profile onboarding and other domain workflows remain deferred. Existing database
+The [Profile onboarding milestone](docs/04-development/profile-onboarding.md) adds
+optional display name and explicit required timezone setup before dashboard access.
+Other domain workflows remain deferred. Existing database
 migrations retain their semantics; development validation uses only local Supabase.
 
 ## Local development
@@ -25,7 +27,8 @@ npm run dev
 ```
 
 Open http://localhost:3000. The home page remains public; `/login` and `/signup`
-lead to the protected `/dashboard`. Startup and builds validate required Supabase
+lead through `/onboarding` when timezone is unset, then to the protected `/dashboard`.
+Startup and builds validate required Supabase
 configuration and fail with a safe, explicit message if it is missing.
 
 ```sh
@@ -41,21 +44,24 @@ The local HTTP integration test can be run with a production server on port 3100
 npm run start -- --port 3100
 # In another terminal:
 node --env-file=.env.local tests/auth-smoke.mjs
+node --test tests/timezones.test.mjs
 ```
 
 It requires running local Supabase with the existing migrations applied. It refuses
-remote Supabase URLs and creates one synthetic local Auth user/profile per run,
+remote Supabase URLs and creates two synthetic local Auth users/profiles per full run,
 which it leaves in place. It never prints credentials or resets the database.
 
 ## Structure
 
 ```text
 src/
-  app/                  # Public home, login, signup and protected dashboard
+  app/                  # Public home, Auth pages, onboarding and protected dashboard
   features/auth/        # Auth actions, server identity checks and form components
+  features/profile/     # Profile reads/updates, timezone validation and onboarding
   lib/supabase/         # Cookie-aware browser/server clients and config validation
   proxy.ts              # Session refresh before auth-route rendering
-tests/auth-smoke.mjs     # Local HTTP form/session integration checks
+tests/auth-smoke.mjs     # Local Auth/onboarding/owner isolation integration checks
+tests/timezones.test.mjs # Runtime timezone validation tests
 docs/                   # Product, requirements and architecture documentation
 supabase/               # Existing local configuration and migrations
 ```
@@ -82,8 +88,15 @@ Signup uses Auth only: the existing database trigger provisions Profile. With an
 immediate session it redirects to `/dashboard`; otherwise it asks the user to
 confirm email if required, then sign in with their password. It does not promise
 that a generic signup response created an account. No automatic confirmation-code
-exchange, Profile onboarding, password recovery or OAuth is included. Logout ends
+exchange, password recovery or OAuth is included. Logout ends
 the current session, clears its cookies and returns to `/login`.
+
+The dashboard gate loads the verified owner's Profile through RLS. A null or
+runtime-unsupported timezone directs the user to `/onboarding`; a saved supported
+timezone grants dashboard access. Display name is optional and blank names become
+null. Updates send only `display_name` and `timezone`; database validation, timestamps
+and provisioning remain authoritative. Missing/unreadable profiles show a controlled
+error with retry/sign-out, never an application INSERT or redirect loop.
 
 ## Dependency rationale
 

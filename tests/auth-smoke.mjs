@@ -1,6 +1,6 @@
 // Local-only HTTP integration test. Run against `npm run start -- --port 3100`:
 // node --env-file=.env.local tests/auth-smoke.mjs
-// Creates one synthetic Auth user (and trigger-owned profile), retained locally.
+// Creates two synthetic Auth users (and trigger-owned profiles), retained locally.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
@@ -38,7 +38,8 @@ const decode = (text) => text.replaceAll("&quot;", '"').replaceAll("&#x27;", "'"
 async function submit(path, fields) {
   const { html } = await request(path);
   const body = new FormData();
-  for (const tag of html.matchAll(/<input\b[^>]*>/g)) {
+  const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/)?.[0] ?? "";
+  for (const tag of form.matchAll(/<input\b[^>]*>/g)) {
     const attrs = Object.fromEntries([...tag[0].matchAll(/([\w:-]+)="([^"]*)"/g)].map(([, k, v]) => [k, decode(v)]));
     if (attrs.type === "hidden" && attrs.name) body.append(attrs.name, attrs.value ?? "");
   }
@@ -54,6 +55,7 @@ function redirectTo(result, path) {
 try {
   check((await request("/")).response.status === 200, "Public home failed");
   redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/onboarding"), "/login");
   check((await request("/login")).response.status === 200, "Login unavailable");
   check((await request("/signup")).response.status === 200, "Signup unavailable");
   console.log("PASS: public routes and unauthenticated dashboard protection");
@@ -71,12 +73,13 @@ try {
     process.exit(0);
   }
   redirectTo(registered, "/dashboard");
-  const dashboard = await request("/dashboard");
-  check(dashboard.html.includes(email) && dashboard.html.includes("SYSTEM V1"), "Verified identity missing");
-  check(dashboard.response.headers.get("cache-control")?.includes("no-store"), "Private response must not be cached");
-  redirectTo(await request("/login"), "/dashboard");
-  redirectTo(await request("/signup"), "/dashboard");
-  console.log("PASS: signup session, dashboard identity, private caching and authenticated redirects");
+  redirectTo(await request("/dashboard"), "/onboarding");
+  redirectTo(await request("/login"), "/onboarding");
+  redirectTo(await request("/signup"), "/onboarding");
+  const setup = await request("/onboarding");
+  check(setup.html.includes("Profile Setup") && setup.html.includes('value="Asia/Ho_Chi_Minh"'), "Setup or required timezone option missing");
+  check(/<option[^>]*value=""[^>]*selected/.test(setup.html), "Timezone must start with an explicit empty selection");
+  console.log("PASS: incomplete user routes to onboarding with no timezone default");
 
   const client = createServerClient(url, key, { cookies: {
     getAll: () => [...jar].map(([name, value]) => ({ name, value })),
@@ -84,9 +87,56 @@ try {
   } });
   const { data: identity, error: identityError } = await client.auth.getUser();
   check(!identityError && identity.user, "Auth identity verification failed");
-  const { data: profiles, error: profileError } = await client.from("profiles").select("user_id,display_name,timezone");
+  const { data: profiles, error: profileError } = await client.from("profiles").select("user_id,display_name,timezone,created_at,updated_at");
   check(!profileError && profiles?.length === 1 && profiles[0].user_id === identity.user.id && profiles[0].display_name === null && profiles[0].timezone === null, "Trigger-owned private profile missing or incorrectly initialized");
   console.log("PASS: exactly one owner-visible profile, optional fields null; no application insert");
+
+  for (const timezone of ["", "Not/A_Zone", "+07:00", " UTC", "posix/UTC", "localtime"]) {
+    const result = await submit("/onboarding", { display_name: "Unsaved", timezone });
+    check(result.html.includes("Select a valid IANA timezone"), "Invalid timezone was not rejected safely");
+  }
+  // Intl is case-insensitive; the database requires an exact catalogue name.
+  check((await submit("/onboarding", { display_name: "Unsaved", timezone: "utc" })).html.includes("Unable to save your profile."), "Database rejection was not handled safely");
+  const beforeSave = await client.from("profiles").select("display_name,timezone").single();
+  check(beforeSave.data?.display_name === null && beforeSave.data?.timezone === null, "Rejected updates modified the profile");
+
+  const otherJar = new Map();
+  const other = createServerClient(url, key, { cookies: {
+    getAll: () => [...otherJar].map(([name, value]) => ({ name, value })),
+    setAll: (cookies) => cookies.forEach(({ name, value }) => otherJar.set(name, value)),
+  } });
+  const otherSignup = await other.auth.signUp({ email: `profile-isolation-${randomUUID()}@example.com`, password: `${randomUUID()}Aa1!` });
+  check(!otherSignup.error && otherSignup.data.session && otherSignup.data.user, "Isolation fixture signup failed");
+  const otherId = otherSignup.data.user.id;
+  const crossUser = await client.from("profiles").update({ display_name: "Forbidden" }).eq("user_id", otherId).select("user_id");
+  check(!crossUser.error && crossUser.data?.length === 0, "RLS allowed a cross-user update");
+
+  redirectTo(await submit("/onboarding", {
+    display_name: "   ", timezone: "Asia/Ho_Chi_Minh", user_id: otherId,
+    created_at: "2000-01-01T00:00:00Z", updated_at: "2000-01-01T00:00:00Z",
+  }), "/dashboard");
+  const saved = await client.from("profiles").select("user_id,display_name,timezone,created_at,updated_at").single();
+  check(saved.data?.user_id === identity.user.id && saved.data?.display_name === null && saved.data?.timezone === "Asia/Ho_Chi_Minh", "Owner save/optional name normalization failed");
+  check(saved.data.created_at === profiles[0].created_at && Date.parse(saved.data.updated_at) >= Date.parse(profiles[0].updated_at) && Date.parse(saved.data.updated_at) !== Date.parse("2000-01-01T00:00:00Z"), "Browser timestamp fields were trusted");
+  const otherProfile = await other.from("profiles").select("display_name,timezone").single();
+  check(otherProfile.data?.display_name === null && otherProfile.data?.timezone === null, "Forged ownership changed another profile");
+  await other.auth.signOut({ scope: "local" });
+  console.log("PASS: safe timezone rejection, optional name, RLS isolation and ignored browser ownership/timestamps");
+
+  // Owner clearing timezone through existing RLS must restore the same gate.
+  const cleared = await client.from("profiles").update({ timezone: null }).eq("user_id", identity.user.id);
+  check(!cleared.error, "Owner timezone clear failed");
+  redirectTo(await request("/dashboard"), "/onboarding");
+  redirectTo(await submit("/onboarding", { display_name: "  Profile Tester  ", timezone: "Asia/Ho_Chi_Minh" }), "/dashboard");
+  const named = await client.from("profiles").select("display_name").single();
+  check(named.data?.display_name === "Profile Tester", "Display name was not trimmed");
+  const dashboard = await request("/dashboard");
+  check(dashboard.html.includes(email) && dashboard.html.includes("Profile Tester") && dashboard.html.includes("Asia/Ho_Chi_Minh"), "Dashboard identity/profile missing");
+  check(dashboard.response.headers.get("cache-control")?.includes("no-store"), "Private response must not be cached");
+  redirectTo(await request("/login"), "/dashboard");
+  redirectTo(await request("/signup"), "/dashboard");
+  redirectTo(await request("/onboarding"), "/dashboard");
+  console.log("PASS: completed-user redirects, saved name/timezone and re-gating after timezone clearing");
 
   // Expire the SDK's stored expiry to force the real proxy refresh path.
   const parts = [...jar].filter(([name]) => /auth-token(?:\.\d+)?$/.test(name)).sort(([a], [b]) => a.localeCompare(b));
@@ -110,7 +160,7 @@ try {
   check((await request("/dashboard")).html.includes(email), "Password login failed");
   redirectTo(await submit("/dashboard", {}), "/login");
   console.log("PASS: logout clears cookies and protects dashboard; password login succeeds");
-  console.log("Local synthetic Auth user/profile retained. No credentials printed.");
+  console.log("Two local synthetic Auth users/profiles retained. No credentials printed.");
 } catch (error) {
   // Avoid dumping responses, cookie jars or SDK objects on a failed assertion.
   console.error(error instanceof assert.AssertionError ? error.message : "Local smoke test failed; check local service availability.");

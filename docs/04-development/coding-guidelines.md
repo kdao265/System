@@ -13,4 +13,4 @@
 
 ## Repository commands
 
-No package manifest, tool configuration or application files exist at initial setup. Lint, typecheck, test, build and development commands must be filled in later from actual repository configuration. Do not invent or claim to have run unavailable commands.
+The application foundation uses `npm run dev`, `npm run lint`, `npm run build` and `npm run start`. The production build includes TypeScript checking; lint is a separate check. No automated test suite is configured yet. See the [root README](../../README.md) for setup and dependency rationale.

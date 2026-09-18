@@ -15,10 +15,10 @@ Use synthetic or redacted fixtures. Do not use production secrets or perform des
 
 | Check | Current status |
 | --- | --- |
-| Lint | Not configured; fill in from actual repository scripts later |
-| Typecheck | Not configured; fill in from actual repository scripts later |
+| Lint | `npm run lint` (ESLint, zero warnings permitted) |
+| Typecheck | Included in `npm run build` with strict TypeScript configuration |
 | Automated tests | Not configured; fill in from actual repository scripts later |
-| Build | Not configured; fill in from actual repository scripts later |
+| Build | `npm run build`; `npm run start` serves the resulting production build |
 
 For documentation-only changes, inspect required content, relative links, templates and the file tree. Run `git diff --check`, `git status`, and `git diff --stat`; ordinary diffs do not include untracked files, so read those separately. No application tests are warranted for this initial documentation setup.
 

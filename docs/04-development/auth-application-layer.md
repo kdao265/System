@@ -1,5 +1,9 @@
 # Email/password application layer
 
+This records the Auth milestone. The subsequent [Profile onboarding layer](profile-onboarding.md)
+now adds owner Profile reads/updates and timezone gating after authentication. Its
+validation extends the existing HTTP test; historical results below remain unchanged.
+
 ## Task contract
 
 Branch: `feat/auth-application-layer`. Implement signup, password login, current-session

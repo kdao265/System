@@ -4,7 +4,7 @@ SYSTEM V1 is a personal Life OS: planning, productivity, growth, and recovery su
 
 ## Current state and conceptual modules
 
-The repository contains governance and Quest design documentation, a Quest database migration and local Supabase development files. The application foundation adds a minimal Next.js App Router home page, strict TypeScript, Tailwind CSS, ESLint and an unused Supabase client factory. Run `npm run lint` and `npm run build` for application checks; see the [setup guide](../README.md). No authentication or domain workflows are implemented, and this foundation does not connect to remote Supabase. These are product concepts, not shipped functionality:
+The repository contains governance and Quest design documentation, Quest and Profile database migrations and local Supabase development files. The Next.js App Router application uses strict TypeScript, Tailwind CSS and ESLint, with email/password signup, login, current-session logout and a minimal protected dashboard. Cookie-aware Supabase clients and Next.js Proxy handle sessions; database triggers own Profile provisioning. Profile onboarding and other domain workflows are deferred. Run `npm run lint` and `npm run build`; see the [setup guide](../README.md) and [Auth handoff](04-development/auth-application-layer.md). Validation uses local Supabase only. These are product concepts, not shipped functionality:
 
 - Player: level, EXP, stats, achievements.
 - Quest Engine: main, side, daily/weekly and recurring quests, rewards, deadlines, completion, failure, penalties.
@@ -28,7 +28,7 @@ For development, use repository code, docs, issues, tests, and git history as sh
 
 ## Read next
 
-The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical design](02-architecture/auth-profile-database-schema.md) specify the planned email/password identity foundation, automatic private profiles and the existing Quest timezone dependency. They are design documents, not implemented authentication or a Profile migration.
+The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical design](02-architecture/auth-profile-database-schema.md) specify the email/password identity foundation, automatic private profiles and the existing Quest timezone dependency. The Profile migration and basic Auth application layer now exist; their implementation does not include timezone onboarding or Quest application behavior.
 
 1. [Agent instructions](../AGENTS.md) and [V1 scope](00-product/scope-v1.md).
 2. [Requirements format](01-requirements/README.md) and relevant module requirements when created.

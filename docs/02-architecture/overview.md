@@ -2,7 +2,7 @@
 
 ## Status
 
-This describes intended boundaries. The application foundation uses Next.js App Router in `src/app` and a lazy Supabase client factory in `src/lib/supabase`. Shared components, domain features and shared types will gain directories when needed. Existing Quest schema documentation and migration remain separate from application behavior; no authentication, domain services or deployment configuration are implemented. See the [setup guide](../../README.md).
+This describes intended boundaries. The application uses Next.js App Router in `src/app`, cookie-aware browser/server Supabase clients in `src/lib/supabase`, and email/password actions and forms in `src/features/auth`. Next.js 16 `src/proxy.ts` refreshes sessions before rendering; server pages independently verify identity with Supabase Auth. Existing Profile provisioning and Quest migrations remain unchanged. Profile onboarding, Quest domain services and deployment configuration are deferred. See the [setup guide](../../README.md) and [Auth application handoff](../04-development/auth-application-layer.md).
 
 ## Intended stack and responsibilities
 

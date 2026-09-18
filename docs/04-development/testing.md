@@ -17,7 +17,7 @@ Use synthetic or redacted fixtures. Do not use production secrets or perform des
 | --- | --- |
 | Lint | `npm run lint` (ESLint, zero warnings permitted) |
 | Typecheck | Included in `npm run build` with strict TypeScript configuration |
-| Automated tests | Not configured; fill in from actual repository scripts later |
+| Local Auth integration | With a production server on port 3100 and local Supabase running: `node --env-file=.env.local tests/auth-smoke.mjs`; creates and retains one synthetic local account/profile |
 | Build | `npm run build`; `npm run start` serves the resulting production build |
 
 For documentation-only changes, inspect required content, relative links, templates and the file tree. Run `git diff --check`, `git status`, and `git diff --stat`; ordinary diffs do not include untracked files, so read those separately. No application tests are warranted for this initial documentation setup.

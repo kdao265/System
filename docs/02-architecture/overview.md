@@ -2,7 +2,7 @@
 
 ## Status
 
-This describes intended boundaries. The repository currently has no application implementation, schema, or deployment configuration. Physical folder layout, service interfaces, and database design remain to be proposed.
+This describes intended boundaries. The application foundation uses Next.js App Router in `src/app` and a lazy Supabase client factory in `src/lib/supabase`. Shared components, domain features and shared types will gain directories when needed. Existing Quest schema documentation and migration remain separate from application behavior; no authentication, domain services or deployment configuration are implemented. See the [setup guide](../../README.md).
 
 ## Intended stack and responsibilities
 

@@ -4,7 +4,7 @@ SYSTEM V1 is a personal Life OS: planning, productivity, growth, and recovery su
 
 ## Current state and conceptual modules
 
-The repository starts with governance documentation only. No application, schema, or executable checks have been established. These are product concepts, not shipped functionality:
+The repository contains governance and Quest design documentation, a Quest database migration and local Supabase development files. The application foundation adds a minimal Next.js App Router home page, strict TypeScript, Tailwind CSS, ESLint and an unused Supabase client factory. Run `npm run lint` and `npm run build` for application checks; see the [setup guide](../README.md). No authentication or domain workflows are implemented, and this foundation does not connect to remote Supabase. These are product concepts, not shipped functionality:
 
 - Player: level, EXP, stats, achievements.
 - Quest Engine: main, side, daily/weekly and recurring quests, rewards, deadlines, completion, failure, penalties.

@@ -113,7 +113,7 @@ Web UI, SYSTEM web assistant, Telegram, n8n and future mobile adapters must call
 
 Read operations (`getProgressionStatus`, `listLevelRewards`, `getRewardHistory`) do not create milestones or grants. Write commands (`configureLevelReward`, `updateLevelReward`, `cancelLevelReward`, `redeemLevelReward`) perform the controlled mutations. Private progression recognition is invoked only by trusted policy/EXP transactions, never a caller-supplied Level endpoint.
 
-Command envelopes support a stable command ID, expected revision where relevant, authenticated actor and adapter-verified origin (`web_ui`, `web_assistant`, `telegram`, `automation`, `mobile`, `internal`). Preserve only small structured context, not secrets or chat transcripts. A future confirmation layer may authorize the exact canonical write intent and expected revision before execution; implementing that layer or assuming confirmation already exists is outside this task.
+Command envelopes support a stable command ID, expected revision where relevant, authenticated actor and adapter-verified origin (`web_ui`, `web_assistant`, `telegram`, `automation`, `mobile`, `internal`). The [reward event payload V1 contract](../02-architecture/level-reward-event-payload-v1.md) freezes the existing configured/updated/archived/redeemed receipts, exact JSON shapes and matching/conflicting retries; unlocks remain immutable rows. Preserve only small structured context, not secrets or chat transcripts. A future confirmation layer may authorize the exact canonical write intent and expected revision before execution; implementing that layer or assuming confirmation already exists is outside this task.
 
 ## 12. Atomicity, failures and retries
 
@@ -150,6 +150,8 @@ Retries of accepted commands return matching receipts; conflicting reuse rejects
 
 ## 14. Product Owner decision and implementation gates
 
-**LR-OQ-01 - CLOSED: initial numerical progression curve approved.** The Product Owner selected Level 1 at zero EXP and `100 * (L - 1)^2` to define the initial `level_policy_v1` threshold set. Section 4 records the approved examples and persisted-data requirement. The curve and initial published range of Levels 1 through 100 are resolved; no Level/Reward design or migration-preparation decision remains open.
+**LR-OQ-01 - CLOSED: initial numerical progression curve approved.** The Product Owner selected Level 1 at zero EXP and `100 * (L - 1)^2` to define the initial `level_policy_v1` threshold set. Section 4 records the approved examples and persisted-data requirement. The curve and initial published range of Levels 1 through 100 are resolved.
+
+The approved [assignment executor boundary](../02-architecture/operator-authorization-v1.md#5-capability-check-and-execution-privileges) preserves assignment-time EXP evaluation and atomic recognition in sections 3–5. Its capability-checked command reads target EXP, assignment/history and applicable reward configuration, then inserts missing milestones and eligible immutable unlocks in the same transaction as assignment. All owner-specific operations bind the validated target; callers receive no general cross-owner table access. EXP writes, redemption, definition edits and operator-grant management remain forbidden. The previous assignment-recognition conflict is resolved; no Level/Reward migration-preparation design blocker remains.
 
 No numerical-curve design blocker remains. Production Level recognition/unlocks must remain disabled until the explicit threshold set is published and assigned and integrated transaction/RLS tests pass. The approved Level/Reward semantics remain unchanged. Future balancing values are later policy versions, not additional V1 schema blockers.

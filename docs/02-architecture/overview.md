@@ -26,3 +26,5 @@ Quest, Activity, Criterion, and Evidence remain separate domain concepts even wh
 Supabase is the application data source of truth. Integrations must not create an alternative authoritative database or bypass application validation. Supabase RLS must not be bypassed; privileged credentials must stay out of clients.
 
 See [ADRs](decisions.md) for agreed constraints and [integrations](integrations.md) for external boundaries. Propose architectural changes in an ADR before implementation. Do not treat this overview as approval for schema, dependency, or API changes.
+
+The Player/EXP migration uses private SYSTEM-owned `system_internal.request_user_id()` for command-role identity, reading the request JWT sub as UUID with invoker security. Quest, Profile timezone-reader and EXP policies retain owner isolation without requiring the custom role to access the managed Auth schema. The helper is not a client-supplied identity or an authorization bypass.

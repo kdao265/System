@@ -42,3 +42,5 @@ The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical d
 4. [Agent workflow](04-development/ai-agent-workflow.md), [coding guidelines](04-development/coding-guidelines.md), and [testing](04-development/testing.md).
 
 Record new ideas in the [backlog](00-product/backlog.md); propose and document architectural changes before implementing them.
+
+The Player/EXP migration introduces the private SYSTEM request-identity helper for the existing command role, preserving JWT ownership checks without managed-auth schema access. See the [Player/EXP boundary](02-architecture/player-exp-database-schema.md#7-rls-grants-and-routine-boundary); no public Quest completion/reopen command is enabled.

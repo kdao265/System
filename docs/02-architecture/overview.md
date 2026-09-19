@@ -8,6 +8,8 @@ The proposed [Player/EXP foundation](player-exp-database-schema.md), with its [r
 
 ## Intended stack and responsibilities
 
+The approved [Level/reward domain](level-reward-domain-model.md), [requirements](../01-requirements/level-rewards.md) and [physical design](level-reward-database-schema.md) derive current Level from EXP while retaining first-reached milestones and reward snapshots. Future Quest credit, milestone recognition and unlocks share one transaction; UI and AI use the same controlled application commands. No Level/reward behavior is implemented. The approved initial `level_policy_v1` publishes explicit thresholds for Levels 1 through 100, generated from `100 * (L - 1)^2`. Runtime reads persisted thresholds only. Level 100 is the highest published V1 Level, not a permanent SYSTEM cap.
+
 | Technology / layer | Responsibility |
 | --- | --- |
 | Next.js, TypeScript | Application presentation and execution platform |

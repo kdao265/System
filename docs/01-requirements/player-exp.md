@@ -40,6 +40,8 @@ Retained EXP history blocks Auth hard deletion. Do not cascade-delete or anonymi
 | PE-FR-08 | Owners may read their history; browser clients cannot append or mutate ledger entries |
 | PE-FR-09 | Errors preserve atomicity and history; source/ownership mismatches fail safely rather than being silently accepted |
 
+The [canonical Quest event V1 envelope](../02-architecture/quest-event-payload-v1.md) defines the required JSON paths/types, relational cross-checks and preallocated credit/reversal receipts. Metadata-only corrections cannot qualify as reversal sources.
+
 For Quest completion, preserve this exact contract:
 
 | Field | Value |
@@ -85,7 +87,7 @@ Keep arithmetic exact and integer-valued through storage, aggregation and transp
 
 One future authenticated database command, in the same PostgreSQL transaction, must validate ownership/expected cycle, lock Quest then occurrence, accept the completed event, append its ledger credit, and update the occurrence projection. It commits all effects or none. The browser submits the domain intent, not separate “complete” and “award EXP” calls.
 
-Completed reopen similarly preserves the old event/credit, appends a completion-correction event and exact reversal, appends the reopened event, increments the execution cycle and clears completion projection atomically. Do not make the occurrence executable before that transaction succeeds. Event/ledger IDs may be preallocated within the transaction so their immutable references are written once without later patching history.
+Completed reopen similarly preserves the old event/credit, appends a completion-correction event and exact reversal, appends the reopened event, increments the execution cycle and clears completion projection atomically. Do not make the occurrence executable before that transaction succeeds. The canonical V1 envelope requires event/ledger IDs to be preallocated within the transaction so their immutable references are written once without later patching history.
 
 If validation, ledger append, permissions, uniqueness, database availability or a commit fails, do not acknowledge partial completion/reopen. On an ambiguous response loss, resolve the existing command/cycle and ledger receipts; retry the complete transaction only when no accepted result exists. Preserve committed history. Downstream Goal/Project delivery is separate and cannot cause EXP to be replayed.
 

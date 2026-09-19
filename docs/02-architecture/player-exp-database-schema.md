@@ -27,7 +27,7 @@ This is a documented proposal, not an accepted new implementation ADR or authori
 
 | Column | PostgreSQL type | Nullable | Default | Meaning / constraints |
 | --- | --- | --- | --- | --- |
-| id | uuid | No | Database-generated UUID v4, `gen_random_uuid()` | Primary key; an internal command may preallocate it in the same transaction for immutable receipt references |
+| id | uuid | No | Database-generated UUID v4, `gen_random_uuid()` | Primary key; the internal Quest command preallocates it in the same transaction for the mandatory V1 receipt reference |
 | user_id | uuid | No | None | Verified Auth owner, immutable; FK to auth.users.id |
 | source_type | text | No | None | Closed V1 discriminator: quest_completion or quest_completion_reversal |
 | source_id | uuid | No | None | Completion Event ID for a credit; accepted completion_corrected event ID for a reversal; not a browser request/occurrence ID |
@@ -65,7 +65,9 @@ Row CHECKs do not inspect other rows. Target credit kind, exact opposite amount 
 
 ## 4. Source identity and database append guard
 
-Choose generic source columns, with **no FK from source_id to Quest**. The self-reversal and Auth FKs are real constraints; there is no polymorphic FK. No new Quest column or foreign key to the ledger is needed. Existing Quest event payloads may retain preallocated ledger receipt IDs and correction references as already permitted by their contract.
+The authoritative [Quest event payload V1 contract](quest-event-payload-v1.md) supplies the exact completed/undo JSON paths and validation rules. Both credit and reversal receipts must be preallocated and match their canonical payload references; unrelated payload fields cannot affect EXP.
+
+Choose generic source columns, with **no FK from source_id to Quest**. The self-reversal and Auth FKs are real constraints; there is no polymorphic FK. No new Quest column or foreign key to the ledger is needed. The canonical V1 Quest envelopes retain preallocated ledger receipt IDs and correction references as required by their contract.
 
 The later migration must provide a mandatory database insert-validation guard, not merely UI checks. It runs under the same RLS-bound command role (SECURITY INVOKER), uses a fixed safe search path/qualified references, and validates the following before accepting a fresh ledger row:
 
@@ -122,7 +124,7 @@ All steps run inside one future database transaction in the existing PostgreSQL 
 
 1. Resolve Auth owner; reject unowned/unknown targets without revealing another owner's facts. Use Quest's lock order: definition, then occurrence. Every competing lifecycle command follows that order.
 2. Resolve known command/event and expected execution_cycle before minting IDs. An already accepted cycle returns its original event/ledger receipt after consistency checks, even if the request UUID differs. An old cycle cannot act on reopened work. Conflicting command reuse rejects.
-3. For a fresh eligible transition, validate resolved occurrence reward and all Quest-side guards. Allocate completed-event and credit UUIDs inside this operation if bidirectional immutable payload receipts are needed.
+3. For a fresh eligible transition, validate resolved occurrence reward and all Quest-side guards. Allocate completed-event and credit UUIDs inside this operation for the mandatory V1 payload receipt.
 4. Append the completed Quest event with its fixed snapshots and approved `(quest_completion, event ID, completion_reward, snapshot amount)` contract. Invoke the private EXP credit helper; the insert guard validates the source and the unique source key prevents duplication.
 5. Update the occurrence completed projection and recording/reported times according to Quest. Commit event, credit and projection together. Helper failure propagates and rolls everything back.
 
@@ -134,7 +136,7 @@ If an accepted historical Quest event lacks its ledger credit, normal replay fai
 
 1. Authenticate and acquire the same Quest/occurrence locks. Resolve matching prior command/correction before checking whether this is a fresh completed reopen. Reject stale/conflicting new intent.
 2. Resolve the current completed event and its exact original ledger credit. Verify same owner/Quest/occurrence/cycle and retained amount. A missing/mismatched credit is an integrity failure; do not reopen.
-3. Preallocate correction/reversal IDs if necessary, then append `completion_corrected` with undo=true, related original Completion Event, original credit and compensation receipt. Append the ledger reversal with source_type `quest_completion_reversal`, source_id that correction event, reason `completion_reward_reversal`, and the negative original amount.
+3. Preallocate correction/reversal IDs for the mandatory V1 envelope, then append `completion_corrected` with undo=true, related original Completion Event, original credit and compensation receipt. Append the ledger reversal with source_type `quest_completion_reversal`, source_id that correction event, reason `completion_reward_reversal`, and the negative original amount.
 4. Append `reopened` (same Quest command ID, new execution cycle as specified by Quest), increment execution_cycle and clear current completion fields; enforce the chosen unfinished-state guards. Commit all changes together. If any step fails, completed state and unreversed credit remain.
 
 The correction event is the reversal source; the reopened event is the lifecycle result. Their distinct IDs must not create two reversal entitlements. A repeat correction returns the original compensation. Another correction UUID attempting the same target is rejected as new work or resolves the already accepted semantic reopen without appending another correction/reversal. Source uniqueness plus global unique reversal target prevent double subtraction.

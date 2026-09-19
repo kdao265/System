@@ -28,6 +28,8 @@ For development, use repository code, docs, issues, tests, and git history as sh
 
 The [Player/EXP requirements](01-requirements/player-exp.md) and [physical design](02-architecture/player-exp-database-schema.md) propose the minimal append-only ledger needed for atomic Quest completion. This is documentation only: no Player ledger or Quest completion/reopen command is implemented by the design.
 
+The [canonical Quest event V1 EXP envelope](02-architecture/quest-event-payload-v1.md) closes the Player/EXP migration preflight gap: exact completion/undo JSON paths, types and receipt mappings are defined. Existing Quest storage supports the contract without historical migration changes; guard/ledger/command implementation remains future work.
+
 ## Read next
 
 The approved [Level/reward requirements](01-requirements/level-rewards.md), [domain model](02-architecture/level-reward-domain-model.md) and [physical design](02-architecture/level-reward-database-schema.md) extend that deferred progression boundary with versioned thresholds, permanent milestones and manual real-life reward claims. They preserve EXP reversal semantics and use shared UI/AI application commands. Documentation only; no Level/reward behavior is implemented. The approved initial `level_policy_v1` publishes explicit thresholds for Levels 1 through 100, generated from `100 * (L - 1)^2`. Runtime reads persisted thresholds only. Level 100 is the highest published V1 Level, not a permanent SYSTEM cap.

@@ -40,7 +40,7 @@ All adapters call application services; services validate authenticated context 
 | `cancelLevelReward` | Definition ID and expected revision; archives, retaining all history and existing eligibility |
 | `redeemLevelReward` | Unlock ID and stable command ID; returns the unique manual redemption receipt |
 | Private progression recognition | Validated accepted ledger entry or policy assignment; derives EXP/Levels internally, never accepts caller-supplied grants |
-| Administrative policy publication/assignment | Separately authorized configuration operations, unavailable to ordinary user reward callers |
+| Administrative policy publication/assignment | Assignment requires the current request actor's active `level_policy_assign` capability through the [private operator boundary](operator-authorization-v1.md); policy publication remains a separate trusted configuration operation |
 
 Configure/update/cancel/redemption carry authenticated actor, stable command ID and verified channel (`web_ui`, `web_assistant`, `telegram`, `automation`, `mobile`, `internal`). Expected revision is required for update/cancel. The adapter derives channel from a trusted entry point, not an arbitrary client field; channel is attribution, never authorization. Future automation requires owner-scoped authenticated delegation, whose credential flow is deferred. Store no credentials, prompts or transcripts. A future confirmation layer can bind approval to the canonical command and expected revision; no confirmation mechanism is implemented or assumed here.
 

@@ -43,4 +43,6 @@ The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical d
 
 Record new ideas in the [backlog](00-product/backlog.md); propose and document architectural changes before implementing them.
 
+The [operator authorization contract](02-architecture/operator-authorization-v1.md) resolves the Level Policy assignment permission boundary: private active `level_policy_assign` grants authorize the request actor, independently of identity. Fresh deployments have zero grants; trusted administrative data bootstrap and explicit policy assignment are separate. This contract is documentation, not an implemented authorization table or command.
+
 The Player/EXP migration introduces the private SYSTEM request-identity helper for the existing command role, preserving JWT ownership checks without managed-auth schema access. See the [Player/EXP boundary](02-architecture/player-exp-database-schema.md#7-rls-grants-and-routine-boundary); no public Quest completion/reopen command is enabled.

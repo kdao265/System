@@ -107,7 +107,7 @@ For illustration only: current Level 5 → 4 after reversal leaves highest Level
 
 ## 11. Authorization and shared application commands
 
-Auth identity remains authoritative. Resolve owner from authenticated context; do not trust submitted owner IDs, Level, totals, milestone receipts or channel claims. Owner-scoped RLS protects definitions, milestone history, unlocks and reward command history. Browser/assistant clients cannot directly mutate those tables. Policy publication/assignment is a distinct controlled administrative operation, not a user reward command.
+Auth identity remains authoritative. Resolve owner from authenticated context; do not trust submitted owner IDs, Level, totals, milestone receipts or channel claims. Owner-scoped RLS protects definitions, milestone history, unlocks and reward command history. Browser/assistant clients cannot directly mutate those tables. Policy publication/assignment is a distinct controlled administrative operation, not a user reward command. Assignment specifically requires the authenticated request actor's active `level_policy_assign` capability under the [operator authorization contract](../02-architecture/operator-authorization-v1.md). No default grant, self-promotion or automatic enrollment is allowed; authorized operators may assign another owner only through the controlled command.
 
 Web UI, SYSTEM web assistant, Telegram, n8n and future mobile adapters must call the same application/domain commands with the same authorization, validation, revision and idempotency rules. No React-only calculation or chatbot-specific table-write shortcut is permitted. Any future automation must carry a separately authenticated, owner-scoped authorization; a channel name does not confer power.
 

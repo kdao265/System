@@ -106,11 +106,11 @@ Enable RLS before access. The table owner remains a migration/administration rol
 | Principal | Ledger permissions / policies | Routine access |
 | --- | --- | --- |
 | PUBLIC / anon | None | Revoke default EXECUTE on private append and aggregate routines |
-| authenticated | SELECT only; policy requires nonnull auth.uid() equal to user_id | Later exposed, validated Quest commands and own-total read only; never direct append helper |
-| quest_command_owner | SELECT and INSERT only; SELECT USING and INSERT WITH CHECK require nonnull auth.uid() equal to user_id | Own/invoke controlled Quest commands and private EXP append helpers |
+| authenticated | SELECT only; policy requires nonnull system_internal.request_user_id() equal to user_id | Later exposed, validated Quest commands and own-total read only; never direct append helper |
+| quest_command_owner | SELECT and INSERT only; SELECT USING and INSERT WITH CHECK require nonnull system_internal.request_user_id() equal to user_id | Own/invoke controlled Quest commands and private EXP append helpers |
 | Table owner / migration administrator | Setup/review boundary, not application credential | No browser or general application use |
 
-The role already has owner-scoped Quest event/occurrence SELECT and controlled Quest writes. No new Quest RLS policy or broader Quest permission is needed for ledger source validation. Ledger grants include necessary schema USAGE; use existing auth.uid() execution access. The private helper schema (proposed `exp_internal`) is not API-exposed and grants no CREATE to runtime clients.
+The role already has owner-scoped Quest event/occurrence SELECT and controlled Quest writes. The new EXP migration updates existing command-role Quest and Profile-reader policy expressions to use `system_internal.request_user_id()` without changing policy roles or owner predicates. This SYSTEM-owned, private STABLE SECURITY INVOKER function returns `nullif(current_setting('request.jwt.claim.sub', true), '')::uuid`, with a fixed safe search path, no arguments and no table access. Missing/empty claims return null; invalid UUID claims reject. Only authenticated and quest_command_owner receive helper EXECUTE and private schema USAGE, never CREATE. No managed-auth schema grant or role membership is needed. The private helper schema (proposed `exp_internal`) is not API-exposed and grants no CREATE to runtime clients.
 
 Player/EXP owns the semantics of private credit/reversal append helpers. They execute as invokers of the RLS-bound Quest command role. Revoke PUBLIC/anon/authenticated EXECUTE and schema access; grant only the command role what it needs. Exposed Quest routines use the already-approved SECURITY DEFINER pattern owned by that non-table-owner role, preserve authenticated request context, revalidate ownership and derive source/amount internally. Fix search paths, qualify object references, and grant only explicit command EXECUTE to authenticated.
 

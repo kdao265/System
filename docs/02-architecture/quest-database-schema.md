@@ -281,6 +281,8 @@ Queries must include the matching partial-index filters. Use half-open absolute 
 
 ## 16. RLS Model
 
+The Player/EXP migration carries the approved portable identity update: existing policies used by `quest_command_owner` use private `system_internal.request_user_id()` to read the request JWT sub, preserving nonnull identity and `user_id` equality. It does not alter their roles or operations, require managed-auth schema access, or rewrite historical migrations.
+
 Enable RLS for all four public tables. `anon` receives no access. Authenticated SELECT is owner-scoped to nonnull authenticated identity matching row.user_id, including archived history. Composite FKs prevent child rows from claiming a different owner's definition. Supabase documents both owner policies and the need to keep service-role credentials away from clients. [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 
 | Table | Read policy | Proposed mutation boundary |

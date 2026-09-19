@@ -151,6 +151,8 @@ Allowed event types: created, scheduled, activated, completed, completion_correc
 
 Add unique `(id, quest_id, user_id)` for self references. An occurrence event requires a cycle; a definition event has neither occurrence nor cycle. Completed, failed, activated, scheduled, rescheduled, deferred, reopened, completion_corrected, failure_reason_changed, penalty_waived and occurrence_edited require an occurrence. Archived, recurrence_changed, recurrence_stopped and definition_edited are definition-only; created/cancelled support their relevant subject through controlled validation.
 
+The canonical [V1 Player/EXP envelope](quest-event-payload-v1.md) defines exact JSON paths, types, receipt mappings and undo validation. It fixes only the EXP integration fields; other Quest-owned payload fields remain extensible.
+
 Completion payload version 1 records reported/recorded times, all seven execution snapshots, and the ledger contract: `source_type = quest_completion`, `source_id = this Completion Event ID`, `reason = completion_reward`, `amount = reward_exp_snapshot`. Event ID is the source, not a retry ID. Correction payload records whether completion was undone, prior/new projection, original Completion Event/credit reference and applicable compensation receipt. Related-event kind/cycle is checked by the write boundary. Payload stores neither secrets nor a mutable EXP balance.
 
 JSONB allows meaningful event variants without a table per event, but does not replace indexed identity/type/time columns. Grant no normal UPDATE/DELETE on this table. Trivial-draft purge is a narrowly controlled exception in section 14, never a way to remove meaningful history.

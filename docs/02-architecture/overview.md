@@ -27,4 +27,6 @@ Supabase is the application data source of truth. Integrations must not create a
 
 See [ADRs](decisions.md) for agreed constraints and [integrations](integrations.md) for external boundaries. Propose architectural changes in an ADR before implementation. Do not treat this overview as approval for schema, dependency, or API changes.
 
+The [V1 operator authorization contract](operator-authorization-v1.md) separates request identity from private database capability grants. Explicit Level Policy assignment requires active `level_policy_assign`; no user receives it automatically. A trusted database administrator bootstraps grant data, and the future restricted assignment command supports cross-owner targets without bypassing RLS.
+
 The Player/EXP migration uses private SYSTEM-owned `system_internal.request_user_id()` for command-role identity, reading the request JWT sub as UUID with invoker security. Quest, Profile timezone-reader and EXP policies retain owner isolation without requiring the custom role to access the managed Auth schema. The helper is not a client-supplied identity or an authorization bypass.

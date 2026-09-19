@@ -30,6 +30,8 @@ The [Player/EXP requirements](01-requirements/player-exp.md) and [physical desig
 
 ## Read next
 
+The approved [Level/reward requirements](01-requirements/level-rewards.md), [domain model](02-architecture/level-reward-domain-model.md) and [physical design](02-architecture/level-reward-database-schema.md) extend that deferred progression boundary with versioned thresholds, permanent milestones and manual real-life reward claims. They preserve EXP reversal semantics and use shared UI/AI application commands. Documentation only; no Level/reward behavior is implemented. The approved initial `level_policy_v1` publishes explicit thresholds for Levels 1 through 100, generated from `100 * (L - 1)^2`. Runtime reads persisted thresholds only. Level 100 is the highest published V1 Level, not a permanent SYSTEM cap.
+
 The [Auth/Profile requirements](01-requirements/auth-profile.md) and [physical design](02-architecture/auth-profile-database-schema.md) specify the email/password identity foundation, automatic private profiles and the existing Quest timezone dependency. The Profile migration and basic Auth application layer now exist; the Profile onboarding layer now implements explicit timezone setup; Quest application behavior remains deferred.
 
 1. [Agent instructions](../AGENTS.md) and [V1 scope](00-product/scope-v1.md).

@@ -25,7 +25,7 @@ BEGIN
         RAISE EXCEPTION 'Keys/checks/indexes mismatch';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_index WHERE indexrelid='public.uq_exp_ledger_reversal'::regclass AND indisunique AND indpred IS NOT NULL)
-        OR (SELECT count(*) FROM pg_policy WHERE polrelid='public.exp_ledger'::regclass) <> 2
+        OR (SELECT count(*) FROM pg_policy WHERE polrelid='public.exp_ledger'::regclass) <> 4
         OR (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.exp_ledger'::regclass AND NOT tgisinternal AND tgenabled='O') <> 3 THEN
         RAISE EXCEPTION 'Partial unique/policy/trigger mismatch';
     END IF;

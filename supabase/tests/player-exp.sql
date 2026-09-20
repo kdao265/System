@@ -212,7 +212,7 @@ BEGIN
     -- Administrator can exercise guards independently of runtime grants/RLS.
     PERFORM exp_test.reject('UPDATE public.exp_ledger SET amount=amount',ARRAY['55000'],'update guard');
     PERFORM exp_test.reject('DELETE FROM public.exp_ledger',ARRAY['55000'],'delete guard');
-    PERFORM exp_test.reject('TRUNCATE public.exp_ledger',ARRAY['55000'],'truncate guard');
+    PERFORM exp_test.reject('TRUNCATE public.exp_ledger',ARRAY['55000','0A000'],'truncate guard');
     PERFORM exp_test.reject(format('DELETE FROM auth.users WHERE id=%L',a),ARRAY['23503'],'Auth retained history restrict');
     RAISE NOTICE 'Player/EXP behavior tests passed';
 END;

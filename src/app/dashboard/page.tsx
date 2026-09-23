@@ -9,6 +9,7 @@ import { DailyQuestsPanel } from "@/features/quests/panel";
 import { DailyQuestLoading } from "@/features/quests/components";
 import { RewardsPanel } from "@/features/rewards/panel";
 import { RewardsLoading } from "@/features/rewards/components";
+import { QuestCreationForm } from "@/features/quests/create-form";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function DashboardPage() {
             </a>
           </section>
         )}
+        <QuestCreationForm timezone={profile.timezone!} userId={user.id} />
         <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} />}>
           <DailyQuestsPanel timezone={profile.timezone!} />
         </Suspense>

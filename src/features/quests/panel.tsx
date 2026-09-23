@@ -1,6 +1,6 @@
 import { getDayQuests } from "./data";
 import { DailyQuestList } from "./components";
 
-export async function DailyQuestsPanel({ timezone }: { timezone: string }) {
-  return <DailyQuestList result={await getDayQuests()} timezone={timezone} />;
+export async function DailyQuestsPanel({ timezone, selectedDate }: { timezone: string; selectedDate: string }) {
+  return <DailyQuestList result={await getDayQuests(selectedDate)} timezone={timezone} selectedDate={selectedDate} />;
 }

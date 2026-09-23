@@ -32,12 +32,11 @@ async function readFailure(error: unknown): Promise<DayQuestResult> {
 }
 
 /** Server-rendered feature boundary. No privileged client, cross-user cache or writes. */
-export async function getDayQuests(): Promise<DayQuestResult> {
+export async function getDayQuests(selectedDate: string): Promise<DayQuestResult> {
   try {
     if (!await getAuthenticatedUser()) return { status: "session-expired" };
     const supabase = await createServerSupabaseClient(true);
-    // Omit p_day: only the database resolves the default profile-local day.
-    const { data, error } = await supabase.rpc("list_day_quest_occurrences");
+    const { data, error } = await supabase.rpc("list_day_quest_occurrences", { p_day: selectedDate });
     return error ? readFailure(error) : parseDayQuests(data);
   } catch (caught) {
     unstable_rethrow(caught);

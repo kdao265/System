@@ -38,6 +38,7 @@ const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function ProfileError() { return "Profile error"; }
   export function DailyQuestsPanel() { return null; }
   export function DailyQuestLoading() { return null; }
+  export function resolveSelectedDate() { return "2026-09-24"; }
   export function RewardsPanel() { return null; }
   export function RewardsLoading() { return null; }
 `)}`;
@@ -58,6 +59,7 @@ const hooks = registerHooks({
         return { url: inertFormsUrl, shortCircuit: true };
       }
       if (specifier === "./timezones") return nextResolve("./timezones.ts", context);
+      if (specifier === "@/features/quests/dates") return { url: inertFormsUrl, shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },

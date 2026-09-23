@@ -1,0 +1,103 @@
+name: Quest Creation CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-supabase-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out pull request source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Start fresh Supabase Local
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! -f supabase/seed.sql ]]; then
+            : > supabase/seed.sql
+          fi
+
+          npx --no-install supabase start
+          npx --no-install supabase db reset --local --no-seed --yes
+
+      - name: Verify all eight migrations
+        run: |
+          set -Eeuo pipefail
+          expected='20260918034836,20260918083114,20260919063117,20260920050000,20260921090000,20260922000000,20260923000000,20260923120000'
+          actual="$(docker exec supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT string_agg(version::text, ',' ORDER BY version) FROM supabase_migrations.schema_migrations;")"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Migration history mismatch. Expected: $expected"
+            echo "Migration history found: $actual"
+            exit 1
+          fi
+          echo "Verified migrations: $actual"
+
+      - name: Run level rewards catalog first
+        run: |
+          set -Eeuo pipefail
+          docker exec -i supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            < supabase/tests/level-rewards-catalog.sql
+
+      - name: Run remaining SQL test suites
+        run: |
+          set -Eeuo pipefail
+          suites=(
+            request-identity.sql
+            request-identity-compat.sql
+            request-identity-compat-catalog.sql
+            profiles.sql
+            player-exp-catalog.sql
+            player-exp.sql
+            level-rewards.sql
+            quest-commands-catalog.sql
+            quest-commands.sql
+            day-quest-reads-catalog.sql
+            day-quest-reads.sql
+            quest-creation-catalog.sql
+            quest-creation.sql
+          )
+          for suite in "${suites[@]}"; do
+            echo "::group::Running supabase/tests/$suite"
+            docker exec -i supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < "supabase/tests/$suite"
+            echo "PASS: supabase/tests/$suite"
+            echo "::endgroup::"
+          done
+
+      - name: Run Player/EXP preflight supplemental test
+        run: node supabase/tests/player-exp-preflight.mjs
+
+      - name: Publish test summary
+        if: success()
+        run: |
+          {
+            echo '## Fresh Supabase CI summary'
+            echo
+            echo '- Fresh local Supabase instance: started and reset'
+            echo '- Migration verification: eight expected migrations'
+            echo '- SQL suites: level-rewards-catalog first, then 13 remaining suites'
+            echo '- Supplemental check: player-exp-preflight.mjs'
+            echo '- Database target: local Docker container only'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop Supabase Local
+        if: always()
+        run: npx --no-install supabase stop --no-backup || true

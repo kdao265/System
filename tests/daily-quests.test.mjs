@@ -9,6 +9,7 @@ import { renderToStaticMarkup, renderToPipeableStream } from "react-dom/server";
 import { redirect } from "next/navigation.js";
 import { AuthInvalidJwtError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { parseDayQuests } from "../src/features/quests/model.ts";
+import { addCalendarDays, isCalendarDate, resolveSelectedDate, todayInTimezone } from "../src/features/quests/dates.ts";
 
 // Contract: approved UI Read/Query V1 §3.3 and the actual 20260922000000 migration.
 // Exercise real adapters, pages and server-rendered panels. Only Auth/transport,
@@ -88,14 +89,14 @@ const base = {
   completable: true,
   already_completed_cycle: null,
 };
-const render = (result, timezone = "Asia/Ho_Chi_Minh") =>
-  renderToStaticMarkup(createElement(DailyQuestList, { result, timezone }));
+const render = (result, timezone = "Asia/Ho_Chi_Minh", selectedDate = "2026-09-23") =>
+  renderToStaticMarkup(createElement(DailyQuestList, { result, timezone, selectedDate }));
 
-function mockRead(read, getUser = async () => assert.fail("unexpected fresh Auth check")) {
+function mockRead(read, getUser = async () => assert.fail("unexpected fresh Auth check"), selectedDate = "2026-09-23") {
   configure(async () => owner, async (readOnly) => {
     assert.equal(readOnly, true);
     return { auth: { getUser }, rpc: async (...args) => {
-      assert.deepEqual(args, ["list_day_quest_occurrences"], "no date or identity arguments");
+      assert.deepEqual(args, ["list_day_quest_occurrences", { p_day: selectedDate }]);
       return read();
     } };
   });
@@ -180,21 +181,27 @@ test("server membership, order, status and readiness are never recomputed", () =
   assert.match(html, /Level system setup required/);
   assert.match(html, /2099/);
   assert.match(html, /2001/);
-  assert.doesNotMatch(html, /<button|complete_quest|reopen_quest/);
+  assert.doesNotMatch(html, /complete_quest|reopen_quest/);
 });
 
 test("read adapter distinguishes empty, malformed, timezone and generic RPC errors", async () => {
   for (const data of [[], [base], null, {}, [base, {}]]) {
     mockRead(() => ({ data, error: null }));
-    assert.deepEqual(await getDayQuests(), parseDayQuests(data));
+    assert.deepEqual(await getDayQuests("2026-09-23"), parseDayQuests(data));
   }
   for (const [error, status] of [[{ code: "PZ001" }, "timezone-required"],
     [{ code: "XX000", message: "private diagnostic" }, "unavailable"], [new Error("fetch failed"), "unavailable"]]) {
     mockRead(() => ({ data: [], error }));
-    assert.deepEqual(await getDayQuests(), { status });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status });
     mockRead(() => { throw error; });
-    assert.deepEqual(await getDayQuests(), { status });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status });
   }
+});
+
+test("read adapter sends the selected calendar date to the SQL contract", async () => {
+  const selectedDate = "2027-02-28";
+  mockRead(() => ({ data: [], error: null }), async () => owner, selectedDate);
+  assert.deepEqual(await getDayQuests(selectedDate), { status: "ok", quests: [] });
 });
 
 test("valid session plus returned or thrown 42501/token errors stays a panel error without redirect", async () => {
@@ -203,9 +210,9 @@ test("valid session plus returned or thrown 42501/token errors stays a panel err
     let checks = 0;
     const getUser = async () => { checks++; return { data: { user: owner }, error: null }; };
     mockRead(() => ({ data: [], error }), getUser);
-    assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
     mockRead(() => { throw error; }, getUser);
-    assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
     assert.equal(checks, 2);
   }
 });
@@ -213,37 +220,37 @@ test("valid session plus returned or thrown 42501/token errors stays a panel err
 test("confirmed expired sessions render inline sign-in recovery, never automatic redirect", async () => {
   for (const error of [null, new AuthSessionMissingError(), { code: "session_expired" }, new AuthInvalidJwtError("expired")]) {
     mockRead(() => ({ data: null, error: { code: "42501" } }), async () => ({ data: { user: null }, error }));
-    const result = await getDayQuests();
+    const result = await getDayQuests("2026-09-23");
     assert.deepEqual(result, { status: "session-expired" });
     assert.match(render(result), /href="\/login"/);
     if (error) {
       mockRead(() => ({ data: null, error: { code: "42501" } }), async () => { throw error; });
-      assert.deepEqual(await getDayQuests(), result);
+      assert.deepEqual(await getDayQuests("2026-09-23"), result);
     }
   }
   configure(async () => null, async () => assert.fail("no RPC when unauthenticated"));
-  assert.deepEqual(await getDayQuests(), { status: "session-expired" });
+  assert.deepEqual(await getDayQuests("2026-09-23"), { status: "session-expired" });
 });
 
 test("inconclusive Auth checks and transport failures remain generic and preserve framework control flow", async () => {
   for (const error of [new Error("private network details"), { code: "42501" }, { status: 429 }, { status: 503 }]) {
     mockRead(() => ({ data: null, error: { code: "42501" } }), async () => ({ data: { user: null }, error }));
-    assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
     mockRead(() => ({ data: null, error: { code: "42501" } }), async () => { throw error; });
-    assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+    assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
   }
   configure(async () => { throw new Error("auth network failure"); }, async () => assert.fail("no client"));
-  assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+  assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
   configure(async () => owner, async () => { throw new Error("client unavailable"); });
-  assert.deepEqual(await getDayQuests(), { status: "unavailable" });
+  assert.deepEqual(await getDayQuests("2026-09-23"), { status: "unavailable" });
   for (const read of [() => redirect("/login"), () => ({ data: null, error: { code: "42501" } })]) {
     mockRead(read, async () => redirect("/login"));
-    await assert.rejects(getDayQuests(), (error) => error.digest === "NEXT_REDIRECT;replace;/login;307;");
+    await assert.rejects(getDayQuests("2026-09-23"), (error) => error.digest === "NEXT_REDIRECT;replace;/login;307;");
   }
 });
 
 test("accessible distinct loading, empty, invalid, retry, timezone and time displays", () => {
-  const loading = renderToStaticMarkup(createElement(DailyQuestLoading, { timezone: "UTC" }));
+  const loading = renderToStaticMarkup(createElement(DailyQuestLoading, { timezone: "UTC", selectedDate: "2026-09-23" }));
   assert.match(loading, /aria-busy="true"/);
   assert.match(loading, /role="status"/);
   assert.match(render({ status: "ok", quests: [] }), /No Quests for this day/);
@@ -253,10 +260,10 @@ test("accessible distinct loading, empty, invalid, retry, timezone and time disp
     assert.doesNotMatch(html, /No Quests for this day|private diagnostic/);
   }
   assert.match(render({ status: "invalid" }), /could not be read safely/);
-  assert.match(render({ status: "unavailable" }), /href="\/dashboard"[^>]*>Retry Daily Quests/);
+  assert.match(render({ status: "unavailable" }), /href="\/dashboard\?date=2026-09-23"[^>]*>Retry Daily Quests/);
   assert.match(render({ status: "timezone-required" }), /href="\/onboarding\?repair=timezone"/);
   const html = render(parseDayQuests([{ ...base, quest_title: "X".repeat(120) }]));
-  assert.match(html, /Selected day: Today \(profile-local day\)/);
+  assert.match(html, /Selected day: September 23, 2026/);
   assert.match(html, /Profile timezone: Asia\/Ho_Chi_Minh/);
   assert.match(html, /03:30:00 PM/);
   assert.match(html, /dateTime="2026-09-23T08:30:00.123456\+00:00"/);
@@ -370,5 +377,83 @@ test("repair saves through the existing owner-scoped Profile action and returns 
 
 test("server panel consumes the feature adapter directly", async () => {
   mockRead(() => ({ data: [], error: null }));
-  assert.match(renderToStaticMarkup(await DailyQuestsPanel({ timezone: "UTC" })), /No Quests for this day/);
+  assert.match(renderToStaticMarkup(await DailyQuestsPanel({ timezone: "UTC", selectedDate: "2026-09-23" })), /No Quests for this day/);
+});
+
+test("calendar navigation handles boundaries, leap years, DST and strict query dates", () => {
+  assert.equal(isCalendarDate("2026-09-23"), true);
+  assert.equal(isCalendarDate("2026-02-29"), false);
+  assert.equal(isCalendarDate("2024-02-29"), true);
+  assert.equal(isCalendarDate("2026-2-03"), false);
+  assert.equal(addCalendarDays("2024-02-29", 1), "2024-03-01");
+  assert.equal(addCalendarDays("2026-01-01", -1), "2025-12-31");
+  assert.equal(addCalendarDays("2026-12-31", 1), "2027-01-01");
+  assert.equal(addCalendarDays("2026-03-08", 1), "2026-03-09");
+  assert.equal(addCalendarDays("2026-11-01", -1), "2026-10-31");
+  const instant = new Date("2026-09-23T23:30:00Z");
+  assert.equal(todayInTimezone("Asia/Ho_Chi_Minh", instant), "2026-09-24");
+  assert.equal(todayInTimezone("America/Los_Angeles", instant), "2026-09-23");
+  assert.equal(resolveSelectedDate("2026-02-29", "UTC"), todayInTimezone("UTC"));
+  assert.equal(resolveSelectedDate(["2026-09-23"], "UTC"), todayInTimezone("UTC"));
+  assert.equal(resolveSelectedDate("2026-09-23", "UTC"), "2026-09-23");
+});
+
+test("selected calendar labels never shift in negative-offset zones", () => {
+  const selectedDate = "2026-11-01";
+  for (const timezone of ["America/Los_Angeles", "America/New_York"]) {
+    const html = render({ status: "ok", quests: [] }, timezone, selectedDate);
+    assert.match(html, /Selected day: November 1, 2026/);
+    assert.match(html, /id="quest-date"[^>]*min="0001-01-01"[^>]*max="9999-12-31"[^>]*value="2026-11-01"/);
+    assert.match(html, /href="\/dashboard\?date=2026-10-31"[^>]*>Previous day/);
+    assert.match(html, /href="\/dashboard\?date=2026-11-02"[^>]*>Next day/);
+  }
+});
+
+test("supported date endpoints disable navigation and reject expanded dates", () => {
+  assert.equal(isCalendarDate("0001-01-01"), true);
+  assert.equal(isCalendarDate("9999-12-31"), true);
+  assert.equal(isCalendarDate("0000-12-31"), false);
+  assert.equal(isCalendarDate("10000-01-01"), false);
+  assert.throws(() => addCalendarDays("0001-01-01", -1));
+  assert.throws(() => addCalendarDays("9999-12-31", 1));
+  const minimum = render({ status: "ok", quests: [] }, "UTC", "0001-01-01");
+  assert.match(minimum, /aria-label="Previous day unavailable"/);
+  assert.doesNotMatch(minimum, /href="\/dashboard\?date=0000-12-31"/);
+  const maximum = render({ status: "ok", quests: [] }, "UTC", "9999-12-31");
+  assert.match(maximum, /aria-label="Next day unavailable"/);
+  assert.doesNotMatch(maximum, /href="\/dashboard\?date=10000-01-01"/);
+});
+
+test("non-today read failure and both retry links preserve the selected date", async () => {
+  const selectedDate = "2026-11-01";
+  const rpcDates = [];
+  let questAttempt = 0;
+  configure(async () => owner, async () => pageClient(async (name, args) => {
+    if (name === "get_progression_status") return { data: progression, error: null };
+    rpcDates.push(args?.p_day);
+    questAttempt++;
+    return questAttempt === 1 ? { data: null, error: { code: "XX000" } } : { data: [], error: null };
+  }));
+  const first = await streamMarkup(await DashboardPage({ searchParams: Promise.resolve({ date: selectedDate }) }));
+  assert.match(first, new RegExp(`Retry Daily Quests`));
+  assert.match(first, new RegExp(`href="/dashboard\\?date=${selectedDate}"[^>]*>Retry Daily Quests`));
+  const retry = await streamMarkup(await DashboardPage({ searchParams: Promise.resolve({ date: selectedDate }) }));
+  assert.match(retry, /No Quests for this day/);
+  assert.deepEqual(rpcDates, [selectedDate, selectedDate]);
+
+  let progressionAttempts = 0;
+  configure(async () => owner, async () => pageClient(async (name, args) => {
+    if (name === "get_progression_status") {
+      progressionAttempts++;
+      return progressionAttempts === 1
+        ? { data: null, error: { code: "XX000" } }
+        : { data: progression, error: null };
+    }
+    assert.equal(args.p_day, selectedDate);
+    return { data: [], error: null };
+  }));
+  const progressionFailure = await streamMarkup(await DashboardPage({ searchParams: Promise.resolve({ date: selectedDate }) }));
+  assert.match(progressionFailure, new RegExp(`href="/dashboard\\?date=${selectedDate}"[^>]*>Retry`));
+  const progressionRetry = await streamMarkup(await DashboardPage({ searchParams: Promise.resolve({ date: selectedDate }) }));
+  assert.match(progressionRetry, /No Quests for this day/);
 });

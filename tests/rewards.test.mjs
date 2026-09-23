@@ -240,7 +240,11 @@ function pageClient(read, auth = async () => ({ data: { user: owner }, error: nu
     auth: { getUser: auth },
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { display_name: "Operator", timezone: "UTC" }, error: null }) }) }) }),
     rpc(name, ...args) {
-      assert.equal(args.length, 0);
+      if (name === "list_day_quest_occurrences") {
+        assert.equal(args.length, 1);
+        assert.match(args[0].p_day, /^\d{4}-\d{2}-\d{2}$/);
+      }
+      else assert.equal(args.length, 0);
       if (name === "get_progression_status") return Promise.resolve({ data: progression, error: null });
       if (name === "list_day_quest_occurrences") return Promise.resolve({ data: [], error: null });
       assert.equal(name, "list_level_rewards", "history and writes must never be called");

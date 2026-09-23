@@ -1,4 +1,5 @@
 import type { DayQuestResult } from "./model";
+import { addCalendarDays, formatCalendarDate, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 const statusLabels = {
@@ -6,25 +7,48 @@ const statusLabels = {
   completed: "Completed", failed: "Failed", cancelled: "Cancelled",
 };
 
-function QuestCard({ timezone, children, loading = false }: {
-  timezone: string; children: React.ReactNode; loading?: boolean;
+function QuestCard({ timezone, selectedDate, children, loading = false }: {
+  timezone: string; selectedDate: string; children: React.ReactNode; loading?: boolean;
 }) {
+  const atMinimum = selectedDate === MIN_CALENDAR_DATE;
+  const atMaximum = selectedDate === MAX_CALENDAR_DATE;
+  const previousDate = atMinimum ? selectedDate : addCalendarDays(selectedDate, -1);
+  const nextDate = atMaximum ? selectedDate : addCalendarDays(selectedDate, 1);
   return (
     <section aria-label="Daily Quests" aria-busy={loading}
       className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 [overflow-wrap:anywhere] sm:p-6">
       <h2 className="text-xs font-medium tracking-[0.3em] text-zinc-400">DAILY QUESTS</h2>
-      <p className="mt-2 text-sm text-zinc-300">Selected day: Today (profile-local day)</p>
+      <p className="mt-2 text-sm text-zinc-300">Selected day: {formatCalendarDate(selectedDate)}</p>
       <p className="mt-1 text-sm text-zinc-400">Profile timezone: {timezone}</p>
+      <nav aria-label="Quest day navigation" className="mt-4 flex flex-wrap items-center gap-2">
+        {atMinimum ? <span aria-disabled="true" aria-label="Previous day unavailable"
+          className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600">Previous day</span> :
+          <a href={`/dashboard?date=${previousDate}`} aria-label="View previous day"
+            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Previous day</a>}
+        <a href="/dashboard" aria-label="View today"
+          className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Today</a>
+        {atMaximum ? <span aria-disabled="true" aria-label="Next day unavailable"
+          className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600">Next day</span> :
+          <a href={`/dashboard?date=${nextDate}`} aria-label="View next day"
+            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Next day</a>}
+        <form action="/dashboard" className="flex items-center gap-2">
+          <label htmlFor="quest-date" className="text-sm text-zinc-300">Choose date</label>
+          <input id="quest-date" name="date" type="date" min={MIN_CALENDAR_DATE} max={MAX_CALENDAR_DATE} defaultValue={selectedDate}
+            className="rounded-md border border-zinc-600 bg-zinc-950 px-2 py-2 text-sm text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" />
+          <button type="submit"
+            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">View</button>
+        </form>
+      </nav>
       {children}
     </section>
   );
 }
 
-export function DailyQuestLoading({ timezone }: { timezone: string }) {
-  return <QuestCard timezone={timezone} loading><p role="status" className="mt-4 text-zinc-400">Loading Daily Quests…</p></QuestCard>;
+export function DailyQuestLoading({ timezone, selectedDate }: { timezone: string; selectedDate: string }) {
+  return <QuestCard timezone={timezone} selectedDate={selectedDate} loading><p role="status" className="mt-4 text-zinc-400">Loading Daily Quests...</p></QuestCard>;
 }
 
-export function DailyQuestList({ result, timezone }: { result: DayQuestResult; timezone: string }) {
+export function DailyQuestList({ result, timezone, selectedDate }: { result: DayQuestResult; timezone: string; selectedDate: string }) {
   let content: React.ReactNode;
   if (result.status === "timezone-required") {
     content = <>
@@ -42,7 +66,7 @@ export function DailyQuestList({ result, timezone }: { result: DayQuestResult; t
         ? "Daily Quest data could not be read safely. Please try again."
         : "Daily Quests are unavailable right now. Please try again."}</p>
       {/* A full navigation reruns the server reads, including after cached client navigation. */}
-      <a href="/dashboard" className={linkClass}>Retry Daily Quests</a>
+      <a href={`/dashboard?date=${selectedDate}`} className={linkClass}>Retry Daily Quests</a>
     </>;
   } else if (result.quests.length === 0) {
     content = <p role="status" className="mt-4 text-zinc-300">No Quests for this day.</p>;
@@ -84,5 +108,5 @@ export function DailyQuestList({ result, timezone }: { result: DayQuestResult; t
       <p className="mt-4 text-xs text-zinc-500">Readiness reflects the latest server read.</p>
     </>;
   }
-  return <QuestCard timezone={timezone}>{content}</QuestCard>;
+  return <QuestCard timezone={timezone} selectedDate={selectedDate}>{content}</QuestCard>;
 }

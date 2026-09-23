@@ -29,13 +29,16 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   export const invalidations = [];
   export function revalidatePath(...args) { invalidations.push(args); }
   export function LogoutForm() { return null; }
+  export function RewardsPanel() { return null; }
+  export function RewardsLoading() { return null; }
   export function OnboardingForm({ displayName }) { return "Existing profile form: " + displayName; }
 `)}`;
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (context.parentURL?.startsWith(sourceRoot.href)) {
       if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
-        "@/features/auth/logout-form", "@/features/profile/onboarding-form"].includes(specifier)) {
+        "@/features/auth/logout-form", "@/features/profile/onboarding-form",
+        "@/features/rewards/panel", "@/features/rewards/components"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };
       }
       if (specifier === "next/navigation") return nextResolve("next/navigation.js", context);

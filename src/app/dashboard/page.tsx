@@ -7,6 +7,8 @@ import { ExpProgressCard, PlayerSummary } from "@/features/progression/component
 import { Suspense } from "react";
 import { DailyQuestsPanel } from "@/features/quests/panel";
 import { DailyQuestLoading } from "@/features/quests/components";
+import { RewardsPanel } from "@/features/rewards/panel";
+import { RewardsLoading } from "@/features/rewards/components";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,9 @@ export default async function DashboardPage() {
         )}
         <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} />}>
           <DailyQuestsPanel timezone={profile.timezone!} />
+        </Suspense>
+        <Suspense fallback={<RewardsLoading />}>
+          <RewardsPanel />
         </Suspense>
       </div>
       <div className="mt-10">

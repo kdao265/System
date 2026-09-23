@@ -4,6 +4,9 @@ import { getProfileContext, isOnboardingComplete } from "@/features/profile/sess
 import { ProfileError } from "@/features/profile/profile-error";
 import { getProgressionStatus } from "@/features/progression/data";
 import { ExpProgressCard, PlayerSummary } from "@/features/progression/components";
+import { Suspense } from "react";
+import { DailyQuestsPanel } from "@/features/quests/panel";
+import { DailyQuestLoading } from "@/features/quests/components";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,9 @@ export default async function DashboardPage() {
             </a>
           </section>
         )}
+        <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} />}>
+          <DailyQuestsPanel timezone={profile.timezone!} />
+        </Suspense>
       </div>
       <div className="mt-10">
         <LogoutForm />

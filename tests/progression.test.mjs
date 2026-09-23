@@ -36,6 +36,8 @@ const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function AuthForm() { return "Login form"; }
   export function LogoutForm() { return null; }
   export function ProfileError() { return "Profile error"; }
+  export function DailyQuestsPanel() { return null; }
+  export function DailyQuestLoading() { return null; }
 `)}`;
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -50,7 +52,7 @@ const hooks = registerHooks({
       if (specifier === "next/navigation") return nextResolve("next/navigation.js", context);
       if (specifier === "@/lib/supabase/server") return { url: adapterMocksUrl, shortCircuit: true };
       if (pageDependencies[specifier]) return { url: pageDependencies[specifier], shortCircuit: true };
-      if (["@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error"].includes(specifier)) {
+      if (["@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error", "@/features/quests/panel", "@/features/quests/components"].includes(specifier)) {
         return { url: inertFormsUrl, shortCircuit: true };
       }
       if (specifier === "./timezones") return nextResolve("./timezones.ts", context);

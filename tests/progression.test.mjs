@@ -40,6 +40,7 @@ const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function DailyQuestLoading() { return null; }
   export function RewardsPanel() { return null; }
   export function RewardsLoading() { return null; }
+  export function QuestCreationForm() { return null; }
 `)}`;
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -54,7 +55,7 @@ const hooks = registerHooks({
       if (specifier === "next/navigation") return nextResolve("next/navigation.js", context);
       if (specifier === "@/lib/supabase/server") return { url: adapterMocksUrl, shortCircuit: true };
       if (pageDependencies[specifier]) return { url: pageDependencies[specifier], shortCircuit: true };
-      if (["@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error", "@/features/quests/panel", "@/features/quests/components", "@/features/rewards/panel", "@/features/rewards/components"].includes(specifier)) {
+      if (["@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error", "@/features/quests/panel", "@/features/quests/components", "@/features/quests/create-form", "@/features/rewards/panel", "@/features/rewards/components"].includes(specifier)) {
         return { url: inertFormsUrl, shortCircuit: true };
       }
       if (specifier === "./timezones") return nextResolve("./timezones.ts", context);

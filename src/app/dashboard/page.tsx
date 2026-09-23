@@ -10,6 +10,7 @@ import { DailyQuestLoading } from "@/features/quests/components";
 import { RewardsPanel } from "@/features/rewards/panel";
 import { RewardsLoading } from "@/features/rewards/components";
 import { resolveSelectedDate } from "@/features/quests/dates";
+import { QuestCreationForm } from "@/features/quests/create-form";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             </a>
           </section>
         )}
+      <QuestCreationForm timezone={profile.timezone!} userId={user.id} />
         <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} />}>
           <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} />
         </Suspense>

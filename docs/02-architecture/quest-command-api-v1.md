@@ -150,4 +150,31 @@ Both commands run in one PostgreSQL transaction and roll back completely on any 
 | Mutable current state | Never part of a receipt |
 | Definer/EXECUTE boundary | Section 7, exact |
 
-No business rule is introduced by this document: every row above restates an already-approved semantic with a frozen API shape.
+No business rule is introduced by the historical V1 sections above: every row restates an already-approved semantic with a frozen API shape.
+
+## 10. Reopen V2 appendix
+
+**Status:** Accepted additive API change. The V1 contract above remains historical and is not silently rewritten.
+
+### 10.1 Versioned signature
+
+```sql
+public.reopen_quest_occurrence_v2(
+    command_id uuid,
+    occurrence_id uuid,
+    expected_execution_cycle integer,
+    origin text
+) RETURNS public.quest_reopen_receipt
+```
+
+V2 keeps the V1 receipt type and event/EXP semantics. It adds the mandatory expected cycle only to the reopen command. The command is `SECURITY DEFINER`, owned by `quest_command_owner`, uses `search_path = pg_catalog`, and is executable by `authenticated` only. The historical V1 function remains present for database history, but `authenticated` EXECUTE is revoked.
+
+### 10.2 Replay and stale-cycle rules
+
+V2 authenticates and takes the existing owner-wide, Quest-definition and occurrence row locks before resolving command history. For a recorded command, the original correction and reopened events, reversal receipt and original undone cycle are returned with `replay = true` even if the occurrence has since advanced. When a valid positive expected cycle and an accessible subject reach replay validation, that cycle must equal the recorded cycle; otherwise the command rejects with `23505` and writes nothing. Null, nonpositive or otherwise invalid inputs, and inaccessible subjects, can reject earlier according to the function's input and ownership checks.
+
+For a fresh command, the expected cycle must equal the locked occurrence's current cycle. A mismatch rejects with `23514` before any event, EXP ledger or projection mutation. A fresh request may undo only the currently completed cycle. The exact correction event, EXP reversal, reopened event, cycle increment, projection reset and receipt fields remain those frozen in sections 4, 6 and 8.
+
+### 10.3 Migration boundary
+
+V2 is introduced by additive migration `20260926000000_quest_reopen_v2.sql`. Previously applied migrations remain unchanged. The migration transfers ownership using the established temporary membership pattern, revokes temporary schema `CREATE` and role membership, revokes browser execution of V1, and grants browser execution of V2. The accepted decision is recorded in [ADR-012](decisions.md#adr-012--quest-reopen-v2-cycle-guard).

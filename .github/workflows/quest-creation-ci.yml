@@ -12,6 +12,13 @@ permissions:
 jobs:
   fresh-supabase-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_CI_PROJECT_ID: system-reopen-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      SUPABASE_DB_CONTAINER: supabase_db_system-reopen-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      SUPABASE_CI_DISPOSABLE: quest-reopen-v2
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_CONTEXT: ''
 
     steps:
       - name: Check out pull request source
@@ -26,22 +33,41 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Start fresh Supabase Local
+      - name: Start fresh Supabase Local at migration eight
         run: |
           set -Eeuo pipefail
+
+          # Every run gets its own disposable project; never reuse System data.
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          if docker container inspect "$SUPABASE_DB_CONTAINER" >/dev/null 2>&1 \
+            || docker volume inspect "$SUPABASE_DB_CONTAINER" >/dev/null 2>&1; then
+            echo 'Refusing to reuse an existing CI database container or volume'
+            exit 1
+          fi
+          grep -qx 'project_id = "System"' supabase/config.toml
+          sed -i "s/^project_id = \"System\"$/project_id = \"$SUPABASE_CI_PROJECT_ID\"/" supabase/config.toml
 
           if [[ ! -f supabase/seed.sql ]]; then
             : > supabase/seed.sql
           fi
 
+          # `start` applies available migrations: keep V2 out until Stage B.
+          v2=supabase/migrations/20260926000000_quest_reopen_v2.sql
+          saved_v2="$RUNNER_TEMP/quest-reopen-v2.sql"
+          test ! -e "$saved_v2"
+          mv "$v2" "$saved_v2"
+          trap 'mv "$saved_v2" "$v2"' EXIT
           npx --no-install supabase start
-          npx --no-install supabase db reset --local --no-seed --yes
+          npx --no-install supabase db reset --local --version 20260923120000 --no-seed --yes
+          container_id="$(docker inspect --type container --format '{{.Id}}' "$SUPABASE_DB_CONTAINER")"
+          [[ "$container_id" =~ ^[a-f0-9]{64}$ ]]
+          echo "SUPABASE_CI_CONTAINER_ID=$container_id" >> "$GITHUB_ENV"
 
-      - name: Verify all eight migrations
+      - name: Verify Stage A has exactly eight migrations
         run: |
           set -Eeuo pipefail
           expected='20260918034836,20260918083114,20260919063117,20260920050000,20260921090000,20260922000000,20260923000000,20260923120000'
-          actual="$(docker exec supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+          actual="$(docker exec "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
             "SELECT string_agg(version::text, ',' ORDER BY version) FROM supabase_migrations.schema_migrations;")"
           if [[ "$actual" != "$expected" ]]; then
             echo "Migration history mismatch. Expected: $expected"
@@ -53,10 +79,10 @@ jobs:
       - name: Run level rewards catalog first
         run: |
           set -Eeuo pipefail
-          docker exec -i supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+          docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             < supabase/tests/level-rewards-catalog.sql
 
-      - name: Run remaining SQL test suites
+      - name: Run Stage A historical SQL test suites
         run: |
           set -Eeuo pipefail
           suites=(
@@ -76,14 +102,66 @@ jobs:
           )
           for suite in "${suites[@]}"; do
             echo "::group::Running supabase/tests/$suite"
-            docker exec -i supabase_db_System psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
               < "supabase/tests/$suite"
             echo "PASS: supabase/tests/$suite"
             echo "::endgroup::"
           done
 
-      - name: Run Player/EXP preflight supplemental test
+      - name: Run Stage A Player/EXP preflight supplemental test
         run: node supabase/tests/player-exp-preflight.mjs
+
+      - name: Apply Reopen V2 migration for Stage B
+        run: npx --no-install supabase db push --local --yes
+
+      - name: Verify Stage B has exactly nine migrations
+        run: |
+          set -Eeuo pipefail
+          expected='20260918034836,20260918083114,20260919063117,20260920050000,20260921090000,20260922000000,20260923000000,20260923120000,20260926000000'
+          actual="$(docker exec "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT string_agg(version::text, ',' ORDER BY version) FROM supabase_migrations.schema_migrations;")"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Migration history mismatch. Expected: $expected"
+            echo "Migration history found: $actual"
+            exit 1
+          fi
+          echo "Verified Stage B migrations: $actual"
+
+      - name: Run Reopen V2 catalog and behavior suites
+        run: |
+          set -Eeuo pipefail
+          for suite in quest-reopen-v2-catalog.sql quest-reopen-v2.sql; do
+            echo "::group::Running supabase/tests/$suite"
+            docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < "supabase/tests/$suite"
+            echo "PASS: supabase/tests/$suite"
+            echo "::endgroup::"
+          done
+
+      - name: Run Stage B compatible regression suites
+        run: |
+          set -Eeuo pipefail
+          suites=(
+            request-identity.sql
+            request-identity-compat.sql
+            request-identity-compat-catalog.sql
+            profiles.sql
+            player-exp-catalog.sql
+            player-exp.sql
+            level-rewards.sql
+            quest-creation-catalog.sql
+            quest-creation.sql
+          )
+          for suite in "${suites[@]}"; do
+            echo "::group::Running compatible supabase/tests/$suite"
+            docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < "supabase/tests/$suite"
+            echo "PASS: supabase/tests/$suite"
+            echo "::endgroup::"
+          done
+
+      - name: Run Reopen V2 two-session concurrency regression
+        run: node supabase/tests/quest-reopen-v2-concurrency.mjs
 
       - name: Publish test summary
         if: success()
@@ -91,13 +169,19 @@ jobs:
           {
             echo '## Fresh Supabase CI summary'
             echo
-            echo '- Fresh local Supabase instance: started and reset'
-            echo '- Migration verification: eight expected migrations'
-            echo '- SQL suites: level-rewards-catalog first, then 13 remaining suites'
-            echo '- Supplemental check: player-exp-preflight.mjs'
-            echo '- Database target: local Docker container only'
+            echo '- Fresh local Supabase instance: started and reset through migration eight'
+            echo '- Stage A: historical V1 suites ran before the V2 permission change'
+            echo '- Stage B: Reopen V2 migration applied and nine versions verified'
+            echo '- Stage B: V2 suites and compatible regression suites ran'
+            echo '- Supplemental checks: player-exp-preflight.mjs and Reopen V2 two-session concurrency'
+            echo '- Database target: verified run-scoped disposable Docker container; Unix socket only'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Stop Supabase Local
         if: always()
-        run: npx --no-install supabase stop --no-backup || true
+        run: |
+          set -Eeuo pipefail
+          # Do not target the checked-in developer project if setup failed early.
+          if grep -qx "project_id = \"$SUPABASE_CI_PROJECT_ID\"" supabase/config.toml; then
+            npx --no-install supabase stop --no-backup
+          fi

@@ -42,6 +42,8 @@ const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function RewardsPanel() { return null; }
   export function RewardsLoading() { return null; }
   export function QuestCreationForm() { return null; }
+  export function QuestCompletionRecovery() { return null; }
+  export function QuestCompletionProvider({ children }) { return children; }
 `)}`;
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -61,6 +63,8 @@ const hooks = registerHooks({
       }
       if (specifier === "./timezones") return nextResolve("./timezones.ts", context);
       if (specifier === "@/features/quests/dates") return { url: inertFormsUrl, shortCircuit: true };
+      if (specifier === "@/features/quests/completion-recovery-ui") return { url: inertFormsUrl, shortCircuit: true };
+      if (specifier === "@/features/quests/completion-provider") return { url: inertFormsUrl, shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },

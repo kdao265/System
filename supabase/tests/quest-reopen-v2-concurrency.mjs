@@ -74,7 +74,13 @@ function launch(args, label, timeoutMs = 60000) {
       proc.closed = true;
       clearTimeout(timer);
       clearTimeout(killTimer);
-      if (code !== 0) proc.fault ??= new Error(`${label}: exit ${code}, signal ${signal}`);
+      if (code !== 0) {
+        proc.fault ??= new Error(
+            `${label}: exit ${code}, signal ${signal}\n` +
+            `PostgreSQL stderr:\n${proc.stderr.trim().slice(-4000) || "(empty)"}\n` +
+            `Process stdout:\n${proc.output.trim().slice(-1000) || "(empty)"}`
+        );
+      }
       else if (!proc.ending) proc.fault ??= new Error(`${label}: unexpected session close`);
       resolve();
     });

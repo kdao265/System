@@ -248,9 +248,12 @@ async function runRace(fixture, sameCommand) {
   const label = sameCommand ? 'same' : 'stale';
   const first = openSession(`${label}-first`);
   const second = openSession(`${label}-second`);
-  first.send(`BEGIN; SET LOCAL ROLE quest_command_owner;
-SELECT progression_internal.lock_owner('${actor}');
-RESET ROLE;
+  first.send(`BEGIN;
+SELECT pg_catalog.pg_advisory_xact_lock(
+  pg_catalog.hashtextextended(
+    'system.v1.progression.owner:${actor}', 0
+  )
+);
 SELECT 'FIRST_PID=' || pg_backend_pid();`);
   const firstPid = Number(await waitLine(first, 'FIRST_PID='));
   second.send(`BEGIN; ${authenticate}

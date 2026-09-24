@@ -11,6 +11,8 @@ import { RewardsPanel } from "@/features/rewards/panel";
 import { RewardsLoading } from "@/features/rewards/components";
 import { resolveSelectedDate } from "@/features/quests/dates";
 import { QuestCreationForm } from "@/features/quests/create-form";
+import { QuestCompletionRecovery } from "@/features/quests/completion-recovery-ui";
+import { QuestCompletionProvider } from "@/features/quests/completion-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +49,16 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             </a>
           </section>
         )}
-      <QuestCreationForm timezone={profile.timezone!} userId={user.id} />
-        <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} />}>
-          <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} />
-        </Suspense>
-        <Suspense fallback={<RewardsLoading />}>
-          <RewardsPanel />
-        </Suspense>
+        <QuestCompletionProvider userId={user.id}>
+          <QuestCreationForm timezone={profile.timezone!} userId={user.id} />
+          <QuestCompletionRecovery selectedDate={selectedDate} />
+          <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} />}>
+            <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} userId={user.id} />
+          </Suspense>
+          <Suspense fallback={<RewardsLoading />}>
+            <RewardsPanel />
+          </Suspense>
+        </QuestCompletionProvider>
       </div>
       <div className="mt-10">
         <LogoutForm />

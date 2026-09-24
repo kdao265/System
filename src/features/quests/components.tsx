@@ -1,5 +1,6 @@
 import type { DayQuestResult } from "./model";
 import { addCalendarDays, formatCalendarDate, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
+import { QuestCompletionControl } from "./completion-control";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 const statusLabels = {
@@ -48,7 +49,7 @@ export function DailyQuestLoading({ timezone, selectedDate }: { timezone: string
   return <QuestCard timezone={timezone} selectedDate={selectedDate} loading><p role="status" className="mt-4 text-zinc-400">Loading Daily Quests...</p></QuestCard>;
 }
 
-export function DailyQuestList({ result, timezone, selectedDate }: { result: DayQuestResult; timezone: string; selectedDate: string }) {
+export function DailyQuestList({ result, timezone, selectedDate, userId }: { result: DayQuestResult; timezone: string; selectedDate: string; userId?: string }) {
   let content: React.ReactNode;
   if (result.status === "timezone-required") {
     content = <>
@@ -102,6 +103,7 @@ export function DailyQuestList({ result, timezone, selectedDate }: { result: Day
                 {!quest.progression_ready && <dd className="mt-1 text-zinc-400">Level system setup required.</dd>}
               </div>
             </dl>
+            {quest.completable && userId && <QuestCompletionControl userId={userId} occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} selectedDate={selectedDate} />}
           </li>
         ))}
       </ul>

@@ -26,14 +26,17 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
     getAuthenticatedUser = auth;
     createServerSupabaseClient = client;
   }
+  export function revalidatePath() {}
   export function LogoutForm() { return null; }
   export function QuestCreationForm() { return null; }
+  export function QuestCompletionRecovery() { return null; }
 `)}`;
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (context.parentURL?.startsWith(sourceRoot.href)) {
-      if (["@/features/auth/session", "@/lib/supabase/server",
-        "@/features/auth/logout-form", "@/features/quests/create-form"].includes(specifier)) {
+      if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
+        "@/features/auth/logout-form", "@/features/quests/create-form",
+        "@/features/quests/completion-recovery-ui"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };
       }
       if (specifier === "next/navigation") return nextResolve("next/navigation.js", context);

@@ -1,0 +1,16 @@
+import { UUID } from "./create-pending";
+
+export const COMPLETION_PREFIX = "system.quest-completion.pending.v1:";
+export type PendingCompletion = { version: 1; userId: string; commandId: string; occurrenceId: string; executionCycle: number; reportedCompletedAt: null; origin: "web_ui" };
+export type CompletionRead = { status: "missing" | "valid" | "corrupt" | "unavailable"; operations: PendingCompletion[] };
+export function completionStorageKey(userId: string, commandId: string) { return `${COMPLETION_PREFIX}${userId}:${commandId}`; }
+export function isPendingCompletion(value: unknown, userId: string): value is PendingCompletion {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>; const fields = ["version", "userId", "commandId", "occurrenceId", "executionCycle", "reportedCompletedAt", "origin"];
+  return Object.keys(row).length === fields.length && fields.every((field) => Object.hasOwn(row, field)) && row.version === 1 && row.userId === userId && UUID.test(userId) && typeof row.commandId === "string" && UUID.test(row.commandId) && typeof row.occurrenceId === "string" && UUID.test(row.occurrenceId) && typeof row.executionCycle === "number" && Number.isInteger(row.executionCycle) && row.executionCycle >= 1 && row.executionCycle <= 2147483647 && row.reportedCompletedAt === null && row.origin === "web_ui";
+}
+export function readPendingCompletions(access: () => Storage, userId: string): CompletionRead {
+  try { const storage = access(); const operations: PendingCompletion[] = []; for (const key of Array.from({ length: storage.length }, (_, index) => storage.key(index))) { if (!key?.startsWith(COMPLETION_PREFIX + userId + ":")) continue; let value: unknown; try { value = JSON.parse(storage.getItem(key) ?? "null"); } catch { return { status: "corrupt", operations: [] }; } if (!isPendingCompletion(value, userId) || key !== completionStorageKey(userId, value.commandId)) return { status: "corrupt", operations: [] }; operations.push(value); } operations.sort((a, b) => a.commandId.localeCompare(b.commandId)); return { status: operations.length ? "valid" : "missing", operations }; } catch { return { status: "unavailable", operations: [] }; }
+}
+export function persistPendingCompletion(access: () => Storage, operation: PendingCompletion) { if (!isPendingCompletion(operation, operation.userId)) throw Error("Invalid completion record"); const storage = access(); const key = completionStorageKey(operation.userId, operation.commandId); if (storage.getItem(key) !== null) throw Error("Completion command already exists"); const serialized = JSON.stringify(operation); storage.setItem(key, serialized); if (storage.getItem(key) !== serialized) throw Error("Completion write could not be verified"); }
+export function removePendingCompletion(access: () => Storage, operation: PendingCompletion) { const storage = access(); const key = completionStorageKey(operation.userId, operation.commandId); const raw = storage.getItem(key); if (raw === null) return; if (JSON.stringify(JSON.parse(raw)) !== JSON.stringify(operation)) throw Error("Completion record changed"); storage.removeItem(key); if (storage.getItem(key) !== null) throw Error("Completion removal could not be verified"); }

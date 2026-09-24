@@ -113,3 +113,21 @@ For future ADRs use: ID/title, date, status (proposed / accepted / superseded), 
 **Decision:** Agents must document and propose architectural changes before implementing them.
 
 **Consequences:** Record context, alternatives and impact in a proposed ADR; obtain Product Owner agreement, then update requirements and implementation. A conversation alone is not a durable handoff.
+
+## ADR-012 — Quest reopen V2 cycle guard
+
+**Date:** 2026-09-25.
+
+**Status:** Accepted.
+
+**Context:** The historical `reopen_quest_occurrence(command_id, occurrence_id, origin)` command resolves the occurrence's current completed cycle on the server. A delayed request can therefore undo a newer completion after the occurrence has been reopened and completed again. Reopen effects must remain atomic, replayable and compatible with the existing event, EXP ledger and receipt model.
+
+**Decision:** Add the versioned command `reopen_quest_occurrence_v2(command_id, occurrence_id, expected_execution_cycle, origin)`. Under the existing owner, Quest-definition and occurrence row locks, a fresh request must match the locked occurrence cycle or reject with `23514` before mutation. A recorded command replays its historical receipt after later cycles, but its supplied cycle must match the originally recorded cycle; when a valid positive cycle and an accessible subject reach replay validation, a different cycle or subject rejects with `23505`. Invalid cycles or inaccessible subjects may be rejected earlier by input and ownership validation.
+
+Revoke `authenticated` EXECUTE on the historical V1 function while retaining its database definition and historical receipts. Grant `authenticated` EXECUTE only on V2. V2 preserves the existing exact EXP reversal, event ordering, cycle advancement, projection reset and `quest_reopen_receipt` shape.
+
+**Consequences:** Browser callers must use V2 and provide the cycle observed from the occurrence read. Historical V1 migrations remain unchanged; the additive migration owns the new function and the V1 permission hardening. Accepted command receipts remain valid across later cycles without reapplying their effects.
+
+**Alternatives:** Keeping V1 browser execution would preserve compatibility but leave stale requests unsafe. Replacing or editing the historical migration would alter already-applied deployment history. A server-side current-cycle lookup without a caller expectation would not distinguish a delayed request from an intentional current request.
+
+**Related:** [Quest command API V1 and V2 appendix](quest-command-api-v1.md), [Quest Reopen V2 migration](../../supabase/migrations/20260926000000_quest_reopen_v2.sql).

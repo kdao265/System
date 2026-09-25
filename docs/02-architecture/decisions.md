@@ -131,3 +131,34 @@ Revoke `authenticated` EXECUTE on the historical V1 function while retaining its
 **Alternatives:** Keeping V1 browser execution would preserve compatibility but leave stale requests unsafe. Replacing or editing the historical migration would alter already-applied deployment history. A server-side current-cycle lookup without a caller expectation would not distinguish a delayed request from an intentional current request.
 
 **Related:** [Quest command API V1 and V2 appendix](quest-command-api-v1.md), [Quest Reopen V2 migration](../../supabase/migrations/20260926000000_quest_reopen_v2.sql).
+
+## ADR-013 — Durable completion aliases
+
+**Date:** 2026-09-26. **Status:** Accepted by the Product Owner's backend implementation request.
+
+**Context:** Completion returns the alternate caller command ID for a same-cycle
+replay without recording that identity. A lost response followed by reopen leaves
+that caller unable to replay. The historical contract's original-command wording
+also differs from deployed SQL, tests and receipt validation.
+
+**Decision:** Preserve the deployed RPC signature and ten-field caller-ID receipt.
+Atomically register alternate command IDs in a private, immutable, owner-scoped
+alias relation referencing the canonical completed event. Resolve recorded bindings
+before live-cycle validation. Creation and Reopen V2 reserve the same Quest command
+namespace. Add an authenticated, business-data-read-only resolution RPC distinguishing
+recorded, unrecorded_superseded, unrecorded_current and conflict outcomes. Never
+backfill unrecorded historical identities or claim they previously succeeded.
+
+**Alternatives:** Definitive rejection plus reconciliation avoids alias storage but
+changes successful deployed behavior and makes duplicate submissions user-visible.
+Returning the original command ID alone breaks existing receipt validators and
+does not recover a lost alternate response. Durable aliases preserve compatibility.
+
+**Consequences:** New private storage and narrow collision checks are required;
+accepted Quest/EXP history and progression behavior remain unchanged. Legacy
+uncertainty requires future frontend reconciliation. Database migration survives
+application rollback. This accepted amendment supersedes only the conflicting
+same-cycle command-ID wording; the historical text remains for traceability.
+
+**Related:** [Completion Alias contract](quest-command-api-v1.md#11-completion-alias-v1-amendment),
+[backend task and rollout](../04-development/completion-alias-v1.md).

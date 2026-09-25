@@ -51,17 +51,33 @@ jobs:
             : > supabase/seed.sql
           fi
 
-          # `start` applies available migrations: keep V2 out until Stage B.
+          # `start` applies available migrations: keep Reopen V2 and Completion Aliases
+          # out until their own stages. The EXIT trap restores BOTH files on success and
+          # on failure, so the checked-in migration set is never left incomplete.
           v2=supabase/migrations/20260926000000_quest_reopen_v2.sql
+          alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
           saved_v2="$RUNNER_TEMP/quest-reopen-v2.sql"
+          saved_alias="$RUNNER_TEMP/quest-completion-aliases.sql"
           test ! -e "$saved_v2"
+          test ! -e "$saved_alias"
           mv "$v2" "$saved_v2"
-          trap 'mv "$saved_v2" "$v2"' EXIT
+          mv "$alias_migration" "$saved_alias"
+          restore_migrations() {
+            if [[ -e "$saved_v2" ]]; then mv "$saved_v2" "$v2"; fi
+            if [[ -e "$saved_alias" ]]; then mv "$saved_alias" "$alias_migration"; fi
+          }
+          trap restore_migrations EXIT
           npx --no-install supabase start
           npx --no-install supabase db reset --local --version 20260923120000 --no-seed --yes
           container_id="$(docker inspect --type container --format '{{.Id}}' "$SUPABASE_DB_CONTAINER")"
           [[ "$container_id" =~ ^[a-f0-9]{64}$ ]]
           echo "SUPABASE_CI_CONTAINER_ID=$container_id" >> "$GITHUB_ENV"
+
+          restore_migrations
+          trap - EXIT
+          test -f "$v2"
+          test -f "$alias_migration"
+          echo 'Restored migration files: quest_reopen_v2 and quest_completion_aliases'
 
       - name: Verify Stage A has exactly eight migrations
         run: |
@@ -112,7 +128,25 @@ jobs:
         run: node supabase/tests/player-exp-preflight.mjs
 
       - name: Apply Reopen V2 migration for Stage B
-        run: npx --no-install supabase db push --local --yes
+        run: |
+          set -Eeuo pipefail
+
+          # Keep the Completion Alias migration out so Stage B applies Reopen V2 only.
+          # The EXIT trap restores the file if the push fails.
+          alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
+          saved_alias="$RUNNER_TEMP/quest-completion-aliases.sql"
+          test ! -e "$saved_alias"
+          mv "$alias_migration" "$saved_alias"
+          restore_alias_migration() {
+            if [[ -e "$saved_alias" ]]; then mv "$saved_alias" "$alias_migration"; fi
+          }
+          trap restore_alias_migration EXIT
+
+          npx --no-install supabase db push --local --yes
+          restore_alias_migration
+          trap - EXIT
+          test -f "$alias_migration"
+          echo 'Restored migration file: quest_completion_aliases'
 
       - name: Verify Stage B has exactly nine migrations
         run: |
@@ -160,8 +194,86 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Record pre-migration Completion Alias fixture at nine
+        run: |
+          set -Eeuo pipefail
+
+          # Committed migration-nine fixtures consumed after migration ten is applied.
+          # The alias table must not exist yet, or the upgrade proof is meaningless.
+          absent="$(docker exec "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT (to_regclass('system_internal.quest_completion_aliases') IS NULL)::text;")"
+          if [[ "$absent" != 'true' ]]; then
+            echo 'Completion Alias table already exists before migration ten'
+            exit 1
+          fi
+          docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            < supabase/tests/quest-completion-alias-upgrade-before.sql
+          echo 'PASS: pre-migration fixture recorded at nine with no alias table'
+
+      - name: Apply Completion Alias migration for Stage C
+        run: npx --no-install supabase db push --local --yes
+
+      - name: Verify Stage C has exactly ten migrations
+        run: |
+          set -Eeuo pipefail
+          expected='20260918034836,20260918083114,20260919063117,20260920050000,20260921090000,20260922000000,20260923000000,20260923120000,20260926000000,20260926120000'
+          actual="$(docker exec "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT string_agg(version::text, ',' ORDER BY version) FROM supabase_migrations.schema_migrations;")"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Migration history mismatch. Expected: $expected"
+            echo "Migration history found: $actual"
+            exit 1
+          fi
+          echo "Verified Stage C migrations: $actual"
+
+      - name: Run Completion Alias upgrade, security and behavior suites
+        run: |
+          set -Eeuo pipefail
+          suites=(
+            quest-completion-alias-upgrade-after.sql
+            quest-completion-alias-catalog.sql
+            quest-completion-alias.sql
+          )
+          for suite in "${suites[@]}"; do
+            echo "::group::Running supabase/tests/$suite"
+            docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < "supabase/tests/$suite"
+            echo "PASS: supabase/tests/$suite"
+            echo "::endgroup::"
+          done
+
+      - name: Run Stage C compatible regression suites
+        run: |
+          set -Eeuo pipefail
+
+          # Re-created commands must keep their contracts. level-rewards-catalog.sql stays
+          # in Stage A because its final assertion requires a pristine runtime state.
+          suites=(
+            quest-reopen-v2-catalog.sql
+            quest-reopen-v2.sql
+            request-identity.sql
+            request-identity-compat.sql
+            request-identity-compat-catalog.sql
+            profiles.sql
+            player-exp-catalog.sql
+            player-exp.sql
+            level-rewards.sql
+            quest-creation-catalog.sql
+            quest-creation.sql
+          )
+          for suite in "${suites[@]}"; do
+            echo "::group::Running compatible supabase/tests/$suite"
+            docker exec -i "$SUPABASE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < "supabase/tests/$suite"
+            echo "PASS: supabase/tests/$suite"
+            echo "::endgroup::"
+          done
+
       - name: Run Reopen V2 two-session concurrency regression
         run: node supabase/tests/quest-reopen-v2-concurrency.mjs
+
+      - name: Run Completion Alias two-session concurrency regression
+        run: node supabase/tests/quest-completion-alias-concurrency.mjs
 
       - name: Publish test summary
         if: success()
@@ -172,8 +284,10 @@ jobs:
             echo '- Fresh local Supabase instance: started and reset through migration eight'
             echo '- Stage A: historical V1 suites ran before the V2 permission change'
             echo '- Stage B: Reopen V2 migration applied and nine versions verified'
-            echo '- Stage B: V2 suites and compatible regression suites ran'
-            echo '- Supplemental checks: player-exp-preflight.mjs and Reopen V2 two-session concurrency'
+            echo '- Stage B: V2 suites, compatible regression suites and the pre-migration Completion Alias fixture ran'
+            echo '- Stage C: Completion Alias migration applied and ten versions verified'
+            echo '- Stage C: legacy upgrade proof, alias security/catalog, alias behavior and compatible regressions ran'
+            echo '- Supplemental checks: player-exp-preflight.mjs, Reopen V2 and Completion Alias two-session concurrency'
             echo '- Database target: verified run-scoped disposable Docker container; Unix socket only'
           } >> "$GITHUB_STEP_SUMMARY"
 

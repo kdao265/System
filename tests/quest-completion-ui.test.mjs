@@ -38,9 +38,13 @@ const { completeQuest } = await import("../src/features/quests/completion-action
 const { validateQuestCompletionReceipt } = await import("../src/features/quests/completion-receipt.ts");
 const { CompletionRecoveryLifecycle, COMPLETION_LOCK } = await import("../src/features/quests/completion-recovery.ts");
 const { persistPendingCompletion, completionStorageKey, COMPLETION_PREFIX } = await import("../src/features/quests/completion-pending.ts");
-const { QuestCompletionProvider } = await import("../src/features/quests/completion-provider.tsx");
+const { QuestCompletionProvider, QuestReopenRead } = await import("../src/features/quests/completion-provider.tsx");
 const { QuestCompletionControl } = await import("../src/features/quests/completion-control.tsx");
+const { QuestReopenControl } = await import("../src/features/quests/completion-control.tsx");
 const { QuestCompletionRecovery } = await import("../src/features/quests/completion-recovery-ui.tsx");
+const { reopenQuest } = await import("../src/features/quests/reopen-action.ts");
+const { ReopenRecoveryLifecycle } = await import("../src/features/quests/reopen-recovery.ts");
+const { persistPendingReopen, reopenStorageKey } = await import("../src/features/quests/reopen-pending.ts");
 const { configure, calls, invalidations, setRefresh, authCallbacks } = await import(mocksUrl);
 hooks.deregister();
 
@@ -59,6 +63,16 @@ const receipt = (commandId = C, occurrenceId = O, amount = 0, replay = false) =>
   completed_event_id: "40000000-0000-4000-8000-000000000001", exp_entry_id: "60000000-0000-4000-8000-000000000001",
   exp_amount: amount, reported_completed_at: null, recorded_completed_at: "2026-09-24T10:00:00Z", replay,
 });
+const reopenReceipt = (commandId = C, occurrenceId = O, replay = false) => ({
+  command_id: commandId, occurrence_id: occurrenceId, quest_id: "50000000-0000-4000-8000-000000000001", undone_cycle: 3,
+  correction_event_id: "40000000-0000-4000-8000-000000000001", reopened_event_id: "40000000-0000-4000-8000-000000000002",
+  reversal_entry_id: "60000000-0000-4000-8000-000000000001", reversed_amount: "-37", original_credit_entry_id: "60000000-0000-4000-8000-000000000003", replay,
+});
+const day = (occurrenceId = O, cycle = 4) => ({ status: "ok", quests: [{
+  occurrence_id: occurrenceId, execution_cycle: cycle, quest_id: "50000000-0000-4000-8000-000000000001",
+  quest_title: "Synthetic Quest", status: "completed", scheduled_at: null, deadline_at: null, source_slot_date: null,
+  reward_exp_snapshot: 37, progression_ready: true, completable: false, already_completed_cycle: cycle,
+}] });
 class Store {
   values = new Map(); fail;
   get length() { if (this.fail === "length") throw Error("unavailable"); return this.values.size; }
@@ -74,6 +88,14 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 function setup({ store = new Store(), send = async () => unknown, lock = immediateLock, account = A } = {}) {
   const sent = []; let ids = 0;
   const coordinator = new CompletionRecoveryLifecycle(account, {
+    storage: () => store, lock, uuid: () => ++ids === 1 ? C : D,
+    send: async (previous, form) => { sent.push(Object.fromEntries(form)); return send(previous, form); },
+  });
+  return { coordinator, store, sent, ids: () => ids };
+}
+function setupReopen({ store = new Store(), send = async () => unknown, lock = immediateLock, account = A } = {}) {
+  const sent = []; let ids = 0;
+  const coordinator = new ReopenRecoveryLifecycle(account, {
     storage: () => store, lock, uuid: () => ++ids === 1 ? C : D,
     send: async (previous, form) => { sent.push(Object.fromEntries(form)); return send(previous, form); },
   });
@@ -97,17 +119,21 @@ function browser(t, store = new Store(), lock = immediateLock) {
     for (const [key, descriptor] of originals) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
     assert.equal(authCallbacks.size, 0);
   });
-  let rows = [O, P]; let userId = A;
+  let rows = [O, P]; let reopenRows = []; let userId = A; let serverRead;
   const tree = () => createElement(QuestCompletionProvider, { userId },
     createElement(QuestCompletionRecovery, { key: "recovery", selectedDate }),
-    ...rows.map((occurrenceId) => createElement(QuestCompletionControl, { key: occurrenceId, userId, occurrenceId, executionCycle: 3, selectedDate })));
+    serverRead && createElement(QuestReopenRead, { key: "read", userId, result: serverRead }),
+    ...rows.map((occurrenceId) => createElement(QuestCompletionControl, { key: occurrenceId, userId, occurrenceId, executionCycle: 3, selectedDate })),
+    ...reopenRows.map((occurrenceId) => createElement(QuestReopenControl, { key: "reopen-" + occurrenceId, occurrenceId, executionCycle: 3 })));
   const render = () => renderer.render(tree());
   const button = (label, commandId) => renderer.find((node) => node.type === "button" && node.props.children === label && (commandId === undefined || node.props["data-command-id"] === commandId));
   return {
     renderer, store, window, lockNames, events, render, button, reloads: () => reloads,
     async mount() { render(); await tick(); render(); },
     setRows(next) { rows = next; render(); },
+    setReopenRows(next) { reopenRows = next; render(); },
     setAccount(next) { userId = next; render(); },
+    setServerRead(result) { serverRead = result; render(); },
     async click(label, commandId) {
       render(); const controls = button(label, commandId); assert.ok(controls.length, "missing control: " + label);
       assert.equal(Boolean(controls[0].props.disabled), false, "disabled control: " + label);
@@ -131,7 +157,7 @@ test("actual provider, Recovery and two rows share one instance; removing a row 
   configure(() => ({ data: null, error: { code: "network" } }), A);
   const h = browser(t); await h.mount();
   const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders);
-  assert.equal(readers.length, 3); assert.equal(new Set(readers).size, 1);
+  assert.equal(readers.length, 4); assert.equal(new Set(readers).size, 2);
   assert.equal(authCallbacks.size, 1);
   await h.click("Complete");
   const first = calls[0].args.command_id;
@@ -209,7 +235,7 @@ test("account-keyed provider remount isolates state and old queued callbacks", a
   h.setAccount(B); gate.resolve(); await task; await tick(); h.render();
   assert.equal(calls.length, 0); assert.equal(h.store.length, 0);
   const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders);
-  assert.equal(new Set(readers).size, 1); assert.equal(readers[0]().accountChanged, false);
+  assert.equal(new Set(readers).size, 2); assert.equal(readers[0]().accountChanged, false);
 });
 
 test("stale second tab discovers command C under lock and never allocates or dispatches D", async () => {
@@ -379,4 +405,197 @@ test("completion cleanup preserves every creation and foreign-account record", a
   await h.coordinator.submitForOccurrence(O, 3);
   assert.equal(h.store.getItem(creationKey), "creation");
   assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(B, D))), pending(D, P, B));
+});
+
+test("reopen action sends the V2 cycle guard and reports cache refresh state", async () => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ expected_account: A, command_id: C, occurrence_id: O, execution_cycle: "3" })) form.set(key, value);
+  configure((_name, args) => ({ data: reopenReceipt(args.command_id, args.occurrence_id), error: null }), A, true);
+  const result = await reopenQuest({}, form);
+  assert.equal(result.outcome, "success"); assert.equal(result.refreshRequired, true);
+  assert.deepEqual(calls, [{ name: "reopen_quest_occurrence_v2", args: { command_id: C, occurrence_id: O, expected_execution_cycle: 3, origin: "web_ui" } }]);
+});
+
+test("completed-row reopen requires confirmation and settles through the shared provider", async (t) => {
+  configure((_name, args) => ({ data: reopenReceipt(args.command_id, args.occurrence_id), error: null }), A);
+  const h = browser(t); h.setRows([]); h.setReopenRows([O]); await h.mount();
+  await h.click("Reopen"); assert.match(h.renderer.html(), /Confirm reopen/);
+  await h.click("Confirm reopen"); await tick(); h.render();
+  assert.equal(calls[0].name, "reopen_quest_occurrence_v2"); assert.equal(calls[0].args.occurrence_id, O); assert.match(h.renderer.html(), /Reopen confirmed/);
+});
+
+test("reopen lost response retries the identical command and never allocates a second command", async () => {
+  const effects = []; let first = true;
+  const h = setupReopen({ send: async (_previous, form) => { effects.push(Object.fromEntries(form)); if (first) { first = false; return { outcome: "unknown", error: "lost response" }; } return { outcome: "success", success: { message: "Reopen confirmed.", replay: true }, refreshRequired: false }; } });
+  await h.coordinator.submitForOccurrence(O, 3); await h.coordinator.recover(); await h.coordinator.retry(C);
+  assert.deepEqual(effects[1], effects[0]); assert.equal(h.ids(), 1); assert.equal(h.coordinator.getSnapshot().confirmations[0].replay, true); assert.equal(h.store.length, 0);
+});
+
+test("reopen stale-cycle rejection retains a blocker until a relevant fresh server read", async () => {
+  const h = setupReopen({ send: async () => ({ outcome: "rejected", reason: "stale", refreshRequired: true, error: "stale" }) });
+  await h.coordinator.submitForOccurrence(O, 3);
+  assert.equal(h.store.length, 1); assert.equal(h.coordinator.getSnapshot().refreshRequired, true);
+  await h.coordinator.recover();
+  await h.coordinator.refreshDashboard(() => {});
+  await h.coordinator.submitForOccurrence(O, 3);
+  await h.coordinator.submitForOccurrence(O, 4);
+  assert.equal(h.sent.length, 1); assert.equal(h.ids(), 1);
+  assert.equal(h.coordinator.getSnapshot().phase, "awaiting-refresh");
+  for (const [owner, result] of [[A, { status: "unavailable" }], [B, day(O, 4)], [A, day(P, 4)], [A, day(O, 3)], [A, day(O, 2)]]) {
+    await h.coordinator.observeServerRead(owner, result);
+    assert.equal(h.coordinator.getSnapshot().phase, "awaiting-refresh");
+  }
+  await h.coordinator.observeServerRead(A, day(O, 4));
+  assert.equal(h.coordinator.getSnapshot().phase, "ready");
+  assert.equal(h.coordinator.getSnapshot().refreshRequired, false);
+  await h.coordinator.submitForOccurrence(O, 3);
+  assert.equal(h.sent.length, 1);
+  await h.coordinator.submitForOccurrence(O, 4);
+  assert.equal(h.sent.length, 2); assert.equal(h.sent[1].execution_cycle, "4");
+});
+
+test("unclassified reopen failure retains the exact request for recovery", async () => {
+  const h = setupReopen({ send: async () => ({ outcome: "unknown", error: "conflict" }) });
+  await h.coordinator.submitForOccurrence(O, 3);
+  assert.equal(h.coordinator.getSnapshot().operations[0].commandId, C); assert.equal(h.store.getItem(reopenStorageKey(A, C)) !== null, true);
+  assert.match(h.coordinator.getSnapshot().error, /conflict/);
+  const operation = JSON.parse(h.store.getItem(reopenStorageKey(A, C))); persistPendingReopen(() => h.store, { ...operation, commandId: D });
+  assert.equal(h.store.length, 2);
+});
+
+test("reopen action distinguishes exact V2 rejection messages from generic SQL errors", async () => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ expected_account: A, command_id: C, occurrence_id: O, execution_cycle: "3" })) form.set(key, value);
+  for (const [code, message, outcome, reason] of [
+    ["23505", "Conflicting quest command reuse", "rejected", "conflict"],
+    ["23505", "duplicate key value violates unique constraint", "unknown", undefined],
+    ["23514", "Stale quest reopen cycle", "rejected", "stale"],
+    ["23514", "Accepted reversal receipt is missing", "unknown", undefined],
+    ["23514", "Unknown quest occurrence", "unknown", undefined],
+  ]) {
+    configure(() => ({ data: null, error: { code, message } }), A);
+    const result = await reopenQuest({}, form);
+    assert.equal(result.outcome, outcome); assert.equal(result.reason, reason);
+  }
+});
+
+test("reopen definitive conflict survives focus and reload without identical retries or replacement IDs", async () => {
+  configure(() => ({ data: null, error: { code: "23505", message: "Conflicting quest command reuse" } }), A);
+  const h = setupReopen({ send: reopenQuest }); await h.coordinator.submitForOccurrence(O, 3);
+  const before = [...h.store.values];
+  await h.coordinator.recover(); await h.coordinator.retry(C); await h.coordinator.submitForOccurrence(O, 3);
+  assert.equal(h.coordinator.getSnapshot().phase, "blocked"); assert.equal(h.sent.length, 1); assert.equal(h.ids(), 1);
+  const restored = setupReopen({ store: h.store, send: reopenQuest }); await restored.coordinator.recover();
+  await restored.coordinator.retry(C); await restored.coordinator.submitForOccurrence(O, 3);
+  assert.equal(restored.sent.length, 0); assert.equal(restored.ids(), 0); assert.deepEqual([...h.store.values], before);
+  const other = setupReopen({ store: h.store, account: B }); await other.coordinator.recover();
+  assert.equal(other.coordinator.getSnapshot().phase, "ready");
+});
+
+test("reopen stale blocker survives reload and storage cleanup failure", async () => {
+  const h = setupReopen({ send: async () => ({ outcome: "rejected", reason: "stale", refreshRequired: true, error: "stale" }) });
+  await h.coordinator.submitForOccurrence(O, 3);
+  const restored = setupReopen({ store: h.store }); await restored.coordinator.recover();
+  await restored.coordinator.retry(C); await restored.coordinator.submitForOccurrence(O, 3);
+  assert.equal(restored.sent.length, 0); assert.equal(restored.coordinator.getSnapshot().phase, "awaiting-refresh");
+  h.store.fail = "remove"; await restored.coordinator.observeServerRead(A, day());
+  assert.equal(restored.coordinator.getSnapshot().phase, "blocked"); assert.equal(h.store.length, 1);
+  h.store.fail = undefined; await restored.coordinator.observeServerRead(A, day());
+  assert.equal(restored.coordinator.getSnapshot().phase, "ready"); assert.equal(h.store.length, 0);
+});
+
+test("reopen UI refreshes stale state once, keeps date and controls on failure, and accepts server read acknowledgement", async (t) => {
+  configure(() => ({ data: null, error: { code: "23514", message: "Stale quest reopen cycle" } }), A);
+  const h = browser(t); h.setRows([]); h.setReopenRows([O]); await h.mount();
+  let refreshes = 0; setRefresh(() => { refreshes++; throw Error("offline"); });
+  await h.click("Reopen"); await h.click("Confirm reopen"); await tick(); h.render(); await tick(); h.render();
+  assert.equal(refreshes, 1); assert.match(h.renderer.html(), /Dashboard refresh failed/);
+  for (const listener of h.events.get("focus")) listener();
+  await tick(); h.render();
+  assert.equal(h.button("Refresh Dashboard").length, 1); assert.equal(h.button("Reopen").length, 0);
+  assert.ok(h.renderer.html().includes('href="/dashboard?date=' + selectedDate + '"'));
+  setRefresh(() => { refreshes++; }); await h.click("Refresh Dashboard"); await tick(); h.render();
+  assert.match(h.renderer.html(), /fresh Dashboard read/); assert.equal(calls.length, 1);
+  h.setServerRead({ status: "unavailable" }); await tick(); h.render();
+  assert.match(h.renderer.html(), /fresh Dashboard read/);
+  h.setReopenRows([]); h.setServerRead(day()); await tick(); h.render();
+  assert.doesNotMatch(h.renderer.html(), /fresh Dashboard read/); assert.equal(calls.length, 1);
+});
+
+test("reopen conflict UI offers reconciliation rather than an exact retry", async (t) => {
+  configure(() => ({ data: null, error: { code: "23505", message: "Conflicting quest command reuse" } }), A);
+  const h = browser(t); h.setRows([]); h.setReopenRows([O]); await h.mount();
+  await h.click("Reopen"); await h.click("Confirm reopen"); await tick(); h.render();
+  assert.match(h.renderer.html(), /conflict/i); assert.equal(h.button("Retry exact reopen").length, 0);
+  assert.equal(h.button("Reopen").length, 0); assert.equal(calls.length, 1);
+});
+
+test("reopen confirmed payload corruption blocks recovery and cleanup while retaining evidence", async () => {
+  const h = setupReopen({ send: async () => success("Reopen confirmed.") });
+  h.store.fail = "remove"; await h.coordinator.submitForOccurrence(O, 3); h.store.fail = undefined;
+  const key = reopenStorageKey(A, C); const original = h.store.getItem(key);
+  const confirmation = structuredClone(h.coordinator.getSnapshot().confirmations[0]);
+  const changed = JSON.stringify({ ...JSON.parse(original), executionCycle: 4 }); h.store.setItem(key, changed);
+  await h.coordinator.recover(); await h.coordinator.retryConfirmation(C); await h.coordinator.submitForOccurrence(P, 3);
+  assert.equal(h.coordinator.getSnapshot().phase, "blocked"); assert.equal(h.coordinator.getSnapshot().storage, "corrupt");
+  assert.match(h.coordinator.getSnapshot().error, /changed|unreadable/);
+  assert.deepEqual(h.coordinator.getSnapshot().confirmations[0], confirmation);
+  assert.equal(h.store.getItem(key), changed); assert.equal(h.sent.length, 1);
+  h.store.setItem(key, original); await h.coordinator.recover(); await h.coordinator.retryConfirmation(C);
+  assert.equal(h.store.length, 0); assert.equal(h.sent.length, 1);
+});
+
+test("reopen lost response reload replays immutable payload and cleanup failure never resends confirmed command", async () => {
+  let lost = true; const effects = new Map();
+  configure((_name, args) => {
+    if (!effects.has(args.command_id)) effects.set(args.command_id, structuredClone(args));
+    assert.deepEqual(args, effects.get(args.command_id));
+    if (lost) { lost = false; throw Error("lost after commit"); }
+    return { data: reopenReceipt(args.command_id, args.occurrence_id, true), error: null };
+  }, A);
+  const first = setupReopen({ send: reopenQuest }); await first.coordinator.submitForOccurrence(O, 3);
+  const restored = setupReopen({ store: first.store, send: reopenQuest }); await restored.coordinator.recover();
+  first.store.fail = "remove"; await restored.coordinator.retry(C);
+  assert.deepEqual(first.sent[0], restored.sent[0]); assert.equal(restored.ids(), 0);
+  first.store.fail = undefined; await restored.coordinator.retryConfirmation(C);
+  await restored.coordinator.submitForOccurrence(O, 3);
+  assert.equal(effects.size, 1); assert.equal(calls.length, 2); assert.equal(first.store.length, 0);
+});
+
+test("server read arriving while recovery holds the shared lock is not dropped", async () => {
+  const first = setupReopen({ send: async () => ({ outcome: "rejected", reason: "stale", refreshRequired: true, error: "stale" }) });
+  await first.coordinator.submitForOccurrence(O, 3);
+  const gate = deferred();
+  const restored = setupReopen({ store: first.store, lock: async (_user, work) => { await gate.promise; return work(); } });
+  const recovery = restored.coordinator.recover();
+  await restored.coordinator.observeServerRead(A, day()); gate.resolve(); await recovery; await tick();
+  assert.equal(restored.coordinator.getSnapshot().phase, "ready"); assert.equal(first.store.length, 0);
+  assert.equal(restored.sent.length, 0);
+});
+
+test("another tab's definitive conflict blocks a previously captured pending retry", async () => {
+  const first = setupReopen(); await first.coordinator.submitForOccurrence(O, 3);
+  const second = setupReopen({ store: first.store, send: async () => ({ outcome: "rejected", reason: "conflict", refreshRequired: false, error: "conflict" }) });
+  await second.coordinator.recover(); await second.coordinator.retry(C);
+  await first.coordinator.retry(C);
+  assert.equal(first.sent.length, 1); assert.equal(first.coordinator.getSnapshot().phase, "blocked");
+  assert.equal(first.coordinator.getSnapshot().blocks[0].operation.commandId, C);
+});
+
+test("confirmed immutable subject changes block direct cleanup even without an inventory event", async () => {
+  const h = setupReopen({ send: async () => success("Reopen confirmed.") });
+  h.store.fail = "remove"; await h.coordinator.submitForOccurrence(O, 3); h.store.fail = undefined;
+  const key = reopenStorageKey(A, C);
+  const changed = JSON.stringify({ ...JSON.parse(h.store.getItem(key)), occurrenceId: P }); h.store.setItem(key, changed);
+  await h.coordinator.retryConfirmation(C);
+  assert.equal(h.coordinator.getSnapshot().storage, "corrupt"); assert.equal(h.store.getItem(key), changed);
+  assert.equal(h.coordinator.getSnapshot().confirmations[0].operation.occurrenceId, O); assert.equal(h.sent.length, 1);
+});
+
+test("server read with unavailable Web Locks blocks without scheduling an automatic retry loop", async () => {
+  let attempts = 0;
+  const h = setupReopen({ lock: async () => { attempts++; throw Error("Web Locks unavailable"); } });
+  await h.coordinator.observeServerRead(A, day()); await tick();
+  assert.equal(attempts, 1); assert.equal(h.coordinator.getSnapshot().phase, "blocked");
+  assert.equal(h.sent.length, 0);
 });

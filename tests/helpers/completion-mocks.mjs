@@ -20,7 +20,8 @@ export function revalidatePath(...args) {
   if (invalidateThrows) throw Error("cache unavailable");
   invalidations.push(args);
 }
-export function useRouter() { return { refresh: () => refreshCallback() }; }
+const router = { refresh: () => refreshCallback() };
+export function useRouter() { return router; }
 export function createSupabaseClient() {
   return { auth: { onAuthStateChange(callback) {
     authCallbacks.add(callback);

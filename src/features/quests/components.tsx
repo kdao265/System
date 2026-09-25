@@ -1,6 +1,6 @@
 import type { DayQuestResult } from "./model";
 import { addCalendarDays, formatCalendarDate, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
-import { QuestCompletionControl } from "./completion-control";
+import { QuestCompletionControl, QuestReopenControl } from "./completion-control";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 const statusLabels = {
@@ -104,6 +104,7 @@ export function DailyQuestList({ result, timezone, selectedDate, userId }: { res
               </div>
             </dl>
             {quest.completable && userId && <QuestCompletionControl userId={userId} occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} selectedDate={selectedDate} />}
+            {quest.status === "completed" && quest.already_completed_cycle === quest.execution_cycle && userId && <QuestReopenControl occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} />}
           </li>
         ))}
       </ul>

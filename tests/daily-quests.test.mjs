@@ -70,6 +70,7 @@ const hooks = registerHooks({
 const { getDayQuests } = await import("../src/features/quests/data.ts");
 const { DailyQuestList, DailyQuestLoading } = await import("../src/features/quests/components.tsx");
 const { DailyQuestsPanel } = await import("../src/features/quests/panel.tsx");
+const { QuestCompletionProvider } = await import("../src/features/quests/completion-provider.tsx");
 const { default: DashboardPage } = await import("../src/app/dashboard/page.tsx");
 const { default: OnboardingPage } = await import("../src/app/onboarding/page.tsx");
 const { saveProfile } = await import("../src/features/profile/actions.ts");
@@ -379,7 +380,8 @@ test("repair saves through the existing owner-scoped Profile action and returns 
 
 test("server panel consumes the feature adapter directly", async () => {
   mockRead(() => ({ data: [], error: null }));
-  assert.match(renderToStaticMarkup(await DailyQuestsPanel({ timezone: "UTC", selectedDate: "2026-09-23" })), /No Quests for this day/);
+  const panel = await DailyQuestsPanel({ timezone: "UTC", selectedDate: "2026-09-23", userId: owner.id });
+  assert.match(renderToStaticMarkup(createElement(QuestCompletionProvider, { userId: owner.id }, panel)), /No Quests for this day/);
 });
 
 test("calendar navigation handles boundaries, leap years, DST and strict query dates", () => {

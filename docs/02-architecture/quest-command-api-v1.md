@@ -178,3 +178,31 @@ For a fresh command, the expected cycle must equal the locked occurrence's curre
 ### 10.3 Migration boundary
 
 V2 is introduced by additive migration `20260926000000_quest_reopen_v2.sql`. Previously applied migrations remain unchanged. The migration transfers ownership using the established temporary membership pattern, revokes temporary schema `CREATE` and role membership, revokes browser execution of V1, and grants browser execution of V2. The accepted decision is recorded in [ADR-012](decisions.md#adr-012--quest-reopen-v2-cycle-guard).
+
+## 11. Completion Alias V1 amendment
+
+**Status:** Accepted additive amendment, recorded in [ADR-013](decisions.md#adr-013--durable-completion-aliases). The historical same-cycle, different-command wording in section 5 is superseded for completion only; every other historical statement in this contract still applies.
+
+### 11.1 Frozen completion behavior
+
+`public.complete_quest_occurrence(command_id, occurrence_id, expected_execution_cycle, reported_completed_at, origin)` keeps its signature, `SECURITY DEFINER` boundary, `quest_command_owner` ownership, fixed `search_path = pg_catalog`, `authenticated`-only EXECUTE and ten-field `public.quest_completion_receipt`. A same-cycle replay under a different caller command ID now records that identity in `system_internal.quest_completion_aliases` in the same transaction before returning the canonical receipt with the caller command ID and `replay = true`. Recording an alias produces no Quest event, EXP entry, milestone, unlock or occurrence projection change, and a recorded alias replays unchanged after reopen and recompletion.
+
+### 11.2 Frozen resolution command
+
+```sql
+public.get_quest_completion_resolution_v1(
+    command_id uuid,
+    occurrence_id uuid,
+    expected_execution_cycle integer
+) RETURNS public.quest_completion_resolution_v1
+```
+
+The command is `SECURITY DEFINER`, owned by `quest_command_owner`, uses `search_path = pg_catalog`, and is executable by `authenticated` only. It reads business data under the existing authentication and ownership checks, the owner-wide progression lock and the Quest-definition and occurrence row locks, binds every owner-specific statement to the validated target without target-session state, and performs no Quest, EXP or projection write. Outcomes are `recorded`, `unrecorded_current`, `unrecorded_superseded` and `conflict`: `recorded` returns the accepted receipt, the unrecorded outcomes return no receipt and never assert that an earlier attempt succeeded, and `conflict` exposes no receipt. The expected cycle's canonical receipt is returned for reconciliation, and inconsistent retained history fails closed with `23514`.
+
+### 11.3 Alias identity boundary
+
+A caller command ID has at most one identity in an owner's namespace: either its recorded Quest events or one alias binding to the canonical `completed` event, never both. Alias rows are private, immutable, owner-scoped under row-level security, and reference the canonical event with `ON DELETE RESTRICT`. Creation and Reopen V2 reserve the same command namespace by rejecting an accepted alias ID with `23505`, and every command keeps the frozen owner -> Quest -> occurrence lock order. Unrecorded historical identities are never backfilled or inferred.
+
+### 11.4 Migration and rollout boundary
+
+Introduced by the additive migration `20260926120000_quest_completion_aliases.sql`. Earlier migrations and accepted history remain unchanged, and the historical Reopen V1 definition remains present with `authenticated` EXECUTE revoked. Apply only after draining in-flight command traffic, migrate before any client calls the resolution command, and never restore SQL that ignores alias reservations. The pending-state experience for never-recorded legacy requests remains future Recovery UI work and is not claimed here.

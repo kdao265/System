@@ -42,8 +42,14 @@ BEGIN
         FROM pg_class WHERE oid='system_internal.operator_grants'::regclass) IS DISTINCT FROM false THEN
         RAISE EXCEPTION 'Grant table boundary mismatch';
     END IF;
-    IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-        WHERE n.nspname='system_internal' AND c.relkind='r') <> 1 THEN
+    -- Approved additive private relations only: the Level/Reward grant table and the
+    -- Completion Alias identity table. Any other ordinary table is unreviewed drift.
+    IF NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='system_internal' AND c.relkind='r'
+                AND c.relname='operator_grants')
+        OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='system_internal' AND c.relkind='r'
+                AND c.relname NOT IN ('operator_grants','quest_completion_aliases')) THEN
         RAISE EXCEPTION 'Unexpected system_internal relation';
     END IF;
 
@@ -202,7 +208,7 @@ BEGIN
     END IF;
 
     -- Routine security: fixed search_path everywhere; definer only for the five commands;
-    -- exact private routine inventory.
+    -- approved private routine allowlist (unapproved names still fail).
     IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
         WHERE (n.nspname IN ('progression_internal','system_internal')
             OR (n.nspname='public' AND p.proname IN ('assign_level_policy','configure_level_reward',
@@ -220,10 +226,57 @@ BEGIN
             AND NOT ('search_path=pg_catalog'=ANY(p.proconfig))) THEN
         RAISE EXCEPTION 'Routine search_path mismatch';
     END IF;
+    -- Approved private inventory: the five baseline helpers must exist with their exact
+    -- argument and return signatures at every stage, and the four Completion Alias helpers
+    -- must exist exactly when the alias relation exists. Missing names, signature drift and
+    -- unexpected names all fail. Parameter names of private routines are not part of the
+    -- boundary, so only argument and return types are compared.
+    IF EXISTS (
+        SELECT 1 FROM (VALUES
+            ('request_user_id', '', 'uuid'::regtype),
+            ('has_capability', 'text', 'boolean'::regtype),
+            ('reject_operator_grant_mutation', '', 'trigger'::regtype),
+            ('validate_operator_grant_insert', '', 'trigger'::regtype),
+            ('validate_operator_grant_update', '', 'trigger'::regtype)
+        ) AS baseline(proname, argtypes, prorettype)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname='system_internal' AND p.proname=baseline.proname
+                AND oidvectortypes(p.proargtypes)=baseline.argtypes
+                AND p.prorettype=baseline.prorettype)) THEN
+        RAISE EXCEPTION 'Private baseline routine missing or changed';
+    END IF;
+    IF to_regclass('system_internal.quest_completion_aliases') IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM (VALUES
+                ('completion_receipt', 'uuid, uuid', 'public.quest_completion_receipt'::regtype),
+                ('completion_binding', 'uuid, uuid, integer', 'uuid'::regtype),
+                ('reject_completion_alias', 'uuid', 'void'::regtype),
+                ('guard_completion_alias', '', 'trigger'::regtype)
+            ) AS alias_helper(proname, argtypes, prorettype)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname='system_internal' AND p.proname=alias_helper.proname
+                    AND oidvectortypes(p.proargtypes)=alias_helper.argtypes
+                    AND p.prorettype=alias_helper.prorettype)) THEN
+            RAISE EXCEPTION 'Completion Alias helper missing or changed';
+        END IF;
+    END IF;
+    -- The expected private count is the five baseline helpers plus the four Completion
+    -- Alias helpers, which exist only once the alias relation does. The CASE is
+    -- parenthesised because a bare CASE ... END is not accepted in an IF condition.
     IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
         WHERE n.nspname='progression_internal') <> 26
         OR (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-        WHERE n.nspname='system_internal') <> 5 THEN
+        WHERE n.nspname='system_internal')
+            <> (CASE WHEN to_regclass('system_internal.quest_completion_aliases') IS NULL
+                THEN 5 ELSE 9 END)
+        OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='system_internal'
+            AND p.proname NOT IN ('request_user_id','has_capability',
+                'reject_operator_grant_mutation','validate_operator_grant_insert',
+                'validate_operator_grant_update','completion_receipt','completion_binding',
+                'reject_completion_alias','guard_completion_alias')) THEN
         RAISE EXCEPTION 'Private routine inventory mismatch';
     END IF;
 

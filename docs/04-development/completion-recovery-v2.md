@@ -127,3 +127,94 @@ Files changed for these fixes: `completion-pending.ts`, `completion-recovery.ts`
 were preserved. No dependency, migration, database, branch, staging, commit or
 push operation was performed. Native browser and migration-ten RPC integration
 remain unverified; the existing deployment and browser-storage limits above apply.
+
+## Phase 2A migration-ten wire integration (2026-09-27)
+
+Task: exercise migration ten's `get_quest_completion_resolution_v1` and the ten-field
+completion receipt over real PostgREST HTTP, then feed the unmodified wire payloads into
+the real frontend validators. No production file, migration, dependency, branch, commit,
+push or deployment was involved, and the operator's System Local stack, Supabase Cloud,
+`.env.local`, `supabase/config.toml` and the Supabase CLI were never used.
+
+Harness: `supabase/tests/quest-completion-resolution-wire.mjs` with
+`supabase/tests/helpers/wire-server-client.mjs`. Each run creates its own Docker network,
+a `public.ecr.aws/supabase/postgres:17.6.1.166` container on tmpfs with no volume, bind or
+published port, and a `public.ecr.aws/supabase/postgrest:v16.2` container published on
+`127.0.0.1` only. Migrations one to ten are applied inside that container. Every resource
+carries `system.test=completion-recovery-v2a` and `system.run=<run id>` labels, is verified
+by immutable ID before removal, and is removed by that ID in a `finally` block that then
+proves no container from the run remains. No image is pulled and no existing container,
+network or volume is read or touched.
+
+Client path: the real application modules (`create-data`, `completion-data`,
+`reopen-data`, `completion-resolution-data`) and the real validators
+(`completion-resolution`, `completion-receipt`, `create-receipt`, `reopen-receipt`) run
+against the disposable runtime. The only substitution is `@/lib/supabase/server`, which
+needs Next request cookies: the harness injects the disposable URL and a per-identity
+session cookie into the real `@supabase/ssr` `createServerClient` with its production
+options. The installed client builds `<url>/rest/v1/rpc/<fn>`; a loopback recording
+adapter strips only the `/rest/v1` prefix, so PostgREST receives its own `/rpc/<fn>` path
+and every assertion reads PostgREST's own status and body bytes. The disposable
+`pgrst_wire_authenticator` login holds exactly `anon` and `authenticated`, and is proven
+to hold neither `service_role` nor superuser or BYPASSRLS.
+
+Result: PASS, 31 checks over 29 real HTTP exchanges, exit code 0.
+
+- All four outcomes over HTTP: `recorded` (canonical and durable alias after Reopen),
+  `unrecorded_current` (live and completed cycle), `unrecorded_superseded` (a genuinely
+  unrecorded legacy command) and `conflict`. The resolver echoes the requested command,
+  occurrence and cycle, returns exactly the twelve contract fields with strict ten-field
+  nested receipts, and every payload was accepted by `validateCompletionResolution` for
+  its exact identity, cycle and outcome while near-miss variants were refused.
+- The superseded request is proven unrecorded (0 Quest events, 0 aliases) while the
+  canonical command keeps its single event and no alias, and the resolution's
+  correction, reopened and reversal identities plus canonical receipt match the Reopen
+  receipt exactly, including the reversal's link to the canonical credit. No resolution
+  call created an event, alias or EXP row.
+- Observed wire serialization: `exp_amount` (bigint) arrives as a JSON number and
+  `recorded_completed_at` as `YYYY-MM-DDTHH:MM:SS.ffffff+00:00`, both accepted by the
+  existing validators; `reversed_amount` arrives as a negative JSON number.
+- Observed PostgREST envelopes: 42501 maps to 401 for the anonymous role and to 403 for
+  an authenticated caller, 23505 to 409, 23514 to 400 (only `Stale quest completion
+  cycle` identifies staleness), an invalid JWT signature to 401/PGRST301, and an unknown
+  parameter to 404/PGRST202. Each case asserts the exact SQLSTATE and message.
+- Owner isolation holds on the read and mutation paths, and an aliased command requested
+  with a foreign occurrence or cycle resolves as a conflict, never as a mismatched
+  receipt. This corrected an earlier reading of migration ten: `completion_binding`
+  compares the requested occurrence and cycle after both its branches, so aliases are
+  conflicts on identity mismatch too. No product code was altered.
+
+Unavailable or out of scope for Phase 2A: no browser or Next.js runtime was launched, so
+the server action `resolveQuestCompletion`, the cookie plumbing, multi-tab Web Locks and
+the recovery UI still rely on their existing mocked suites; this harness is not yet wired
+into `.github/workflows/quest-creation-ci.yml`; and the two-session concurrency suites
+still require their own runners.
+
+Repository checks after the change: `node --test tests/*.test.mjs` 170 passed and 0
+failed, `npm run lint` zero warnings, `node node_modules/typescript/bin/tsc --noEmit
+--incremental false` passed, `git diff --check` passed. The two harness files were untracked, while
+`docs/04-development/completion-recovery-v2.md` and `docs/PROJECT_CONTEXT.md`
+were modified. Migration ten remains undeployed. No commit,
+push, PR or dependency change was made.
+
+## Phase 2A static-review safety hardening (2026-09-27)
+
+Independent review found that the initial disposable harness removed a recorded
+container ID even when its identity/isolation re-verification failed; a listener
+created during startup could also escape cleanup if readiness failed before
+`startEnvironment()` returned. The harness now refuses removal of any container
+whose immutable ID, name, labels or isolation checks fail; it continues
+independent cleanup and reports all failures. Stopped containers can be
+verified from immutable inspect metadata. The loopback adapter is registered
+immediately after creation so startup errors still close it. Disposable
+credentials use `randomBytes`, and each run ID includes a random suffix.
+SIGINT/SIGTERM trigger best-effort graceful interruption and scoped cleanup;
+forced termination or a Docker daemon outage can still leave resources for
+manual inspection, and the harness will report them rather than bulk-delete.
+
+The patched JavaScript modules passed `node --check`; three mocked teardown
+regressions passed (mismatched identity is never removed, complete verified
+cleanup, and continuation after a separate removal failure). The initial
+Cline run reported 31 checks over 29 real HTTP exchanges and exit 0, but
+**the hardened harness has not yet been rerun against live Docker**. Native
+browser / GoTrue, the Next.js server action and GitHub CI remain unverified.

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { completeQuest } from "./completion-action";
+import { resolveQuestCompletion } from "./completion-resolution-action";
 import { COMPLETION_PREFIX } from "./completion-pending";
 import { COMPLETION_LOCK, CompletionRecoveryLifecycle } from "./completion-recovery";
 import { reopenQuest } from "./reopen-action";
@@ -45,6 +46,7 @@ function AccountCompletionProvider({ userId, children }: { userId: string; child
       return navigator.locks.request(COMPLETION_LOCK, work);
     },
     send: completeQuest,
+    resolve: resolveQuestCompletion,
     uuid: () => crypto.randomUUID(),
   }));
   const [reopenCoordinator] = useState(() => new ReopenRecoveryLifecycle(userId, {

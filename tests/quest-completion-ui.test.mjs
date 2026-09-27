@@ -35,9 +35,11 @@ const hooks = registerHooks({
   },
 });
 const { completeQuest } = await import("../src/features/quests/completion-action.ts");
+const { resolveQuestCompletion } = await import("../src/features/quests/completion-resolution-action.ts");
+const { validateCompletionResolution } = await import("../src/features/quests/completion-resolution.ts");
 const { validateQuestCompletionReceipt } = await import("../src/features/quests/completion-receipt.ts");
 const { CompletionRecoveryLifecycle, COMPLETION_LOCK } = await import("../src/features/quests/completion-recovery.ts");
-const { persistPendingCompletion, completionStorageKey, COMPLETION_PREFIX } = await import("../src/features/quests/completion-pending.ts");
+const { persistPendingCompletion, persistCompletionDisposition, readPendingCompletions, removePendingCompletion, completionStorageKey, COMPLETION_PREFIX } = await import("../src/features/quests/completion-pending.ts");
 const { QuestCompletionProvider, QuestReopenRead } = await import("../src/features/quests/completion-provider.tsx");
 const { QuestCompletionControl } = await import("../src/features/quests/completion-control.tsx");
 const { QuestReopenControl } = await import("../src/features/quests/completion-control.tsx");
@@ -63,6 +65,15 @@ const receipt = (commandId = C, occurrenceId = O, amount = 0, replay = false) =>
   completed_event_id: "40000000-0000-4000-8000-000000000001", exp_entry_id: "60000000-0000-4000-8000-000000000001",
   exp_amount: amount, reported_completed_at: null, recorded_completed_at: "2026-09-24T10:00:00Z", replay,
 });
+const resolution = (outcome = "unrecorded_current", commandId = C, occurrenceId = O) => ({
+  version: 1, outcome, command_id: commandId, occurrence_id: occurrenceId, expected_execution_cycle: 3,
+  current_execution_cycle: outcome === "unrecorded_superseded" || outcome === "recorded" ? 4 : 3,
+  current_status: "scheduled", receipt: outcome === "recorded" ? receipt(commandId, occurrenceId, 37, true) : null,
+  canonical_receipt: outcome === "unrecorded_superseded" ? receipt(D, occurrenceId, 37, true) : null,
+  correction_event_id: outcome === "unrecorded_superseded" ? "40000000-0000-4000-8000-000000000002" : null,
+  reopened_event_id: outcome === "unrecorded_superseded" ? "40000000-0000-4000-8000-000000000003" : null,
+  reversal_entry_id: outcome === "unrecorded_superseded" ? "60000000-0000-4000-8000-000000000002" : null,
+});
 const reopenReceipt = (commandId = C, occurrenceId = O, replay = false) => ({
   command_id: commandId, occurrence_id: occurrenceId, quest_id: "50000000-0000-4000-8000-000000000001", undone_cycle: 3,
   correction_event_id: "40000000-0000-4000-8000-000000000001", reopened_event_id: "40000000-0000-4000-8000-000000000002",
@@ -85,13 +96,14 @@ const seed = (store, operation = pending()) => persistPendingCompletion(() => st
 const immediateLock = async (_user, work) => work();
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-function setup({ store = new Store(), send = async () => unknown, lock = immediateLock, account = A } = {}) {
-  const sent = []; let ids = 0;
+function setup({ store = new Store(), send = async () => unknown, resolve = async (_previous, form) => ({ outcome: "resolved", resolution: resolution("unrecorded_current", form.get("command_id"), form.get("occurrence_id")) }), lock = immediateLock, account = A } = {}) {
+  const sent = []; const checked = []; let ids = 0;
   const coordinator = new CompletionRecoveryLifecycle(account, {
     storage: () => store, lock, uuid: () => ++ids === 1 ? C : D,
     send: async (previous, form) => { sent.push(Object.fromEntries(form)); return send(previous, form); },
+    resolve: async (previous, form) => { checked.push(Object.fromEntries(form)); return resolve(previous, form); },
   });
-  return { coordinator, store, sent, ids: () => ids };
+  return { coordinator, store, sent, checked, ids: () => ids };
 }
 function setupReopen({ store = new Store(), send = async () => unknown, lock = immediateLock, account = A } = {}) {
   const sent = []; let ids = 0;
@@ -161,12 +173,12 @@ test("actual provider, Recovery and two rows share one instance; removing a row 
   assert.equal(authCallbacks.size, 1);
   await h.click("Complete");
   const first = calls[0].args.command_id;
-  assert.match(h.renderer.html(), /Retry exact completion/);
+  assert.match(h.renderer.html(), /Check completion resolution/);
   h.setRows([P]);
   assert.equal(authCallbacks.size, 1); assert.equal(readers[0]().accountChanged, false);
   await h.click("Complete"); assert.equal(calls[1].args.occurrence_id, P);
-  configure((_name, args) => ({ data: receipt(args.command_id, args.occurrence_id, 0, true), error: null }), A);
-  await h.click("Retry exact completion", first);
+  configure((_name, args) => ({ data: resolution("recorded", args.command_id, args.occurrence_id), error: null }), A);
+  await h.click("Check completion resolution", first);
   assert.equal(calls.length, 1); assert.equal(calls[0].args.command_id, first);
   assert.equal(readers[0]().confirmations.length, 1); assert.equal(readers[0]().operations.length, 1);
   assert.ok(h.lockNames.every((name) => name === COMPLETION_LOCK));
@@ -298,15 +310,15 @@ test("lost response and fresh same-account coordinator replay the entire saved r
 test("actual Recovery remains rendered without rows and offers saved requests on another date", async (t) => {
   const store = new Store(); seed(store, pending(C, O, A, 7));
   const h = browser(t, store); h.setRows([]); await tick(); h.render();
-  assert.equal(h.button("Retry exact completion", C).length, 1);
+  assert.equal(h.button("Check completion resolution", C).length, 1);
   assert.match(h.renderer.html(), /awaiting confirmation/);
 });
 
 test("two confirmed cleanup failures render two enabled controls; cleaning A preserves B and never sends again", async (t) => {
   const store = new Store(); seed(store); seed(store, pending(D, P));
-  configure((_name, args) => ({ data: receipt(args.command_id, args.occurrence_id, 0, true), error: null }), A, true);
+  configure((_name, args) => ({ data: resolution("recorded", args.command_id, args.occurrence_id), error: null }), A, true);
   const h = browser(t, store); h.setRows([]); await tick(); h.render(); store.fail = "remove";
-  await h.click("Retry exact completion", C); await h.click("Retry exact completion", D);
+  await h.click("Check completion resolution", C); await h.click("Check completion resolution", D);
   assert.equal(calls.length, 2); assert.equal(h.button("Retry recovery confirmation").length, 2);
   assert.match(h.renderer.html(), /Completion is confirmed. Refresh the Dashboard/);
   for (const node of h.button("Retry recovery confirmation")) assert.equal(node.props.disabled, false);
@@ -343,18 +355,18 @@ test("cleanup already performed by another tab is idempotent and remains confirm
   assert.equal(h.coordinator.getSnapshot().confirmations[0].cleanupPending, false); assert.equal(h.sent.length, 1);
 });
 
-test("non-today refresh retry invokes actual UI router callback after invalidation throws, without mutation replay", async (t) => {
+test("non-today refresh retry invokes actual UI router callback after historical resolution, without mutation replay", async (t) => {
   const store = new Store(); seed(store);
-  configure((_name, args) => ({ data: receipt(args.command_id, args.occurrence_id), error: null }), A, true);
+  configure((_name, args) => ({ data: resolution("recorded", args.command_id, args.occurrence_id), error: null }), A, true);
   const h = browser(t, store); h.setRows([]); await tick(); h.render();
-  await h.click("Retry exact completion", C);
+  await h.click("Check completion resolution", C);
   assert.equal(calls.length, 1); assert.equal(invalidations.length, 0);
   assert.match(h.renderer.html(), /Completion is confirmed. Refresh/);
   let refreshes = 0;
   setRefresh(() => { refreshes++; assert.equal(h.window.location.search, "?date=" + selectedDate); throw Error("refresh failed"); });
   await h.click("Refresh Dashboard");
   assert.equal(refreshes, 1); assert.match(h.renderer.html(), /Dashboard refresh failed/);
-  assert.match(h.renderer.html(), /Quest completed/);
+  assert.match(h.renderer.html(), /Completion confirmed from an earlier request/);
   setRefresh(() => { refreshes++; assert.equal(h.window.location.search, "?date=" + selectedDate); });
   await h.click("Refresh Dashboard");
   assert.equal(refreshes, 2); assert.equal(calls.length, 1); assert.equal(store.length, 0);
@@ -598,4 +610,423 @@ test("server read with unavailable Web Locks blocks without scheduling an automa
   await h.coordinator.observeServerRead(A, day()); await tick();
   assert.equal(attempts, 1); assert.equal(h.coordinator.getSnapshot().phase, "blocked");
   assert.equal(h.sent.length, 0);
+});
+
+test("resolution validates all twelve fields and every migration-ten outcome", () => {
+  for (const outcome of ["recorded", "unrecorded_current", "unrecorded_superseded", "conflict"]) {
+    const good = resolution(outcome);
+    assert.equal(validateCompletionResolution(good, C, O, 3), true, outcome);
+    for (const key of Object.keys(good)) {
+      const missing = { ...good }; delete missing[key];
+      assert.equal(validateCompletionResolution(missing, C, O, 3), false, outcome + ":" + key);
+      assert.equal(validateCompletionResolution({ ...good, [key]: undefined }, C, O, 3), false, outcome + ":undefined:" + key);
+    }
+    for (const patch of [{ extra: true }, { version: 2 }, { command_id: D }, { occurrence_id: P }, { expected_execution_cycle: 4 },
+      { current_execution_cycle: 0 }, { current_execution_cycle: 2147483648 }, { current_execution_cycle: 3.5 },
+      { current_status: "reopened" }, { current_status: null }, { outcome: "superseded" }]) {
+      assert.equal(validateCompletionResolution({ ...good, ...patch }, C, O, 3), false, JSON.stringify(patch));
+    }
+  }
+});
+
+test("resolution enforces caller versus canonical receipts, nullable fields and undo invariants", () => {
+  const recorded = resolution("recorded");
+  for (const patch of [{ receipt: { ...recorded.receipt, replay: false } }, { receipt: receipt(D, O, 37, true) },
+    { receipt: { ...recorded.receipt, execution_cycle: 4 } }, { canonical_receipt: receipt(D, O, 37, true) },
+    { correction_event_id: D }, { current_execution_cycle: 2 }, { current_execution_cycle: 3 }]) {
+    assert.equal(validateCompletionResolution({ ...recorded, ...patch }, C, O, 3), false);
+  }
+  assert.equal(validateCompletionResolution({ ...recorded, current_execution_cycle: 3, current_status: "completed" }, C, O, 3), true);
+  const older = resolution("unrecorded_superseded");
+  for (const patch of [{ receipt: recorded.receipt }, { canonical_receipt: recorded.receipt }, { canonical_receipt: null },
+    { canonical_receipt: { ...older.canonical_receipt, replay: false } }, { current_execution_cycle: 3 },
+    { correction_event_id: null }, { reopened_event_id: null }, { reversal_entry_id: null },
+    { correction_event_id: "invalid" }, { correction_event_id: older.reopened_event_id },
+    { reversal_entry_id: older.canonical_receipt.exp_entry_id }]) {
+    assert.equal(validateCompletionResolution({ ...older, ...patch }, C, O, 3), false);
+  }
+  for (const reported of [null, "2026-08-01T00:00:00+07:00"]) {
+    assert.equal(validateCompletionResolution({ ...older, canonical_receipt: { ...older.canonical_receipt, reported_completed_at: reported, exp_amount: "9223372036854775807" } }, C, O, 3), true);
+  }
+  for (const amount of [-1, "9223372036854775808", Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(validateCompletionResolution({ ...older, canonical_receipt: { ...older.canonical_receipt, exp_amount: amount } }, C, O, 3), false);
+  }
+  const current = resolution();
+  assert.equal(validateCompletionResolution({ ...current, current_status: "completed" }, C, O, 3), false);
+  assert.equal(validateCompletionResolution({ ...current, canonical_receipt: older.canonical_receipt }, C, O, 3), false);
+  assert.equal(validateCompletionResolution({ ...current, current_status: "completed", canonical_receipt: older.canonical_receipt }, C, O, 3), true);
+  for (const status of ["draft", "scheduled", "active", "failed", "cancelled"]) {
+    assert.equal(validateCompletionResolution({ ...current, current_status: status }, C, O, 3), true);
+  }
+  // SQL checks bindings before the ahead-of-current error.
+  assert.equal(validateCompletionResolution({ ...resolution("conflict"), current_execution_cycle: 2 }, C, O, 3), true);
+  assert.equal(validateCompletionResolution({ ...current, current_execution_cycle: 2 }, C, O, 3), false);
+});
+
+const completionForm = (patch = {}) => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries({ expected_account: A, command_id: C, occurrence_id: O, execution_cycle: "3", ...patch })) form.set(key, value);
+  return form;
+};
+
+test("resolution action uses exactly the owner-authenticated three-argument RPC without mutation or cache invalidation", async () => {
+  configure(() => ({ data: resolution("recorded"), error: null }), A);
+  const result = await resolveQuestCompletion({}, completionForm());
+  assert.equal(result.outcome, "resolved");
+  assert.deepEqual(calls, [{ name: "get_quest_completion_resolution_v1", args: { command_id: C, occurrence_id: O, expected_execution_cycle: 3 } }]);
+  assert.equal(invalidations.length, 0);
+  for (const patch of [{ command_id: "bad" }, { occurrence_id: "bad" }, { execution_cycle: "0" }, { execution_cycle: "2147483648" }, { execution_cycle: "3.0" }]) {
+    assert.equal((await resolveQuestCompletion({}, completionForm(patch))).reason, "validation");
+  }
+  assert.equal((await resolveQuestCompletion({}, completionForm({ expected_account: B }))).reason, "account");
+  assert.equal(calls.length, 1);
+});
+
+test("durable alias lost response resolves after Reopen and later recompletion without another mutation", async () => {
+  let mutationCount = 0;
+  configure((name, args) => {
+    if (name === "complete_quest_occurrence") { mutationCount++; throw Error("alias committed; response lost"); }
+    assert.equal(name, "get_quest_completion_resolution_v1");
+    assert.deepEqual(args, { command_id: C, occurrence_id: O, expected_execution_cycle: 3 });
+    return { data: { ...resolution("recorded"), current_execution_cycle: 7, current_status: "completed" }, error: null };
+  }, A);
+  const first = setup({ send: completeQuest, resolve: resolveQuestCompletion });
+  await first.coordinator.submitForOccurrence(O, 3);
+  const restored = setup({ store: first.store, send: completeQuest, resolve: resolveQuestCompletion });
+  await restored.coordinator.recover(); await restored.coordinator.retry(C);
+  assert.equal(mutationCount, 1); assert.equal(restored.sent.length, 0); assert.equal(restored.ids(), 0);
+  assert.equal(restored.coordinator.getSnapshot().confirmations[0].replay, true);
+  assert.equal(restored.coordinator.getSnapshot().refreshRequired, true); assert.equal(first.store.length, 0);
+});
+
+test("legacy superseded reconciliation retains full terminal evidence after acknowledgement and reload", async () => {
+  configure(() => ({ data: resolution("unrecorded_superseded"), error: null }), A);
+  const h = setup({ resolve: resolveQuestCompletion }); seed(h.store); await h.coordinator.recover(); await h.coordinator.retry(C);
+  assert.equal(h.sent.length, 0); assert.equal(h.coordinator.getSnapshot().confirmations.length, 0);
+  const before = JSON.parse(h.store.getItem(completionStorageKey(A, C)));
+  assert.deepEqual(before.operation, pending()); assert.deepEqual(before.resolution, resolution("unrecorded_superseded"));
+  await h.coordinator.acknowledgeSuperseded(C);
+  assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(A, C))), { ...before, acknowledged: true });
+  assert.throws(() => removePendingCompletion(() => h.store, pending()));
+  const restored = setup({ store: h.store }); await restored.coordinator.recover();
+  assert.equal(restored.coordinator.getSnapshot().dispositions[0].acknowledged, true);
+  await restored.coordinator.retry(C); await restored.coordinator.submitForOccurrence(O, 3);
+  assert.equal(restored.sent.length, 0); assert.equal(restored.checked.length, 0); assert.equal(restored.ids(), 0);
+  const b = setup({ store: h.store, account: B }); await b.coordinator.recover();
+  assert.equal(b.coordinator.getSnapshot().dispositions.length, 0); assert.equal(h.store.length, 1);
+});
+
+test("legacy Recovery UI distinguishes uncertainty from success and keeps acknowledged evidence visible", async (t) => {
+  const store = new Store(); seed(store);
+  configure(() => ({ data: resolution("unrecorded_superseded"), error: null }), A);
+  const h = browser(t, store); await h.mount(); await h.click("Check completion resolution", C);
+  assert.match(h.renderer.html(), /earlier success cannot be confirmed/);
+  assert.doesNotMatch(h.renderer.html(), /EXP awarded|Quest completed|Completion is confirmed/);
+  assert.equal(h.button("Check completion resolution", C).length, 0);
+  await h.click("Acknowledge reconciliation", C);
+  assert.match(h.renderer.html(), /Historical uncertainty and evidence remain saved/);
+  assert.match(h.renderer.html(), /Canonical command/); assert.equal(store.length, 1); assert.equal(calls.length, 1);
+  assert.equal(h.button("Acknowledge reconciliation", C).length, 0);
+  setRefresh(() => { throw Error("refresh unavailable"); }); await h.click("Refresh Dashboard");
+  assert.match(h.renderer.html(), /Dashboard refresh failed/); assert.doesNotMatch(h.renderer.html(), /Completion is confirmed/);
+});
+
+for (const failure of ["transport", "server", "missing-rpc", "history", "unknown-subject", "ahead", "malformed"]) test("resolver " + failure + " failure never redispatches and offers another resolution check", async () => {
+  configure(() => {
+    if (failure === "transport") throw Error("offline");
+    if (failure === "malformed") return { data: { ...resolution(), receipt: receipt() }, error: null };
+    const errors = {
+      server: { code: "XX000", message: "generic server failure" },
+      "missing-rpc": { code: "PGRST202", message: "not deployed" },
+      history: { code: "23514", message: "Completion history is inconsistent" },
+      "unknown-subject": { code: "23514", message: "Unknown quest occurrence" },
+      ahead: { code: "23514", message: "Expected execution cycle is ahead of current occurrence" },
+    };
+    return { data: null, error: errors[failure] };
+  }, A);
+  const h = setup({ resolve: resolveQuestCompletion }); seed(h.store); await h.coordinator.recover();
+  await h.coordinator.retry(C); await h.coordinator.retry(C);
+  assert.equal(calls.length, 2); assert.ok(calls.every((call) => call.name === "get_quest_completion_resolution_v1"));
+  assert.equal(h.sent.length, 0); assert.equal(h.coordinator.getSnapshot().phase, "uncertain");
+  assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(A, C))), pending());
+});
+
+test("only a validated current outcome allows identical redispatch; ambiguity requires a new resolution check", async () => {
+  configure((name) => name === "get_quest_completion_resolution_v1" ? { data: resolution(), error: null } : { data: null, error: { code: "network" } }, A);
+  const h = setup({ resolve: resolveQuestCompletion, send: completeQuest }); seed(h.store); await h.coordinator.recover();
+  await h.coordinator.retry(C); await h.coordinator.retry(C);
+  assert.deepEqual(calls.map((call) => call.name), ["get_quest_completion_resolution_v1", "complete_quest_occurrence", "get_quest_completion_resolution_v1", "complete_quest_occurrence"]);
+  assert.deepEqual(calls[1].args, calls[3].args);
+  assert.deepEqual(calls[1].args, { command_id: C, occurrence_id: O, expected_execution_cycle: 3, reported_completed_at: null, origin: "web_ui" });
+  assert.equal(h.ids(), 0); assert.equal(h.store.length, 1);
+});
+
+test("initial exact stale rejection and ambiguous SQL failures all retain immutable operations", async () => {
+  for (const error of [{ code: "23514", message: "Stale quest completion cycle" }, { code: "23514", message: "Completion history is inconsistent" }, { code: "23514", message: "generic" }, { code: "23505", message: "generic" }]) {
+    configure(() => ({ data: null, error }), A);
+    const h = setup({ send: completeQuest }); await h.coordinator.submitForOccurrence(O, 3);
+    assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(A, C))), pending());
+    assert.equal(h.coordinator.getSnapshot().phase, "uncertain");
+    const result = await completeQuest({}, completionForm());
+    assert.equal(result.outcome, error.message === "Stale quest completion cycle" ? "rejected" : "unknown");
+  }
+});
+
+for (const source of ["resolver", "mutation"]) test(source + " conflict survives reload and blocks identical or replacement mutations", async () => {
+  configure(() => source === "resolver" ? { data: resolution("conflict"), error: null } : { data: null, error: { code: "23505", message: "Conflicting quest command reuse" } }, A);
+  const h = setup({ send: completeQuest, resolve: resolveQuestCompletion });
+  if (source === "resolver") { seed(h.store); await h.coordinator.recover(); await h.coordinator.retry(C); }
+  else await h.coordinator.submitForOccurrence(O, 3);
+  assert.equal(h.coordinator.getSnapshot().dispositions[0].reason, "conflict");
+  const restored = setup({ store: h.store }); await restored.coordinator.recover();
+  await restored.coordinator.retry(C); await restored.coordinator.submitForOccurrence(O, 3);
+  assert.equal(restored.sent.length, 0); assert.equal(restored.checked.length, 0); assert.equal(restored.ids(), 0);
+  assert.equal(calls.length, 1); assert.equal(h.store.length, 1);
+});
+
+test("recorded resolver cleanup failure survives reload; cleanup never redispatches", async () => {
+  configure(() => ({ data: resolution("recorded"), error: null }), A);
+  const h = setup({ resolve: resolveQuestCompletion }); seed(h.store); await h.coordinator.recover(); h.store.fail = "remove";
+  await h.coordinator.retry(C); assert.equal(h.coordinator.getSnapshot().confirmations[0].cleanupPending, true);
+  const restored = setup({ store: h.store, resolve: resolveQuestCompletion }); await restored.coordinator.recover(); await restored.coordinator.retry(C);
+  h.store.fail = undefined; await restored.coordinator.retryConfirmation(C);
+  assert.equal(calls.length, 2); assert.equal(h.sent.length + restored.sent.length, 0); assert.equal(h.store.length, 0);
+});
+
+test("terminal persistence and acknowledgement failures keep evidence and recover without RPC", async () => {
+  const h = setup({ resolve: async () => ({ outcome: "resolved", resolution: resolution("unrecorded_superseded") }) });
+  seed(h.store); await h.coordinator.recover(); h.store.fail = "write"; await h.coordinator.retry(C);
+  assert.equal(h.coordinator.getSnapshot().phase, "blocked");
+  assert.equal(h.coordinator.getSnapshot().dispositions[0].reason, "superseded");
+  await h.coordinator.retry(C); assert.equal(h.checked.length, 1);
+  h.store.fail = undefined; await h.coordinator.recover();
+  h.store.fail = "write"; await h.coordinator.acknowledgeSuperseded(C);
+  assert.equal(h.coordinator.getSnapshot().dispositions[0].acknowledged, false);
+  assert.equal(JSON.parse(h.store.getItem(completionStorageKey(A, C))).acknowledged, false);
+  h.store.fail = undefined; await h.coordinator.recover(); await h.coordinator.acknowledgeSuperseded(C);
+  h.store.values.clear(); await h.coordinator.recover();
+  assert.equal(JSON.parse(h.store.getItem(completionStorageKey(A, C))).acknowledged, true);
+  assert.equal(h.checked.length, 1); assert.equal(h.sent.length, 0);
+});
+
+test("stale tab queued retry consumes another tab's terminal disposition under the shared lock", async () => {
+  const gate = deferred(); let queued = false; const store = new Store(); seed(store);
+  const first = setup({ store, resolve: async () => ({ outcome: "resolved", resolution: resolution("unrecorded_superseded") }) });
+  const second = setup({ store, lock: async (_user, work) => { if (queued) await gate.promise; return work(); } });
+  await first.coordinator.recover(); await second.coordinator.recover(); queued = true;
+  const retry = second.coordinator.retry(C);
+  await first.coordinator.retry(C); await first.coordinator.acknowledgeSuperseded(C); gate.resolve(); await retry;
+  assert.equal(second.checked.length, 0); assert.equal(second.sent.length, 0);
+  assert.equal(second.coordinator.getSnapshot().dispositions[0].acknowledged, true);
+  await second.coordinator.recover(); assert.equal(store.length, 1);
+});
+
+test("two concurrent tab resolution checks serialize and never downgrade acknowledgement", async () => {
+  let tail = Promise.resolve(); let held = false;
+  const lock = (_user, work) => { const result = tail.then(async () => { assert.equal(held, false); held = true; try { return await work(); } finally { held = false; } }); tail = result.catch(() => {}); return result; };
+  const store = new Store(); seed(store);
+  const resolve = async () => ({ outcome: "resolved", resolution: resolution("unrecorded_superseded") });
+  const a = setup({ store, lock, resolve }); const b = setup({ store, lock, resolve });
+  await Promise.all([a.coordinator.recover(), b.coordinator.recover()]);
+  await Promise.all([a.coordinator.retry(C), b.coordinator.retry(C)]);
+  assert.equal(a.checked.length + b.checked.length, 1); assert.equal(a.sent.length + b.sent.length, 0);
+  await a.coordinator.acknowledgeSuperseded(C); await b.coordinator.recover();
+  assert.equal(b.coordinator.getSnapshot().dispositions[0].acknowledged, true);
+});
+
+test("account change during resolution retains A's request and cannot dispatch current outcome", async () => {
+  const gate = deferred(); const h = setup({ resolve: () => gate.promise }); seed(h.store); await h.coordinator.recover();
+  const task = h.coordinator.retry(C); await tick(); h.coordinator.changeAccount(B);
+  gate.resolve({ outcome: "resolved", resolution: resolution() }); await task;
+  assert.equal(h.sent.length, 0); assert.equal(h.coordinator.getSnapshot().accountChanged, true);
+  assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(A, C))), pending());
+  const b = setup({ store: h.store, account: B }); await b.coordinator.recover(); assert.equal(b.coordinator.getSnapshot().operations.length, 0);
+});
+
+test("resolver action account mismatch and expired session preserve requests without RPC", async () => {
+  for (const account of [B, undefined]) {
+    configure(() => assert.fail("No RPC permitted"), account);
+    const h = setup({ resolve: resolveQuestCompletion }); seed(h.store); await h.coordinator.recover(); await h.coordinator.retry(C);
+    assert.equal(h.sent.length, 0); assert.equal(calls.length, 0); assert.equal(h.store.length, 1);
+    assert.equal(h.coordinator.getSnapshot().phase, account === B ? "blocked" : "uncertain");
+  }
+});
+
+test("V1 compatibility and strict V2 envelopes reject damaged evidence without overwrite", async () => {
+  const store = new Store(); seed(store);
+  assert.deepEqual(readPendingCompletions(() => store, A).operations, [pending()]);
+  const disposition = { operation: pending(), reason: "superseded", resolution: resolution("unrecorded_superseded"), acknowledged: false };
+  persistCompletionDisposition(() => store, disposition);
+  const serialized = store.getItem(completionStorageKey(A, C));
+  const h = setup({ store }); await h.coordinator.recover();
+  for (const patch of [{ acknowledged: "yes" }, { reason: "other" }, { resolution: null }, { extra: true }, { operation: { ...pending(), executionCycle: 4 } }]) {
+    const bad = JSON.stringify({ ...JSON.parse(serialized), ...patch }); store.setItem(completionStorageKey(A, C), bad);
+    assert.equal(readPendingCompletions(() => store, A).status, "corrupt");
+    await h.coordinator.recover(); assert.equal(h.coordinator.getSnapshot().phase, "blocked");
+    assert.equal(store.getItem(completionStorageKey(A, C)), bad);
+    assert.deepEqual(h.coordinator.getSnapshot().dispositions[0], disposition);
+  }
+});
+
+test("current completed canonical receipt is not caller success until the exact mutation registers its alias", async () => {
+  configure((name) => name === "get_quest_completion_resolution_v1" ? {
+    data: { ...resolution(), current_status: "completed", canonical_receipt: receipt(D, O, 37, true) }, error: null,
+  } : { data: receipt(C, O, 37, true), error: null }, A);
+  const h = setup({ resolve: resolveQuestCompletion, send: completeQuest }); seed(h.store); await h.coordinator.recover(); await h.coordinator.retry(C);
+  assert.deepEqual(calls.map((call) => call.name), ["get_quest_completion_resolution_v1", "complete_quest_occurrence"]);
+  assert.equal(h.sent[0].command_id, C); assert.equal(h.coordinator.getSnapshot().confirmations[0].operation.commandId, C);
+  assert.equal(h.store.length, 0);
+});
+
+test("Reopen racing a current observation yields stale and requires resolution without changing cycle", async () => {
+  let current = true;
+  configure((name) => {
+    if (name === "get_quest_completion_resolution_v1") return { data: resolution(current ? "unrecorded_current" : "unrecorded_superseded"), error: null };
+    current = false; return { data: null, error: { code: "23514", message: "Stale quest completion cycle" } };
+  }, A);
+  const h = setup({ resolve: resolveQuestCompletion, send: completeQuest }); seed(h.store); await h.coordinator.recover(); await h.coordinator.retry(C);
+  assert.deepEqual(JSON.parse(h.store.getItem(completionStorageKey(A, C))), pending());
+  await h.coordinator.retry(C);
+  assert.equal(h.sent.length, 1); assert.equal(h.sent[0].execution_cycle, "3");
+  assert.equal(h.coordinator.getSnapshot().dispositions[0].reason, "superseded"); assert.equal(h.ids(), 0);
+});
+
+test("resolution failure UI retains an enabled check and never exposes a mutation retry", async (t) => {
+  const store = new Store(); seed(store);
+  configure(() => ({ data: null, error: { code: "XX000", message: "synthetic diagnostic" } }), A);
+  const h = browser(t, store); await h.mount(); await h.click("Check completion resolution", C);
+  assert.equal(h.button("Check completion resolution", C)[0].props.disabled, false);
+  assert.match(h.renderer.html(), /Check resolution again/); assert.doesNotMatch(h.renderer.html(), /synthetic diagnostic|Retry exact completion/);
+  await h.click("Check completion resolution", C);
+  assert.equal(calls.length, 2); assert.ok(calls.every((call) => call.name === "get_quest_completion_resolution_v1"));
+});
+
+for (const observation of [{ current_execution_cycle: 4, current_status: "completed" }, { current_execution_cycle: 5, current_status: "scheduled" }]) test("failed terminal write reconciles another tab's acknowledged observation " + JSON.stringify(observation), async () => {
+  let tail = Promise.resolve();
+  const lock = (_user, work) => { const task = tail.then(work); tail = task.catch(() => {}); return task; };
+  const store = new Store(); seed(store);
+  let current = resolution("unrecorded_superseded");
+  const resolve = async () => ({ outcome: "resolved", resolution: structuredClone(current) });
+  const a = setup({ store, lock, resolve }); const b = setup({ store, lock, resolve }); const stale = setup({ store, lock, resolve });
+  await Promise.all([a.coordinator.recover(), b.coordinator.recover(), stale.coordinator.recover()]);
+  store.fail = "write"; await a.coordinator.retry(C);
+  const oldEvidence = structuredClone(a.coordinator.getSnapshot().dispositions[0]);
+  assert.equal(a.coordinator.getSnapshot().phase, "blocked");
+  assert.deepEqual(JSON.parse(store.getItem(completionStorageKey(A, C))), pending());
+  // The current cycle changes after A releases the shared lock; old history does not.
+  current = { ...current, ...observation }; store.fail = undefined;
+  await b.coordinator.retry(C); await b.coordinator.acknowledgeSuperseded(C);
+  const durable = store.getItem(completionStorageKey(A, C));
+  await a.coordinator.recover();
+  assert.equal(a.coordinator.getSnapshot().phase, "ready");
+  assert.deepEqual(a.coordinator.getSnapshot().dispositions, b.coordinator.getSnapshot().dispositions);
+  await lock(A, async () => persistCompletionDisposition(() => store, oldEvidence));
+  assert.equal(store.getItem(completionStorageKey(A, C)), durable);
+  await stale.coordinator.retry(C); await a.coordinator.retry(C); await a.coordinator.submitForOccurrence(O, 3);
+  assert.equal(a.sent.length + b.sent.length + stale.sent.length, 0);
+  assert.equal(a.checked.length + b.checked.length + stale.checked.length, 2);
+  assert.equal(a.ids() + b.ids() + stale.ids(), 0);
+  // Cleanup cannot erase terminal evidence; a stale V1 restoration cannot revive it.
+  store.fail = "remove";
+  assert.throws(() => removePendingCompletion(() => store, pending())); store.fail = undefined;
+  store.setItem(completionStorageKey(A, C), JSON.stringify(pending())); await a.coordinator.recover();
+  assert.equal(store.getItem(completionStorageKey(A, C)), durable);
+  const reloaded = setup({ store, lock }); await reloaded.coordinator.recover();
+  assert.equal(reloaded.coordinator.getSnapshot().dispositions[0].acknowledged, true);
+  assert.deepEqual(reloaded.coordinator.getSnapshot().dispositions[0].resolution, current);
+});
+
+test("failed conflict persistence accepts validated resolver evidence and never downgrades it to null", async () => {
+  const store = new Store();
+  const a = setup({ store, send: async () => { store.fail = "write"; return { outcome: "rejected", reason: "conflict", error: "conflict" }; } });
+  await a.coordinator.submitForOccurrence(O, 3);
+  const bare = structuredClone(a.coordinator.getSnapshot().dispositions[0]);
+  assert.equal(bare.resolution, null); store.fail = undefined;
+  const b = setup({ store, resolve: async () => ({ outcome: "resolved", resolution: resolution("conflict") }) });
+  await b.coordinator.recover(); await b.coordinator.retry(C); await a.coordinator.recover();
+  assert.equal(a.coordinator.getSnapshot().phase, "ready");
+  assert.deepEqual(a.coordinator.getSnapshot().dispositions, b.coordinator.getSnapshot().dispositions);
+  const durable = store.getItem(completionStorageKey(A, C));
+  persistCompletionDisposition(() => store, bare);
+  assert.equal(store.getItem(completionStorageKey(A, C)), durable);
+  await a.coordinator.retry(C); await a.coordinator.submitForOccurrence(O, 3);
+  assert.equal(a.sent.length, 1); assert.equal(b.sent.length, 0);
+  // A richer in-memory conflict also upgrades a compatible bare durable envelope.
+  store.setItem(completionStorageKey(A, C), JSON.stringify({ version: 2, ...bare }));
+  await b.coordinator.recover(); assert.equal(store.getItem(completionStorageKey(A, C)), durable);
+});
+
+test("higher-cycle terminal memory survives a stale stored observation and merges acknowledgement", async () => {
+  const store = new Store(); seed(store);
+  const older = { operation: pending(), reason: "superseded", resolution: resolution("unrecorded_superseded"), acknowledged: true };
+  const newer = { ...older, resolution: { ...older.resolution, current_execution_cycle: 6 }, acknowledged: false };
+  persistCompletionDisposition(() => store, newer);
+  const h = setup({ store }); await h.coordinator.recover();
+  store.setItem(completionStorageKey(A, C), JSON.stringify({ version: 2, ...older }));
+  await h.coordinator.recover();
+  assert.equal(h.coordinator.getSnapshot().phase, "ready");
+  assert.deepEqual(h.coordinator.getSnapshot().dispositions[0], { ...newer, acknowledged: true });
+  assert.deepEqual(readPendingCompletions(() => store, A).dispositions, h.coordinator.getSnapshot().dispositions);
+  assert.equal(h.sent.length + h.checked.length, 0);
+});
+
+test("terminal merge rejects changed immutable requests and every changed historical receipt fact", async () => {
+  const original = { operation: pending(), reason: "superseded", resolution: resolution("unrecorded_superseded"), acknowledged: false };
+  const patches = [
+    { operation: { ...pending(), commandId: D } }, { operation: { ...pending(), occurrenceId: P } },
+    { operation: { ...pending(), executionCycle: 2 } },
+    { operation: { ...pending(), occurrenceId: P }, resolution: { ...original.resolution, occurrence_id: P,
+      canonical_receipt: { ...original.resolution.canonical_receipt, occurrence_id: P } } },
+    { operation: { ...pending(), executionCycle: 2 }, resolution: { ...original.resolution, expected_execution_cycle: 2,
+      canonical_receipt: { ...original.resolution.canonical_receipt, execution_cycle: 2 } } },
+    ...Object.entries({ command_id: P, occurrence_id: P, quest_id: P, execution_cycle: 2, completed_event_id: P, exp_entry_id: P,
+      exp_amount: 38, reported_completed_at: "2026-09-23T00:00:00Z", recorded_completed_at: "2026-09-23T00:00:00Z", replay: false })
+      .map(([key, value]) => ({ resolution: { ...original.resolution, canonical_receipt: { ...original.resolution.canonical_receipt, [key]: value } } })),
+    ...["command_id", "occurrence_id", "correction_event_id", "reopened_event_id", "reversal_entry_id"].map((key) => ({ resolution: { ...original.resolution, [key]: P } })),
+    { reason: "conflict", resolution: resolution("conflict") },
+  ];
+  for (const patch of patches) {
+    const store = new Store(); persistCompletionDisposition(() => store, original);
+    const h = setup({ store }); await h.coordinator.recover();
+    const changed = JSON.stringify({ version: 2, ...original, ...patch }); store.setItem(completionStorageKey(A, C), changed);
+    assert.throws(() => persistCompletionDisposition(() => store, original));
+    await h.coordinator.recover(); await h.coordinator.retry(C); await h.coordinator.submitForOccurrence(P, 3);
+    assert.equal(h.coordinator.getSnapshot().storage, "corrupt", JSON.stringify(patch));
+    assert.deepEqual(h.coordinator.getSnapshot().dispositions, [original]);
+    assert.equal(store.getItem(completionStorageKey(A, C)), changed);
+    assert.equal(h.sent.length + h.checked.length, 0);
+  }
+});
+
+test("mixed-case UUID aliases cannot disguise identical canonical or undo identities", () => {
+  const caller = "abcdefab-0000-4000-8000-000000000001";
+  const event = "abcdefab-0000-4000-8000-000000000002";
+  const credit = "abcdefab-0000-4000-8000-000000000003";
+  const good = resolution("unrecorded_superseded", caller);
+  for (const outcome of ["unrecorded_current", "unrecorded_superseded"]) {
+    const malformed = { ...resolution(outcome, caller), current_status: "completed", canonical_receipt: { ...good.canonical_receipt, command_id: caller.toUpperCase() } };
+    assert.equal(validateCompletionResolution(malformed, caller, O, 3), false);
+  }
+  for (const patch of [
+    { correction_event_id: event, reopened_event_id: event.toUpperCase() },
+    { correction_event_id: event.toUpperCase(), canonical_receipt: { ...good.canonical_receipt, completed_event_id: event } },
+    { reopened_event_id: event.toUpperCase(), canonical_receipt: { ...good.canonical_receipt, completed_event_id: event } },
+    { reversal_entry_id: credit.toUpperCase(), canonical_receipt: { ...good.canonical_receipt, exp_entry_id: credit } },
+  ]) assert.equal(validateCompletionResolution({ ...good, ...patch }, caller, O, 3), false);
+});
+
+test("valid mixed-case response identities confirm the unchanged saved request despite cleanup failure", async () => {
+  const command = "abcdefab-0000-4000-8000-000000000001";
+  const occurrence = "abcdefab-0000-4000-8000-000000000002";
+  const saved = pending(command.toUpperCase(), occurrence.toUpperCase());
+  const result = resolution("recorded", command, occurrence);
+  assert.equal(validateCompletionResolution(result, saved.commandId, saved.occurrenceId, 3), true);
+  const store = new Store(); seed(store, saved);
+  const h = setup({ store, resolve: async () => ({ outcome: "resolved", resolution: result }) });
+  await h.coordinator.recover(); store.fail = "remove"; await h.coordinator.retry(saved.commandId);
+  assert.deepEqual(h.coordinator.getSnapshot().confirmations[0].operation, saved);
+  assert.equal(h.coordinator.getSnapshot().confirmations[0].cleanupPending, true);
+  assert.deepEqual(JSON.parse(store.getItem(completionStorageKey(A, saved.commandId))), saved);
+  store.fail = undefined; await h.coordinator.retryConfirmation(saved.commandId);
+  assert.equal(store.length, 0); assert.equal(h.sent.length, 0); assert.equal(h.checked.length, 1);
 });

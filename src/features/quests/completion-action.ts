@@ -7,7 +7,7 @@ import { UUID } from "./create-pending";
 
 export type CompletionState =
   | { outcome: "success"; success: { message: string; replay: boolean }; refreshRequired: boolean }
-  | { outcome: "rejected"; error: string; reason: "account" | "validation" | "stale" }
+  | { outcome: "rejected"; error: string; reason: "account" | "validation" | "stale" | "conflict" }
   | { outcome: "unknown"; error: string };
 
 export async function completeQuest(_previous: unknown, formData: FormData): Promise<CompletionState> {
@@ -22,7 +22,10 @@ export async function completeQuest(_previous: unknown, formData: FormData): Pro
     catch { refreshRequired = true; }
     return { outcome: "success", refreshRequired, success: { message: `${receipt.replay ? "Completion confirmed from an earlier request." : "Quest completed."} ${String(receipt.exp_amount)} EXP awarded.`, replay: receipt.replay } };
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "23514") return { outcome: "rejected", reason: "stale", error: "This Quest changed before completion. Refresh Daily Quests to get the current cycle." };
-    return { outcome: "unknown", error: "The completion outcome is unknown. Retry the exact saved request to confirm it." };
+    if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
+      if (error.code === "23514" && error.message === "Stale quest completion cycle") return { outcome: "rejected", reason: "stale", error: "This Quest changed before completion. Check resolution of the saved request." };
+      if (error.code === "23505" && error.message === "Conflicting quest command reuse") return { outcome: "rejected", reason: "conflict", error: "This command conflicts with recorded history. Its original request is preserved for reconciliation." };
+    }
+    return { outcome: "unknown", error: "The completion outcome is unknown. Check resolution of the saved request before retrying." };
   }
 }

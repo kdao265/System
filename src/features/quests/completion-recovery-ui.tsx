@@ -20,7 +20,7 @@ export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string
     if (reopenState.confirmations.length > 0 || staleCount > 0) void reopenCoordinator.refreshDashboard(() => router.refresh());
   }, [reopenCoordinator, reopenState.confirmations.length, staleCount, router]);
   if (state.accountChanged || reopenState.accountChanged) return <section aria-label="Quest recovery"><p role="alert">{state.error ?? reopenState.error}</p><a href={refreshHref}>Refresh account and Profile</a></section>;
-  if (!state.operations.length && !state.confirmations.length && !state.error && !reopenState.operations.length && !reopenState.confirmations.length && !reopenState.blocks.length && !reopenState.refreshRequired && !reopenState.error) return null;
+  if (!state.operations.length && !state.confirmations.length && !state.dispositions.length && !state.error && !reopenState.operations.length && !reopenState.confirmations.length && !reopenState.blocks.length && !reopenState.refreshRequired && !reopenState.error) return null;
   return (
     <section aria-label="Quest recovery" aria-busy={state.busy || state.refreshing || reopenState.busy || reopenState.refreshing} className="rounded-lg border border-amber-800 bg-zinc-950/80 p-4 [overflow-wrap:anywhere] sm:p-6">
       <h2 className="text-xs font-medium tracking-[0.3em] text-amber-300">QUEST RECOVERY</h2>
@@ -28,9 +28,15 @@ export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string
       {state.operations.map((operation) => (
         <div key={operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3">
           <p className="text-sm">A completion is awaiting confirmation. Its original request is preserved.</p>
-          <button type="button" data-command-id={operation.commandId} onClick={() => coordinator.retry(operation.commandId)} disabled={state.busy || state.phase === "blocked"} className={buttonClass}>Retry exact completion</button>
+          <p className="mt-1 text-xs text-zinc-400">Check its server outcome. Only a verified current-cycle absence allows the exact request to be sent again.</p>
+          <button type="button" data-command-id={operation.commandId} onClick={() => coordinator.retry(operation.commandId)} disabled={state.busy || state.phase === "blocked"} className={buttonClass}>Check completion resolution</button>
         </div>
       ))}
+      {state.dispositions.map((item) => <div key={item.operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3">
+        <p role="status" className="text-sm">{item.reason === "conflict" ? "Completion conflict: this command belongs to different recorded intent. The original request is preserved for reconciliation; mutation retries are blocked." : "This older cycle was completed and then reopened. This command was never recorded, so its earlier success cannot be confirmed. It will not be sent again."}</p>
+        <details className="mt-2 text-xs text-zinc-400"><summary>Retained recovery evidence</summary><p>Command: {item.operation.commandId}</p><p>Occurrence: {item.operation.occurrenceId}; requested cycle: {item.operation.executionCycle}</p>{item.resolution?.canonical_receipt && <><p>Canonical command: {item.resolution.canonical_receipt.command_id}</p><p>Completion event: {item.resolution.canonical_receipt.completed_event_id}</p><p>EXP credit: {item.resolution.canonical_receipt.exp_entry_id}</p><p>Correction: {item.resolution.correction_event_id}</p><p>Reopened event: {item.resolution.reopened_event_id}</p><p>Reversal: {item.resolution.reversal_entry_id}</p></>}</details>
+        {item.reason === "superseded" && (item.acknowledged ? <p className="mt-2 text-sm">Reconciliation acknowledged. Historical uncertainty and evidence remain saved in this browser.</p> : <button type="button" data-command-id={item.operation.commandId} onClick={() => coordinator.acknowledgeSuperseded(item.operation.commandId)} disabled={state.busy || state.phase === "blocked"} className={buttonClass}>Acknowledge reconciliation</button>)}
+      </div>)}
       {state.confirmations.map((confirmation) => (
         <div key={confirmation.operation.commandId} className="mt-3 rounded-md border border-emerald-800 p-3">
           <p role="status" className="text-sm text-emerald-300">{confirmation.message}</p>
@@ -42,8 +48,8 @@ export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string
         </div>
       ))}
       {state.phase === "blocked" && <button type="button" onClick={() => coordinator.recover()} disabled={state.busy} className={buttonClass}>Check recovery again</button>}
-      {state.confirmations.length > 0 && <div className="mt-3">
-        {state.refreshRequired && <p role="status" className="text-sm text-amber-200">Completion is confirmed. Refresh the Dashboard to read the latest state.</p>}
+      {(state.confirmations.length > 0 || state.dispositions.length > 0) && <div className="mt-3">
+        {state.refreshRequired && <p role="status" className="text-sm text-amber-200">{state.confirmations.length > 0 ? "Completion is confirmed. " : ""}Refresh the Dashboard to read the latest state.</p>}
         {state.refreshError && <p role="alert">{state.refreshError}</p>}
         <button type="button" onClick={() => coordinator.refreshDashboard(() => router.refresh())} disabled={state.refreshing} className={buttonClass}>Refresh Dashboard</button>
         <a href={refreshHref} className="ml-3 text-sm underline">Reload selected day</a>

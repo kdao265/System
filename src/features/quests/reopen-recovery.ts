@@ -21,6 +21,14 @@ const sameIntent = (a: PendingReopen, occurrenceId: string, cycle: number) => a.
 const cycleKey = (occurrenceId: string, cycle: number) => `${occurrenceId}:${cycle}`;
 type Intent = { kind: "new"; occurrenceId: string; executionCycle: number } | { kind: "retry"; operation: PendingReopen };
 
+// Shared immutable reference for SSR and the first hydration render. The
+// lifecycle replaces its state object on updates, never mutating this snapshot.
+export const REOPEN_SERVER_SNAPSHOT: ReopenView = {
+  phase: "recovering", storage: "unchecked", busy: false, accountChanged: false,
+  operations: [], confirmations: [], blocks: [], refreshRequired: false, refreshing: false,
+};
+export const getReopenServerSnapshot = () => REOPEN_SERVER_SNAPSHOT;
+
 export class ReopenRecoveryLifecycle {
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -30,7 +38,7 @@ export class ReopenRecoveryLifecycle {
   // A late row callback cannot reuse a cycle whose rejection was reconciled.
   private staleCycles = new Set<string>();
   private pendingRead?: DayQuestResult;
-  private state: ReopenView = { phase: "recovering", storage: "unchecked", busy: false, accountChanged: false, operations: [], confirmations: [], blocks: [], refreshRequired: false, refreshing: false };
+  private state: ReopenView = REOPEN_SERVER_SNAPSHOT;
   constructor(userId: string, deps: ReopenDependencies) { this.userId = userId; this.deps = deps; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };

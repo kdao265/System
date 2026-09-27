@@ -1,5 +1,8 @@
 import type { CompletionState } from "./completion-action";
-import { persistPendingCompletion, readPendingCompletions, removePendingCompletion, type PendingCompletion, type CompletionRead } from "./completion-pending";
+import { persistPendingCompletion, persistCompletionDisposition, mergeCompletionDispositions, readPendingCompletions, removePendingCompletion, type PendingCompletion, type CompletionRead, type CompletionDisposition } from "./completion-pending";
+import type { CompletionResolutionState } from "./completion-resolution-action";
+import { validateCompletionResolution } from "./completion-resolution";
+import { completionSuccessMessage } from "./completion-receipt";
 
 export type CompletionConfirmation = {
   operation: PendingCompletion;
@@ -14,6 +17,7 @@ export type RecoveryView = {
   accountChanged: boolean;
   operations: PendingCompletion[];
   confirmations: CompletionConfirmation[];
+  dispositions: CompletionDisposition[];
   refreshRequired: boolean;
   refreshing: boolean;
   refreshError?: string;
@@ -23,16 +27,25 @@ export type RecoveryDependencies = {
   storage: () => Storage;
   lock: <T>(userId: string, work: () => Promise<T>) => Promise<T>;
   send: (previous: unknown, form: FormData) => Promise<CompletionState>;
+  resolve: (previous: unknown, form: FormData) => Promise<CompletionResolutionState>;
   uuid: () => string;
 };
 export const COMPLETION_LOCK = "system.quest-completion";
 const storageError = "Browser recovery storage or tab coordination is unavailable. Your saved requests are preserved; check recovery again.";
 const corruptError = "Saved completion recovery data is unreadable or changed. Preserve the data and resolve the original requests before continuing.";
-const unknownError = "The completion outcome is unknown. Retry the exact saved request to confirm it.";
+const unknownError = "The completion outcome is unknown. Your original request is preserved. Check resolution again before retrying.";
 const accountError = "Your account changed or your session ended. Refresh to continue with the signed-in account.";
 const sameOperation = (a: PendingCompletion, b: PendingCompletion) => JSON.stringify(a) === JSON.stringify(b);
 const sameIntent = (a: PendingCompletion, occurrenceId: string, cycle: number) => a.occurrenceId === occurrenceId && a.executionCycle === cycle;
 type Intent = { kind: "new"; occurrenceId: string; executionCycle: number } | { kind: "retry"; operation: PendingCompletion };
+
+// Identical on the server and the first client hydration render, even when an
+// outer provider has recovered before a streamed Quest panel hydrates.
+export const COMPLETION_SERVER_SNAPSHOT: RecoveryView = {
+  phase: "recovering", storage: "unchecked", busy: false, accountChanged: false,
+  operations: [], confirmations: [], dispositions: [], refreshRequired: false, refreshing: false,
+};
+export const getCompletionServerSnapshot = () => COMPLETION_SERVER_SNAPSHOT;
 
 /** Owned by one account-keyed Dashboard provider, never by individual rows. */
 export class CompletionRecoveryLifecycle {
@@ -41,10 +54,7 @@ export class CompletionRecoveryLifecycle {
   private active = true;
   private readonly userId: string;
   private readonly deps: RecoveryDependencies;
-  private state: RecoveryView = {
-    phase: "recovering", storage: "unchecked", busy: false, accountChanged: false,
-    operations: [], confirmations: [], refreshRequired: false, refreshing: false,
-  };
+  private state: RecoveryView = COMPLETION_SERVER_SNAPSHOT;
 
   constructor(userId: string, deps: RecoveryDependencies) { this.userId = userId; this.deps = deps; }
   getSnapshot = () => this.state;
@@ -71,29 +81,43 @@ export class CompletionRecoveryLifecycle {
       this.set({ phase: "blocked", storage: read.status, error: read.status === "corrupt" ? corruptError : storageError });
       return false;
     }
-    const stored = new Map(read.operations.map((operation) => [operation.commandId, operation]));
-    for (const operation of this.state.operations) {
+    const dispositions = new Map(read.dispositions.map((item) => [item.operation.commandId, item]));
+    const stored = new Map([...read.operations, ...read.dispositions.map((item) => item.operation)].map((operation) => [operation.commandId, operation]));
+    // Check all known immutable payloads before restoring any terminal evidence.
+    for (const operation of [...this.state.operations, ...this.state.dispositions.map((item) => item.operation), ...this.state.confirmations.map((item) => item.operation)]) {
       const existing = stored.get(operation.commandId);
       if (existing && !sameOperation(existing, operation)) {
         this.set({ phase: "blocked", storage: "corrupt", error: corruptError });
         return false;
       }
+    }
+    for (const item of this.state.dispositions) {
+      const prior = dispositions.get(item.operation.commandId);
+      const merged = prior ? mergeCompletionDispositions(prior, item) : item;
+      if (!merged) {
+        this.set({ phase: "blocked", storage: "corrupt", error: corruptError });
+        return false;
+      }
+      dispositions.set(item.operation.commandId, merged);
+      stored.set(item.operation.commandId, item.operation);
+    }
+    // All comparisons passed. Restore deleted/downgraded records under the lock.
+    for (const item of this.state.dispositions) {
+      const merged = dispositions.get(item.operation.commandId)!;
+      persistCompletionDisposition(this.deps.storage, merged);
+    }
+    for (const operation of this.state.operations) {
+      const existing = stored.get(operation.commandId);
       if (!existing) {
         persistPendingCompletion(this.deps.storage, operation);
         stored.set(operation.commandId, operation);
       }
     }
-    for (const confirmation of this.state.confirmations) {
-      const existing = stored.get(confirmation.operation.commandId);
-      if (existing && !sameOperation(existing, confirmation.operation)) {
-        this.set({ phase: "blocked", storage: "corrupt", error: corruptError });
-        return false;
-      }
-    }
     const confirmedIds = new Set(this.state.confirmations.map((item) => item.operation.commandId));
     this.set({
       storage: stored.size ? "valid" : "missing",
-      operations: [...stored.values()].filter((operation) => !confirmedIds.has(operation.commandId)),
+      operations: [...stored.values()].filter((operation) => !confirmedIds.has(operation.commandId) && !dispositions.has(operation.commandId)),
+      dispositions: [...dispositions.values()],
       // A stale tab may restore a record we already confirmed. Only cleanup is needed.
       confirmations: this.state.confirmations.map((item) => stored.has(item.operation.commandId) ? { ...item, cleanupPending: true } : item),
     });
@@ -140,8 +164,12 @@ export class CompletionRecoveryLifecycle {
       if (!this.readInventory()) return;
       if (!this.current(generation) || (isActive && !isActive())) return;
       if (intent.kind === "new") {
+        if (this.state.dispositions.some((item) => sameIntent(item.operation, intent.occurrenceId, intent.executionCycle))) {
+          this.set({ error: "This completion request has retained reconciliation evidence. Refresh Dashboard and review Quest recovery." });
+          return;
+        }
         if (this.state.operations.some((item) => sameIntent(item, intent.occurrenceId, intent.executionCycle))) {
-          this.set({ phase: "uncertain", error: "This Quest has a saved completion request. Retry that exact request to confirm it." });
+          this.set({ phase: "uncertain", error: "This Quest has a saved completion request. Check its resolution before retrying." });
           return;
         }
         if (this.state.confirmations.some((item) => sameIntent(item.operation, intent.occurrenceId, intent.executionCycle))) {
@@ -149,6 +177,8 @@ export class CompletionRecoveryLifecycle {
           return;
         }
       }
+      if (intent.kind === "retry" && (!this.state.operations.some((item) => item.commandId === intent.operation.commandId) ||
+        this.state.dispositions.some((item) => item.operation.commandId === intent.operation.commandId))) return;
       const operation: PendingCompletion = intent.kind === "retry" ? intent.operation : {
         version: 1, userId: this.userId, commandId: this.deps.uuid(), occurrenceId: intent.occurrenceId,
         executionCycle: intent.executionCycle, reportedCompletedAt: null, origin: "web_ui",
@@ -160,22 +190,41 @@ export class CompletionRecoveryLifecycle {
       form.set("command_id", operation.commandId);
       form.set("occurrence_id", operation.occurrenceId);
       form.set("execution_cycle", String(operation.executionCycle));
+      if (intent.kind === "retry") {
+        let resolutionResult: CompletionResolutionState;
+        try { resolutionResult = await this.deps.resolve({}, form); }
+        catch { resolutionResult = { outcome: "unknown", error: unknownError }; }
+        if (!this.current(generation)) return;
+        if (resolutionResult.outcome === "rejected" && resolutionResult.reason === "account") { this.deactivate(); return; }
+        if (resolutionResult.outcome !== "resolved") {
+          this.set({ phase: "uncertain", error: resolutionResult.error }); return;
+        }
+        const resolution = resolutionResult.resolution;
+        if (!validateCompletionResolution(resolution, operation.commandId, operation.occurrenceId, operation.executionCycle)) {
+          this.set({ phase: "uncertain", error: unknownError }); return;
+        }
+        if (resolution.outcome === "recorded" && resolution.receipt) {
+          this.confirm(operation, completionSuccessMessage(resolution.receipt), true, true); return;
+        }
+        if (resolution.outcome === "conflict" || resolution.outcome === "unrecorded_superseded") {
+          this.reconcile({ operation, reason: resolution.outcome === "conflict" ? "conflict" : "superseded", resolution, acknowledged: false }); return;
+        }
+        // Only a validated current-cycle absence permits the identical mutation.
+        // Reopen racing this observation is still protected by the immutable cycle.
+        if (isActive && !isActive()) { this.set({ phase: this.idlePhase() }); return; }
+      }
       let result: CompletionState;
       try { result = await this.deps.send({}, form); }
       catch { result = { outcome: "unknown", error: unknownError }; }
       // Row removal cannot cancel an already-dispatched effect. The owner settles it.
       if (!this.current(generation)) return;
       if (result.outcome === "success") {
-        this.set({
-          confirmations: [...this.state.confirmations, { operation, message: result.success.message, replay: result.success.replay, cleanupPending: true }],
-          operations: this.state.operations.filter((item) => item.commandId !== operation.commandId),
-          refreshRequired: this.state.refreshRequired || result.refreshRequired,
-        });
-        this.cleanup(operation);
-        this.set({ phase: this.idlePhase() });
+        this.confirm(operation, result.success.message, result.success.replay, result.refreshRequired);
       } else if (result.outcome === "rejected" && result.reason === "account") {
         this.deactivate();
-      } else if (result.outcome === "rejected" && intent.kind === "new") {
+      } else if (result.outcome === "rejected" && result.reason === "conflict") {
+        this.reconcile({ operation, reason: "conflict", resolution: null, acknowledged: false });
+      } else if (result.outcome === "rejected" && result.reason === "validation" && intent.kind === "new") {
         // Only a first attempt's definitive rejection can discard an unaccepted request.
         removePendingCompletion(this.deps.storage, operation);
         this.set({ operations: this.state.operations.filter((item) => item.commandId !== operation.commandId), error: result.error });
@@ -185,6 +234,36 @@ export class CompletionRecoveryLifecycle {
         this.set({ phase: "uncertain", error: result.error ?? unknownError });
       }
     }, isActive);
+  }
+
+  private confirm(operation: PendingCompletion, message: string, replay: boolean, refreshRequired: boolean) {
+    this.set({
+      confirmations: [...this.state.confirmations, { operation, message, replay, cleanupPending: true }],
+      operations: this.state.operations.filter((item) => item.commandId !== operation.commandId),
+      refreshRequired: this.state.refreshRequired || refreshRequired,
+    });
+    this.cleanup(operation);
+    this.set({ phase: this.idlePhase() });
+  }
+
+  private reconcile(disposition: CompletionDisposition) {
+    // Retain validated evidence in memory even if the durable write fails.
+    this.set({ dispositions: [...this.state.dispositions.filter((item) => item.operation.commandId !== disposition.operation.commandId), disposition],
+      operations: this.state.operations.filter((item) => item.commandId !== disposition.operation.commandId), refreshRequired: true });
+    const merged = persistCompletionDisposition(this.deps.storage, disposition);
+    this.set({ dispositions: this.state.dispositions.map((item) => item.operation.commandId === merged.operation.commandId ? merged : item), phase: this.idlePhase() });
+  }
+
+  async acknowledgeSuperseded(commandId: string) {
+    await this.locked(() => {
+      if (!this.readInventory()) return;
+      const item = this.state.dispositions.find((entry) => entry.operation.commandId === commandId && entry.reason === "superseded");
+      if (!item) return;
+      const acknowledged = { ...item, acknowledged: true };
+      // Never remove: this may be the only evidence of a never-recorded command.
+      const merged = persistCompletionDisposition(this.deps.storage, acknowledged);
+      this.set({ dispositions: this.state.dispositions.map((entry) => entry === item ? merged : entry), phase: this.idlePhase() });
+    });
   }
 
   private cleanup(operation: PendingCompletion) {
@@ -212,7 +291,7 @@ export class CompletionRecoveryLifecycle {
       await refresh();
       if (this.current(generation)) this.set({ refreshRequired: false });
     } catch {
-      if (this.current(generation)) this.set({ refreshRequired: true, refreshError: "Completion is confirmed, but Dashboard refresh failed. Retry the refresh." });
+      if (this.current(generation)) this.set({ refreshRequired: true, refreshError: "Dashboard refresh failed. Saved completion recovery evidence is preserved. Retry the refresh." });
     } finally {
       if (this.current(generation)) this.set({ refreshing: false });
     }

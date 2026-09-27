@@ -16,6 +16,11 @@ export type QuestCompletionReceipt = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BIGINT_MAX = BigInt("9223372036854775807");
 
+/** Compare UUID values without changing their stored representation. */
+export function sameUuid(a: unknown, b: unknown): boolean {
+  return typeof a === "string" && typeof b === "string" && UUID.test(a) && UUID.test(b) && a.toLowerCase() === b.toLowerCase();
+}
+
 function validAmount(value: unknown): value is number | string {
   if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0;
   if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) return false;
@@ -27,8 +32,7 @@ export function validateQuestCompletionReceipt(value: unknown, commandId: string
   const receipt = value as Record<string, unknown>;
   const fields = ["command_id", "occurrence_id", "quest_id", "execution_cycle", "completed_event_id", "exp_entry_id", "exp_amount", "reported_completed_at", "recorded_completed_at", "replay"];
   return Object.keys(receipt).length === fields.length && fields.every((field) => Object.hasOwn(receipt, field)) &&
-    typeof receipt.command_id === "string" && receipt.command_id === commandId && UUID.test(receipt.command_id) &&
-    typeof receipt.occurrence_id === "string" && receipt.occurrence_id === occurrenceId && UUID.test(receipt.occurrence_id) &&
+    sameUuid(receipt.command_id, commandId) && sameUuid(receipt.occurrence_id, occurrenceId) &&
     typeof receipt.quest_id === "string" && UUID.test(receipt.quest_id) &&
     typeof receipt.execution_cycle === "number" && Number.isInteger(receipt.execution_cycle) && receipt.execution_cycle === cycle && receipt.execution_cycle >= 1 && receipt.execution_cycle <= 2147483647 &&
     typeof receipt.completed_event_id === "string" && UUID.test(receipt.completed_event_id) &&

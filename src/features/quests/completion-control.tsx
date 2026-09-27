@@ -3,8 +3,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useCompletionCoordinator } from "./completion-provider";
 import { QuestCompletionLifecycle } from "./completion-lifecycle";
+import { getCompletionServerSnapshot } from "./completion-recovery";
 import { useReopenCoordinator } from "./completion-provider";
 import { QuestReopenLifecycle } from "./reopen-lifecycle";
+import { getReopenServerSnapshot } from "./reopen-recovery";
 
 export function QuestCompletionControl({ occurrenceId, executionCycle }: { userId: string; occurrenceId: string; executionCycle: number; selectedDate: string }) {
   return <OccurrenceCompletionControl key={`${occurrenceId}:${executionCycle}`} occurrenceId={occurrenceId} executionCycle={executionCycle} />;
@@ -18,7 +20,7 @@ function OccurrenceReopenControl({ occurrenceId, executionCycle }: { occurrenceI
   const coordinator = useReopenCoordinator();
   const [row] = useState(() => new QuestReopenLifecycle(coordinator, occurrenceId, executionCycle));
   const [confirming, setConfirming] = useState(false);
-  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, coordinator.getSnapshot);
+  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, getReopenServerSnapshot);
   useEffect(() => { row.activate(); return () => row.deactivate(); }, [row]);
   const operation = state.operations.find((item) => item.occurrenceId === occurrenceId && item.executionCycle === executionCycle);
   const confirmation = state.confirmations.find((item) => item.operation.occurrenceId === occurrenceId && item.operation.executionCycle === executionCycle);
@@ -33,7 +35,7 @@ function OccurrenceReopenControl({ occurrenceId, executionCycle }: { occurrenceI
 function OccurrenceCompletionControl({ occurrenceId, executionCycle }: { occurrenceId: string; executionCycle: number }) {
   const coordinator = useCompletionCoordinator();
   const [row] = useState(() => new QuestCompletionLifecycle(coordinator, occurrenceId, executionCycle));
-  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, coordinator.getSnapshot);
+  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, getCompletionServerSnapshot);
   useEffect(() => { row.activate(); return () => row.deactivate(); }, [row]);
   const operation = state.operations.find((item) => item.occurrenceId === occurrenceId && item.executionCycle === executionCycle);
   const confirmation = state.confirmations.find((item) => item.operation.occurrenceId === occurrenceId && item.operation.executionCycle === executionCycle);

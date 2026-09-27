@@ -4,6 +4,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useCompletionCoordinator } from "./completion-provider";
 import { useReopenCoordinator } from "./completion-provider";
+import { getCompletionServerSnapshot } from "./completion-recovery";
+import { getReopenServerSnapshot } from "./reopen-recovery";
 
 const buttonClass = "mt-2 rounded-md border border-amber-500 px-3 py-2 text-sm disabled:opacity-60";
 
@@ -11,8 +13,8 @@ const buttonClass = "mt-2 rounded-md border border-amber-500 px-3 py-2 text-sm d
 export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string }) {
   const coordinator = useCompletionCoordinator();
   const reopenCoordinator = useReopenCoordinator();
-  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, coordinator.getSnapshot);
-  const reopenState = useSyncExternalStore(reopenCoordinator.subscribe, reopenCoordinator.getSnapshot, reopenCoordinator.getSnapshot);
+  const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, getCompletionServerSnapshot);
+  const reopenState = useSyncExternalStore(reopenCoordinator.subscribe, reopenCoordinator.getSnapshot, getReopenServerSnapshot);
   const router = useRouter();
   const refreshHref = `/dashboard?date=${selectedDate}`;
   const staleCount = reopenState.blocks.filter((item) => item.reason === "stale").length;

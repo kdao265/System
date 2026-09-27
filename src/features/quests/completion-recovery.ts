@@ -39,6 +39,14 @@ const sameOperation = (a: PendingCompletion, b: PendingCompletion) => JSON.strin
 const sameIntent = (a: PendingCompletion, occurrenceId: string, cycle: number) => a.occurrenceId === occurrenceId && a.executionCycle === cycle;
 type Intent = { kind: "new"; occurrenceId: string; executionCycle: number } | { kind: "retry"; operation: PendingCompletion };
 
+// Identical on the server and the first client hydration render, even when an
+// outer provider has recovered before a streamed Quest panel hydrates.
+export const COMPLETION_SERVER_SNAPSHOT: RecoveryView = {
+  phase: "recovering", storage: "unchecked", busy: false, accountChanged: false,
+  operations: [], confirmations: [], dispositions: [], refreshRequired: false, refreshing: false,
+};
+export const getCompletionServerSnapshot = () => COMPLETION_SERVER_SNAPSHOT;
+
 /** Owned by one account-keyed Dashboard provider, never by individual rows. */
 export class CompletionRecoveryLifecycle {
   private listeners = new Set<() => void>();
@@ -46,10 +54,7 @@ export class CompletionRecoveryLifecycle {
   private active = true;
   private readonly userId: string;
   private readonly deps: RecoveryDependencies;
-  private state: RecoveryView = {
-    phase: "recovering", storage: "unchecked", busy: false, accountChanged: false,
-    operations: [], confirmations: [], dispositions: [], refreshRequired: false, refreshing: false,
-  };
+  private state: RecoveryView = COMPLETION_SERVER_SNAPSHOT;
 
   constructor(userId: string, deps: RecoveryDependencies) { this.userId = userId; this.deps = deps; }
   getSnapshot = () => this.state;

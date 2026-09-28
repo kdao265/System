@@ -20,6 +20,11 @@ migrations retain their semantics; development validation uses only local Supaba
 
 ## Local development
 
+Browser tests have their own [Playwright setup and safety guide](docs/04-development/playwright-e2e.md).
+Run `npx playwright install chromium`, then `npm run test:e2e` with the documented
+Docker images cached. Tests create disposable Supabase and application instances;
+they never use Production or the existing Local database.
+
 Use Node.js 24 LTS and npm. From the repository root:
 
 ```sh

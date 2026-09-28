@@ -1,0 +1,57 @@
+name: Playwright E2E
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_CONTEXT: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Chromium and system libraries
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Cache required disposable service images
+        run: |
+          docker pull public.ecr.aws/supabase/postgres:17.6.1.166
+          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
+          docker pull public.ecr.aws/supabase/postgrest:v16.2
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx --no-install tsc --noEmit
+      - name: Node regressions including E2E safety guards
+        run: node --test tests/*.test.mjs
+      - name: Existing disposable database and migration regressions
+        run: node supabase/tests/private-owner-wire.mjs
+      - name: Existing disposable auth regression and production build
+        run: node tests/auth-smoke.mjs
+      - name: Discover browser coverage
+        run: npm run test:e2e -- --list
+      - name: Run isolated desktop and mobile browser tests
+        run: npm run test:e2e
+      - name: Retain browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

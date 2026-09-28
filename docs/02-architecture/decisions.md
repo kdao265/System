@@ -218,3 +218,28 @@ migration path, fully validated on disposable resources, and applied to Producti
 (Cloud) on 2026-09-28 with Local/Remote migration history synchronized and the final
 Production smoke testing passed. See the
 [database hardening record](../04-development/private-auth-database.md).
+
+## ADR-016 - Disposable Playwright browser foundation
+
+**Date:** 2026-09-28. **Status:** Accepted within the Product Owner's explicit
+Playwright implementation request; no application architecture change.
+
+**Context:** Browser coverage must exercise Private Auth V1 without contacting
+Production or the developer's existing Local project. Shared owner mutations must
+be deterministic.
+
+**Decision:** Extend the existing disposable auth helper with an opt-in isolated
+application copy/build. Playwright worker fixtures own that same verified tmpfs
+Supabase lifecycle. Use real UI authentication, one worker, no saved session state,
+and separate desktop lifecycle/mobile anonymous specs. Add `@playwright/test` as
+a development dependency for real browser assertions and failure diagnostics.
+
+**Alternatives:** Reusing a running app/Local Supabase risks real data; a second
+Supabase CLI environment duplicates existing safety logic; API-created browser
+sessions would omit the requested login flow. Parallel shared-owner mutations and
+retries against dirty state would hide ordering defects.
+
+**Impact:** Each project worker builds its own application and provisions fresh
+fixtures, increasing runtime but preserving isolation. No production dependency,
+RLS, schema or domain rule changes. The existing checkpoint workflow is preserved;
+a separate browser workflow adds coverage. See [lifecycle and task contract](../04-development/playwright-e2e.md).

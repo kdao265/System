@@ -124,7 +124,7 @@ function browser(t, store = new Store(), lock = immediateLock) {
     removeEventListener(name, listener) { events.get(name)?.delete(listener); },
   };
   Object.defineProperty(globalThis, "window", { configurable: true, value: window });
-  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: { request: (name, work) => { lockNames.push(name); return lock(A, work); } } } });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: true, locks: { request: (name, work) => { lockNames.push(name); return lock(A, work); } } } });
   const renderer = new CompletionRenderer();
   t.after(() => {
     renderer.unmount();
@@ -168,7 +168,7 @@ test("storage-removal failure after success keeps confirmation and cleanup retry
 test("actual provider, Recovery and two rows share one instance; removing a row preserves other consumers", async (t) => {
   configure(() => ({ data: null, error: { code: "network" } }), A);
   const h = browser(t); await h.mount();
-  const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders);
+  const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders).filter((read) => typeof read() === "object");
   assert.equal(readers.length, 4); assert.equal(new Set(readers).size, 2);
   assert.equal(authCallbacks.size, 1);
   await h.click("Complete");
@@ -187,7 +187,7 @@ test("actual provider, Recovery and two rows share one instance; removing a row 
 test("actual row mount and same-account refresh preserve requests and confirmations", async (t) => {
   configure((_name, args) => ({ data: receipt(args.command_id, args.occurrence_id), error: null }), A);
   const h = browser(t); await h.mount(); await h.click("Complete");
-  const get = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders)[0];
+  const get = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders).filter((read) => typeof read() === "object")[0];
   const confirmed = get().confirmations;
   h.setRows([O]); h.setRows([O, P]); h.render();
   assert.deepEqual(get().confirmations, confirmed); assert.equal(get().accountChanged, false);
@@ -246,7 +246,7 @@ test("account-keyed provider remount isolates state and old queued callbacks", a
   await h.mount(); queued = true; const task = h.button("Complete")[0].props.onClick();
   h.setAccount(B); gate.resolve(); await task; await tick(); h.render();
   assert.equal(calls.length, 0); assert.equal(h.store.length, 0);
-  const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders);
+  const readers = [...h.renderer.instances.values()].flatMap((item) => item.snapshotReaders).filter((read) => typeof read() === "object");
   assert.equal(new Set(readers).size, 2); assert.equal(readers[0]().accountChanged, false);
 });
 
@@ -1029,4 +1029,24 @@ test("valid mixed-case response identities confirm the unchanged saved request d
   assert.deepEqual(JSON.parse(store.getItem(completionStorageKey(A, saved.commandId))), saved);
   store.fail = undefined; await h.coordinator.retryConfirmation(saved.commandId);
   assert.equal(store.length, 0); assert.equal(h.sent.length, 0); assert.equal(h.checked.length, 1);
+});
+
+// The online store adds subscriptions without changing the shared command owners.
+test("offline completion and reopen controls recover without automatic dispatch", async (t) => {
+  const h = browser(t); await h.mount();
+  h.setReopenRows([P]);
+  navigator.onLine = false;
+  for (const listener of h.events.get("offline") ?? []) listener();
+  h.render();
+  assert.equal(h.button("Complete")[0].props.disabled, true);
+  assert.equal(h.button("Reopen")[0].props.disabled, true);
+  navigator.onLine = true;
+  for (const listener of h.events.get("online") ?? []) listener();
+  h.render();
+  assert.equal(h.button("Complete")[0].props.disabled, false);
+  assert.equal(h.button("Reopen")[0].props.disabled, false);
+  assert.equal(calls.length, 0);
+  h.renderer.unmount();
+  assert.equal(h.events.get("online").size, 0);
+  assert.equal(h.events.get("offline").size, 0);
 });

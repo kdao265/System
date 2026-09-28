@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { ServiceWorkerRegistration } from "@/features/pwa/service-worker-registration";
+import { NetworkStatus } from "@/features/network/network-status";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
+        <NetworkStatus />
         {children}
         <ServiceWorkerRegistration />
       </body>

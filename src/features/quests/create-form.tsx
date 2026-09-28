@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useOnline } from "@/features/network/network-status";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { createQuest } from "./create-action";
@@ -18,6 +19,7 @@ export function QuestCreationForm(props: { timezone: string; userId: string }) {
 
 function AccountQuestCreationForm({ timezone, userId }: { timezone: string; userId: string }) {
   const router = useRouter();
+  const online = useOnline();
   const [controller] = useState(() => new QuestCreationLifecycle(userId, timezone, {
     storage: () => window.localStorage,
     lock: async (_account, work) => {
@@ -61,14 +63,14 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void controller.submit();
+    if (navigator.onLine) void controller.submit();
   }
   function update<K extends keyof QuestDraft>(name: K, value: QuestDraft[K]) { controller.updateDraft(name, value); }
   const locked = state.phase !== "ready";
   const active = state.phase === "sending" || state.phase === "recovering";
 
   return (
-    <section aria-label="Create Quest" className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 sm:p-6">
+    <section aria-label="Create Quest" className="min-w-0 [overflow-wrap:anywhere] rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 sm:p-6">
       <h2 className="text-xs font-medium tracking-[0.3em] text-zinc-400">CREATE QUEST</h2>
       <p className="mt-2 text-sm text-zinc-400">Form times use: {state.draftTimezone}</p>
       <p className="mt-1 text-sm text-zinc-400">Current Profile timezone: {state.profileTimezone}</p>
@@ -82,7 +84,7 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
         <p>Original timezone: {operation.timezone}. The exact request and absolute times are preserved.</p>
         {operation.request.scheduled_at && <p>Planned start: {formatProfileLocal(operation.request.scheduled_at, operation.timezone)}</p>}
         {operation.request.deadline_at && <p>Deadline: {formatProfileLocal(operation.request.deadline_at, operation.timezone)}</p>}
-        <button type="button" onClick={() => { void controller.retry(operation.commandId); }} disabled={state.phase !== "uncertain"} className="mt-3 rounded-md border border-amber-500 px-3 py-2 disabled:opacity-50">Retry exact request</button>
+        <button type="button" onClick={() => { if (navigator.onLine) void controller.retry(operation.commandId); }} disabled={!online || state.phase !== "uncertain"} className="mt-3 rounded-md border border-amber-500 px-3 py-2 disabled:opacity-50 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Retry exact request</button>
       </div>)}
       {state.phase === "blocked" && !state.accountChanged && <button type="button" onClick={() => { void controller.recover(); }} className="mt-3 underline">Check recovery again</button>}
       {(state.accountChanged || state.draftTimezone !== state.profileTimezone) && <a href="/dashboard" className="mt-3 block underline">Refresh account and Profile</a>}
@@ -99,7 +101,7 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
           <div><label htmlFor="quest-priority">Priority (optional)</label><select id="quest-priority" value={draft.priority} onChange={(event) => update("priority", event.target.value as QuestDraft["priority"])} disabled={locked} className={control}><option value="">Unspecified</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
         </div>
         <div aria-live="polite" aria-atomic="true">{state.error && <p role="alert" className="text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="text-sm text-emerald-300">{state.message}</p>}</div>
-        <button type="submit" disabled={locked} className="w-full rounded-md bg-zinc-100 px-4 py-2 font-medium text-zinc-950 disabled:opacity-50 pointer-coarse:py-3">{state.phase === "sending" ? "Confirming request…" : "Schedule Quest"}</button>
+        <button type="submit" disabled={locked || !online} className="w-full rounded-md bg-zinc-100 px-4 py-2 font-medium text-zinc-950 disabled:opacity-50 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{state.phase === "sending" ? "Confirming request…" : "Schedule Quest"}</button>
       </form>
     </section>
   );

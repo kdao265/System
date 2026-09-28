@@ -187,9 +187,10 @@ privileged browser credential is introduced. [Scope, audit and validation](../04
 
 ## ADR-015 - Single-owner database enforcement
 
-**Date:** 2026-09-28. **Status:** Accepted by the Product Owner's implementation and
-stage-two promotion authorizations. Implemented, tested and promoted in the repository;
-Cloud stage two activation remains pending.
+**Date:** 2026-09-28. **Status:** Accepted and implemented. Both stages are applied to
+Cloud (Production) on 2026-09-28: Local/Remote migration history is synchronized, 15
+restrictive single-owner policies and 14 public-RPC entry guards are active, exactly one
+configured owner remains, and final Production smoke testing passed.
 
 **Context:** Valid non-owner tokens can bypass Next.js and invoke permitted Supabase
 queries/RPCs on their own data. Disabling signup does not remove this access.
@@ -211,7 +212,9 @@ paths. Rewriting every business routine or managed Auth helper creates wider ris
 stage one and the promoted `20260928100000_activate_private_owner.sql` for stage two
 activation) plus a separately approved environment-specific bootstrap; missing
 bootstrap deliberately denies application database access. App and database UUIDs must
-agree. The Product Owner authorized implementation and the stage-two promotion on
-2026-09-28. The hardening is implemented, promoted into the migration path and fully
-validated on disposable resources; no Local or Cloud database was migrated from this
-branch, and Cloud stage two activation remains pending.
+agree. The Product Owner authorized implementation, the stage-two promotion and the
+Production rollout on 2026-09-28. The hardening is implemented, promoted into the
+migration path, fully validated on disposable resources, and applied to Production
+(Cloud) on 2026-09-28 with Local/Remote migration history synchronized and the final
+Production smoke testing passed. See the
+[database hardening record](../04-development/private-auth-database.md).

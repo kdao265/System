@@ -52,16 +52,43 @@ administrative boundaries, not application credentials.
 
 ## Deployment status
 
+### Production activation completed — 2026-09-28
+
+The Product Owner authorized and confirmed the Production (Cloud) rollout, and on
+2026-09-28 the promoted activation migration was applied successfully to Cloud.
+Recorded results:
+
+| Item | Result |
+| --- | --- |
+| `supabase/migrations/20260928100000_activate_private_owner.sql` | Applied successfully to Cloud |
+| Local/Remote migration history | Synchronized |
+| Restrictive single-owner RLS policies | 15 active |
+| Public RPCs guarded | 14 |
+| Configured owner configuration rows | Exactly one remains |
+| Final Production smoke testing | Passed |
+
+Final Production smoke testing passed for owner authentication, dashboard access,
+EXP/Level reads, Quest complete/refresh/reopen/recomplete, two-tab consistency, and
+logout and relogin. The approved order was followed: stage one, approved owner
+provisioning and identity verification, then stage two. Cloud received the activation
+through the ordinary migration sequence, and its fail-closed preflight still requires
+the single verified owner configuration, so an unprovisioned project cannot activate.
+No other Cloud data, Vercel setting, Local database or Docker resource was changed by
+that rollout, and the disposable validation below was not re-run against Cloud.
+
+### Promotion — 2026-09-28
+
 Stage two was promoted on 2026-09-28 on branch `chore/private-auth-activation`, under
 the Product Owner authorization recorded in
 [decisions.md](../02-architecture/decisions.md). The file was moved from
 `supabase/staged-migrations/` to `supabase/migrations/` as a git rename; its SQL
 statements are unchanged and only the header comment now records the promotion. The
 disposable harness, the private-owner wire test, the fresh-Supabase CI hold-back
-assertions and this record were updated to match. No existing database was contacted,
-reset or migrated: no Local or Cloud migration was applied, and no Docker volume,
-backup, Vercel setting or non-owned container was changed. Nothing was committed,
-pushed or merged.
+assertions and this record were updated to match. At promotion time no existing
+database was contacted, reset or migrated, and no Docker volume, backup, Vercel setting
+or non-owned container was changed; the separately authorized Production application
+followed on the same date as recorded above. Nothing was committed, pushed or merged
+for that promotion.
 
 Validation of the promoted set on 2026-09-28, using self-owned disposable Docker
 resources only (Docker Desktop was started locally for these suites):
@@ -87,14 +114,16 @@ it requires deciding how that harness excludes the private-owner migrations from
 copy-and-apply step, so it is recorded in the [backlog](../00-product/backlog.md)
 instead of being changed here.
 
-Deploying the promoted migration remains a separate, explicitly authorized step, in the
-order stage one, owner provisioning and identity verification, then stage two.
+Deploying the promoted migration was a separate, explicitly authorized step, in the
+order stage one, owner provisioning and identity verification, then stage two; that step
+completed for Production on 2026-09-28 as recorded above. Any other environment has to
+be authorized and provisioned separately in the same order.
 
 On 2026-09-28 the Product Owner directed the documentation status updates in this
-change: [ADR-015](../02-architecture/decisions.md) now records the accepted, implemented
-and validated design with Cloud stage two activation still pending, and
-[private-auth-v1.md](private-auth-v1.md) now describes the hardening as implemented and
-promoted into the migration path, with only the Cloud deployment outstanding. The
-earlier wording ("proposed follow-up", "not implemented or applied") predated the
-stage-one implementation and this promotion. This file remains the authoritative
-current record of what runs where.
+change: [ADR-015](../02-architecture/decisions.md) and
+[private-auth-v1.md](private-auth-v1.md) first recorded the design as accepted,
+implemented, promoted into the migration path and validated on disposable resources with
+Cloud activation pending, and now record the completed Production activation above. The
+earlier wording ("proposed follow-up", "not implemented or applied", "Cloud stage two
+activation remains pending") predated the stage-one implementation, the promotion and
+this rollout. This file remains the authoritative current record of what runs where.

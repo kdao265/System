@@ -7,3 +7,8 @@ node_modules/
 out/
 *.tsbuildinfo
 next-env.d.ts
+.e2e/
+test-results/
+playwright-report/
+blob-report/
+playwright/.auth/

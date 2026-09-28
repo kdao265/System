@@ -51,21 +51,42 @@ jobs:
             : > supabase/seed.sql
           fi
 
-          # `start` applies available migrations: keep Reopen V2 and Completion Aliases
-          # out until their own stages. The EXIT trap restores BOTH files on success and
-          # on failure, so the checked-in migration set is never left incomplete.
+          # `start` applies every available migration: hold back everything newer than
+          # migration eight (Reopen V2, Completion Aliases, the private owner install and
+          # any migration added later) until its own stage. The EXIT trap restores every
+          # held file on success and on failure, so the checked-in set is never incomplete.
           v2=supabase/migrations/20260926000000_quest_reopen_v2.sql
           alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
-          saved_v2="$RUNNER_TEMP/quest-reopen-v2.sql"
-          saved_alias="$RUNNER_TEMP/quest-completion-aliases.sql"
-          test ! -e "$saved_v2"
-          test ! -e "$saved_alias"
-          mv "$v2" "$saved_v2"
-          mv "$alias_migration" "$saved_alias"
-          restore_migrations() {
-            if [[ -e "$saved_v2" ]]; then mv "$saved_v2" "$v2"; fi
-            if [[ -e "$saved_alias" ]]; then mv "$saved_alias" "$alias_migration"; fi
+          private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          held_dir="$RUNNER_TEMP/held-migrations"
+          mkdir -p "$held_dir"
+          test -z "$(ls -A "$held_dir")"
+
+          hold_migrations_after() {
+            local cutoff="$1"
+            local file version
+            for file in supabase/migrations/*.sql; do
+              version="$(basename "$file" .sql)"
+              version="${version%%_*}"
+              if [[ "$version" > "$cutoff" ]]; then
+                mv "$file" "$held_dir/"
+              fi
+            done
           }
+
+          restore_migrations() {
+            local file
+            for file in "$held_dir"/*.sql; do
+              [[ -e "$file" ]] || continue
+              mv "$file" supabase/migrations/
+            done
+          }
+
+          hold_migrations_after 20260923120000
+          # All three known migrations past migration eight must be moved out first.
+          test -e "$held_dir/20260926000000_quest_reopen_v2.sql"
+          test -e "$held_dir/20260926120000_quest_completion_aliases.sql"
+          test -e "$held_dir/20260928090000_install_private_owner.sql"
           trap restore_migrations EXIT
           npx --no-install supabase start
           npx --no-install supabase db reset --local --version 20260923120000 --no-seed --yes
@@ -77,7 +98,8 @@ jobs:
           trap - EXIT
           test -f "$v2"
           test -f "$alias_migration"
-          echo 'Restored migration files: quest_reopen_v2 and quest_completion_aliases'
+          test -f "$private_owner"
+          echo 'Restored migration files: quest_reopen_v2, quest_completion_aliases and install_private_owner'
 
       - name: Verify Stage A has exactly eight migrations
         run: |
@@ -131,22 +153,47 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Keep the Completion Alias migration out so Stage B applies Reopen V2 only.
-          # The EXIT trap restores the file if the push fails.
+          # Stage B applies Reopen V2 only: hold back Completion Aliases, the private
+          # owner install and any migration added after 20260926000000. The EXIT trap
+          # restores every held file if the push fails.
           alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
-          saved_alias="$RUNNER_TEMP/quest-completion-aliases.sql"
-          test ! -e "$saved_alias"
-          mv "$alias_migration" "$saved_alias"
-          restore_alias_migration() {
-            if [[ -e "$saved_alias" ]]; then mv "$saved_alias" "$alias_migration"; fi
+          private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          held_dir="$RUNNER_TEMP/held-migrations"
+          mkdir -p "$held_dir"
+          test -z "$(ls -A "$held_dir")"
+
+          hold_migrations_after() {
+            local cutoff="$1"
+            local file version
+            for file in supabase/migrations/*.sql; do
+              version="$(basename "$file" .sql)"
+              version="${version%%_*}"
+              if [[ "$version" > "$cutoff" ]]; then
+                mv "$file" "$held_dir/"
+              fi
+            done
           }
-          trap restore_alias_migration EXIT
+
+          restore_migrations() {
+            local file
+            for file in "$held_dir"/*.sql; do
+              [[ -e "$file" ]] || continue
+              mv "$file" supabase/migrations/
+            done
+          }
+
+          hold_migrations_after 20260926000000
+          # Completion Aliases and the private owner install must both stay out.
+          test -e "$held_dir/20260926120000_quest_completion_aliases.sql"
+          test -e "$held_dir/20260928090000_install_private_owner.sql"
+          trap restore_migrations EXIT
 
           npx --no-install supabase db push --local --yes
-          restore_alias_migration
+          restore_migrations
           trap - EXIT
           test -f "$alias_migration"
-          echo 'Restored migration file: quest_completion_aliases'
+          test -f "$private_owner"
+          echo 'Restored migration files: quest_completion_aliases and install_private_owner'
 
       - name: Verify Stage B has exactly nine migrations
         run: |
@@ -211,7 +258,46 @@ jobs:
           echo 'PASS: pre-migration fixture recorded at nine with no alias table'
 
       - name: Apply Completion Alias migration for Stage C
-        run: npx --no-install supabase db push --local --yes
+        run: |
+          set -Eeuo pipefail
+
+          # Stage C applies Completion Aliases only: hold back the private owner install
+          # and any migration added after 20260926120000. The EXIT trap restores the file
+          # if the push fails.
+          private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          held_dir="$RUNNER_TEMP/held-migrations"
+          mkdir -p "$held_dir"
+          test -z "$(ls -A "$held_dir")"
+
+          hold_migrations_after() {
+            local cutoff="$1"
+            local file version
+            for file in supabase/migrations/*.sql; do
+              version="$(basename "$file" .sql)"
+              version="${version%%_*}"
+              if [[ "$version" > "$cutoff" ]]; then
+                mv "$file" "$held_dir/"
+              fi
+            done
+          }
+
+          restore_migrations() {
+            local file
+            for file in "$held_dir"/*.sql; do
+              [[ -e "$file" ]] || continue
+              mv "$file" supabase/migrations/
+            done
+          }
+
+          hold_migrations_after 20260926120000
+          test -e "$held_dir/20260928090000_install_private_owner.sql"
+          trap restore_migrations EXIT
+
+          npx --no-install supabase db push --local --yes
+          restore_migrations
+          trap - EXIT
+          test -f "$private_owner"
+          echo 'Restored migration file: install_private_owner'
 
       - name: Verify Stage C has exactly ten migrations
         run: |

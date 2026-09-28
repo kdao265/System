@@ -37,6 +37,17 @@ This task specifies behavior and future storage only. No SQL, migrations, authen
 
 ## 4. Authentication flow
 
+**Private Auth V1 amendment (PR #35, 2026-09-28):** the Product Owner replaces
+public registration in steps 1-2 with an administratively provisioned existing
+owner. Website signup and its Server Action must be disabled, with public signup
+and anonymous sign-in also disabled in Supabase. Server-verified identity must
+match server-only `SYSTEM_OWNER_USER_ID`; absent/invalid configuration denies
+access. Every protected page/action checks this boundary. Rejected password login
+must leave no unauthorized browser session. Owner login, timezone onboarding, SSR
+refresh and logout remain as below. Database ownership isolation is distinct from
+single-owner authorization; see the [audit and proposed follow-up](../04-development/private-auth-v1.md).
+The registration steps below describe the superseded public-registration milestone.
+
 1. Registration submits email/password to Supabase Auth. Only an actual Auth user insertion provisions a profile; a generic signup response is not proof a new identity or session exists.
 2. Honor the configured Supabase email-confirmation requirement. When confirmation is required, show the pending state and do not treat the user as authenticated until Auth supplies a valid session. A profile may already exist but remains inaccessible without authorization.
 3. Sign-in uses Supabase's email/password verification. Validate authenticated identity at server/data boundaries; do not trust a client-supplied user_id or profile existence as proof of login.

@@ -1,5 +1,10 @@
 # Email/password application layer
 
+**Historical milestone:** signup behavior and old smoke commands below are superseded
+by [Private Auth V1](private-auth-v1.md). Current access requires server-only
+`SYSTEM_OWNER_USER_ID`; signup UI/action are disabled. Run `node tests/auth-smoke.mjs`
+for disposable validation, without `--env-file` or an existing Local database.
+
 This records the Auth milestone. The subsequent [Profile onboarding layer](profile-onboarding.md)
 now adds owner Profile reads/updates and timezone gating after authentication. Its
 validation extends the existing HTTP test; historical results below remain unchanged.

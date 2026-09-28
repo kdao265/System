@@ -10,7 +10,9 @@ TypeScript, Tailwind CSS and ESLint, following the existing
 [product vision](docs/00-product/vision.md). Acceptance checks are dependency
 installation, lint and a production build on the installed Node.js 24 runtime.
 The subsequent [Auth application milestone](docs/04-development/auth-application-layer.md)
-adds email/password signup, login, logout and a protected minimal dashboard.
+adds email/password login, logout and a protected dashboard.
+[Private Auth V1](docs/04-development/private-auth-v1.md) now restricts server access
+to one configured owner and disables public registration.
 The [Profile onboarding milestone](docs/04-development/profile-onboarding.md) adds
 optional display name and explicit required timezone setup before dashboard access.
 Other domain workflows remain deferred. Existing database
@@ -22,12 +24,14 @@ Use Node.js 24 LTS and npm. From the repository root:
 
 ```sh
 npm install
-# Configure the two public Supabase values in a Git-ignored .env.local first.
+# Configure public Supabase values and server-only SYSTEM_OWNER_USER_ID in .env.local.
 npm run dev
 ```
 
-Open http://localhost:3000. The home page remains public; `/login` and `/signup`
-lead through `/onboarding` when timezone is unset, then to the protected `/dashboard`.
+Open http://localhost:3000. The home page remains public; owner `/login` leads
+through `/onboarding` when
+timezone is unset, then to `/dashboard`. `/signup` redirects to login. Missing or
+invalid `SYSTEM_OWNER_USER_ID` denies login and all protected access.
 Startup and builds validate required Supabase
 configuration and fail with a safe, explicit message if it is missing.
 
@@ -38,18 +42,20 @@ npm run start
 ```
 
 The production build checks TypeScript. Lint runs separately through ESLint.
-The local HTTP integration test can be run with a production server on port 3100:
+The HTTP integration test starts its own disposable services and production server:
 
 ```sh
-npm run start -- --port 3100
-# In another terminal:
-node --env-file=.env.local tests/auth-smoke.mjs
-node --test tests/timezones.test.mjs
+node tests/auth-smoke.mjs
+node --test tests/*.test.mjs
+npx tsc --noEmit
 ```
 
-It requires running local Supabase with the existing migrations applied. It refuses
-remote Supabase URLs and creates two synthetic local Auth users/profiles per full run,
-which it leaves in place. It never prints credentials or resets the database.
+It requires Docker and the cached images listed in `tests/helpers/auth-environment.mjs`.
+It creates isolated tmpfs containers, applies existing migrations only there, and
+admin-provisions two synthetic accounts. It removes its own containers afterward;
+existing Local, Cloud and volumes are untouched. It never uses an external test URL
+or prints credentials. Rebuild with intended deployment configuration after running
+the smoke test; its build contains a disposable public Supabase URL/key.
 
 ## Structure
 
@@ -60,7 +66,7 @@ src/
   features/profile/     # Profile reads/updates, timezone validation and onboarding
   lib/supabase/         # Cookie-aware browser/server clients and config validation
   proxy.ts              # Session refresh before auth-route rendering
-tests/auth-smoke.mjs     # Local Auth/onboarding/owner isolation integration checks
+tests/auth-smoke.mjs     # Disposable Private Auth/onboarding/SSR integration checks
 tests/timezones.test.mjs # Runtime timezone validation tests
 docs/                   # Product, requirements and architecture documentation
 supabase/               # Existing local configuration and migrations
@@ -73,23 +79,29 @@ Business rules belong in domain/application services, outside UI components.
 ## Supabase environment
 
 `.env.example` lists `NEXT_PUBLIC_SUPABASE_URL` and
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Both are public client configuration, never
-service-role credentials. Configure them for your local Supabase instance in
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` plus server-only `SYSTEM_OWNER_USER_ID`. The two
+`NEXT_PUBLIC_` values are public client configuration, never service-role credentials.
+The owner value is the existing Supabase Auth UUID, not an email. Configure it
+manually in each intended Vercel environment and redeploy; keep signup and anonymous
+sign-in disabled in Supabase. See the [rollout guide](docs/04-development/private-auth-v1.md).
+Configure local values in
 `.env.local`; secret environment files are Git-ignored and must never be committed.
 Do not point local tests at a remote instance.
 
 Browser and request-scoped server helpers use `@supabase/ssr` cookie storage.
 `src/proxy.ts` refreshes sessions and forwards cookies to both rendering and the
 browser. Server pages verify identity using Auth `getUser()`; browser-provided IDs
-and unverified session contents do not authorize access. Auth responses are private
+and unverified session contents do not authorize access. Verified identities must
+match the configured owner at shared server boundaries and protected actions.
+Auth responses are private
 and uncached. RLS remains the database access boundary.
 
-Signup uses Auth only: the existing database trigger provisions Profile. With an
-immediate session it redirects to `/dashboard`; otherwise it asks the user to
-confirm email if required, then sign in with their password. It does not promise
-that a generic signup response created an account. No automatic confirmation-code
-exchange, password recovery or OAuth is included. Logout ends
-the current session, clears its cookies and returns to `/login`.
+Public signup is disabled in both application action/UI and local configuration.
+The owner must already exist in Supabase Auth. Password login commits session
+cookies only after checking the verified owner UUID. Logout ends the current
+session, clears its cookies and returns to `/login`. Existing RLS isolates users;
+database-wide single-owner enforcement is a [proposed follow-up](docs/04-development/private-auth-v1.md#proposed-database-follow-up-not-implemented-or-applied),
+so pre-existing non-owner tokens can still call permitted Supabase APIs directly.
 
 The dashboard gate loads the verified owner's Profile through RLS. A null or
 runtime-unsupported timezone directs the user to `/onboarding`; a saved supported

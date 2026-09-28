@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createPasswordLoginClient, createServerSupabaseClient } from "@/lib/supabase/server";
 import type { AuthState } from "./state";
+import { configuredOwnerId, isSystemOwner } from "./owner";
 
 function credentials(formData: FormData) {
   const email = formData.get("email");
@@ -14,15 +15,22 @@ function credentials(formData: FormData) {
 }
 
 export async function login(_previous: AuthState, formData: FormData): Promise<AuthState> {
-  const input = credentials(formData);
-  if (!input) return { error: "Enter your email and password." };
-
   try {
-    const supabase = await createServerSupabaseClient();
+    const attempt = await createPasswordLoginClient();
+    attempt.discard();
+    const input = credentials(formData);
+    if (!input) return { error: "Enter your email and password." };
+    if (!configuredOwnerId()) return { error: "Unable to sign in. Check your details and try again." };
+    const { supabase } = attempt;
     const { data, error } = await supabase.auth.signInWithPassword(input);
-    if (error || !data.session) {
-      return { error: "Unable to sign in. Check your details and email confirmation, then try again." };
+    if (error || !data.session || !isSystemOwner(data.user?.id)) {
+      if (data.session) {
+        // Best effort remote revocation; rejected cookies are never committed.
+        try { await supabase.auth.signOut({ scope: "local" }); } catch { /* fail closed */ }
+      }
+      return { error: "Unable to sign in. Check your details and try again." };
     }
+    attempt.commit();
   } catch {
     return { error: "Unable to sign in right now. Please try again." };
   }
@@ -31,29 +39,9 @@ export async function login(_previous: AuthState, formData: FormData): Promise<A
   redirect("/dashboard");
 }
 
-export async function signup(_previous: AuthState, formData: FormData): Promise<AuthState> {
-  const input = credentials(formData);
-  if (!input) return { error: "Enter your email and password." };
-  if (input.password !== formData.get("confirmPassword")) {
-    return { error: "Passwords must match." };
-  }
-
-  try {
-    const supabase = await createServerSupabaseClient();
-    // Profile provisioning belongs solely to the auth.users database trigger.
-    const { data, error } = await supabase.auth.signUp(input);
-    if (error) {
-      return { error: "Unable to complete signup. Check your details, use a strong password, or try signing in." };
-    }
-    if (!data.session) {
-      return { message: "Signup request received. If email confirmation is needed, check your inbox and follow the confirmation link, then return here to sign in. If you already have an account, sign in." };
-    }
-  } catch {
-    return { error: "Unable to complete signup right now. Please try again." };
-  }
-
-  revalidatePath("/", "layout");
-  redirect("/dashboard");
+export async function signup(): Promise<AuthState> {
+  // Retain a safe tombstone for direct/stale invocations. Never call Auth signup.
+  return { error: "Registration is unavailable." };
 }
 
 export async function logout(): Promise<AuthState> {

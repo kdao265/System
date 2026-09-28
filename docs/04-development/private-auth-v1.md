@@ -6,7 +6,10 @@ auth tests and configuration documentation. No dependencies, domain-rule changes
 existing database operations, deployment, commits, pushes or merges are authorized.
 Acceptance: owner login/onboarding/refresh/logout work; anonymous and non-owner
 pages/actions fail closed; signup cannot create accounts; lint, typecheck, build
-and relevant tests pass. Database hardening is a proposal, not an applied change.
+and relevant tests pass. Database hardening was a proposal in this PR's original scope,
+not an applied change; it is implemented, promoted and applied to Production
+(Cloud) since 2026-09-28, as recorded below and in
+[private-auth-database.md](private-auth-database.md).
 
 ## Configuration and manual rollout
 
@@ -64,7 +67,9 @@ and [SSR cookie refresh](https://supabase.com/docs/guides/auth/server-side/advan
 
 ## Database audit — migrations 1–10
 
-This is a repository audit and disposable verification, not a Cloud catalogue inspection.
+This is a repository audit and disposable verification, not a Cloud catalogue inspection;
+the completed Production activation is recorded in the
+[Production rollout](#production-rollout--2026-09-28) section below.
 
 | Surface | Existing protection | Single-owner gap |
 | --- | --- | --- |
@@ -82,7 +87,9 @@ Ownership isolation is **not single-owner enforcement**. Disabling new accounts
 does not invalidate previously issued tokens or existing accounts. PostgreSQL
 cannot read the Next.js environment variable. Application access is restricted by
 this PR; the database-level enforcement described below is implemented in this
-repository, but any database that has not applied it still exposes this gap.
+repository and applied to Cloud on 2026-09-28 (see the
+[ADR-015 database hardening record](private-auth-database.md#deployment-status)), so any
+database that has not applied it is the only place this gap remains.
 
 ## Database hardening follow-up
 
@@ -94,8 +101,11 @@ and match the server environment; never put real UUIDs in migrations. The design
 implemented and promoted into the migration path
 (`20260928090000_install_private_owner.sql` for stage one and
 `20260928100000_activate_private_owner.sql` for stage two activation) and fully
-validated on disposable resources, but stage two activation has not yet been applied
-to Cloud. See the [ADR-015 database hardening record](private-auth-database.md).
+validated on disposable resources, and applied to Cloud (Production) on 2026-09-28,
+where Local/Remote migration history is synchronized, 15 restrictive single-owner policies
+and 14 public-RPC entry guards are active, exactly one configured owner remains, and the
+final Production smoke testing passed. See the
+[ADR-015 database hardening record](private-auth-database.md).
 
 Add restrictive policies alongside existing policies on application tables,
 including published Level configuration, internal command history/aliases and
@@ -117,9 +127,10 @@ Accompanying SQL/catalogue and PostgREST tests:
 - Clients cannot set the singleton; effective ACLs and no-BYPASSRLS invariants hold.
 - Trigger provisioning and owner onboarding/refresh/logout remain functional.
 
-These tests must run on disposable instances before requesting a Local/Cloud rollout.
-They passed on disposable instances; they are not claims that the enforcement has been
-applied to any Local or Cloud database.
+These tests were required to pass on disposable instances before a Local/Cloud rollout
+was requested, and they did. Applying the enforcement to a real database is a separate,
+recorded step; see the
+[ADR-015 database hardening record](private-auth-database.md#deployment-status).
 
 ## Validation
 
@@ -143,7 +154,7 @@ URL/key. **Never deploy the smoke build output**; rebuild with the intended publ
 Supabase values. The application-boundary validation adds no dependencies. Database
 hardening is tracked separately by [ADR-015](../02-architecture/decisions.md) and
 [private-auth-database.md](private-auth-database.md), with stage-one install and
-stage-two activation migrations.
+stage-two activation migrations; both are applied to Cloud since 2026-09-28.
 
 ## Handoff results — 2026-09-28
 
@@ -177,8 +188,32 @@ Changed files:
 | Documentation | `README.md`, `docs/PROJECT_CONTEXT.md`, `docs/01-requirements/auth-profile.md`, `docs/02-architecture/overview.md`, `docs/02-architecture/decisions.md`, `docs/04-development/auth-application-layer.md`, `docs/04-development/testing.md`, this file |
 
 All changes remain uncommitted. No push, PR update, merge, deployment, existing
-database operation or Vercel setting change occurred. The direct-Supabase security
-gap is closed only where the ADR-015 migrations have been applied: the hardening is
-implemented and promoted into the migration path and fully validated on disposable
-resources, but stage two activation has not yet been applied to Cloud, so application
-checks alone still do not close the gap there.
+database operation or Vercel setting change occurred as part of this PR. The
+direct-Supabase security gap is closed where the ADR-015 migrations have been applied:
+the hardening is implemented, promoted into the migration path and fully validated on
+disposable resources, and on 2026-09-28 the Product Owner authorized and completed the
+Production application of the activation migration, so Cloud now rejects direct non-owner
+Supabase access. Application checks are not the enforcement and never replaced it.
+
+## Production rollout — 2026-09-28
+
+The Product Owner authorized and confirmed the Production (Cloud) rollout on
+2026-09-28, and the promoted activation migration was applied successfully to Cloud.
+Recorded results, also kept in
+[private-auth-database.md](private-auth-database.md#deployment-status):
+
+| Item | Result |
+| --- | --- |
+| `20260928100000_activate_private_owner.sql` | Applied successfully to Cloud |
+| Local/Remote migration history | Synchronized |
+| Restrictive single-owner RLS policies | 15 active |
+| Public RPCs guarded | 14 |
+| Configured owner rows | Exactly one remains |
+| Final Production smoke testing | Passed |
+
+Final Production smoke testing passed for owner authentication, dashboard access,
+EXP/Level reads, Quest complete/refresh/reopen/recomplete, two-tab consistency, and
+logout and relogin. These are Product Owner-supplied Production results: the disposable
+suites above were not re-run against Cloud, no Cloud database was reset or migrated again
+for this record, no Vercel setting was changed, and no application code, SQL, migration,
+test or configuration file was modified.

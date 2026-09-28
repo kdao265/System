@@ -144,6 +144,12 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     await until(async () => (await fetch(`${authUrl}/health`, { redirect: "error" })).ok, "Supabase Auth");
     // The actual Auth service has installed its schema before application migrations.
     const migrationDir = new URL("../../supabase/migrations/", import.meta.url);
+    // ADR-015 stage two is promoted into the automatic migration directory, but its
+    // fail-closed preflight requires an already provisioned and verified owner, so it
+    // is never applied by filename order here. It is applied below, after the owner
+    // fixture and its configuration exist, reproducing the approved deployment order:
+    // stage-one install, owner provisioning and verification, then stage-two activation.
+    const deferredActivation = "20260928100000_activate_private_owner.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -160,6 +166,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       "20260926120000": ["quest-completion-alias-catalog", "quest-completion-alias"],
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
+      if (file === deferredActivation) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -216,7 +223,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     const other = await account();
     if (activateOwner) {
       await sql(`INSERT INTO system_private.owner_configuration(user_id) VALUES ('${owner.id}');`);
-      await sql(readFileSync(new URL("../../supabase/staged-migrations/20260928100000_activate_private_owner.sql", import.meta.url), "utf8"));
+      await sql(readFileSync(new URL(deferredActivation, migrationDir), "utf8"));
     }
     const appEnv = {
       ...process.env, NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,

@@ -187,24 +187,31 @@ privileged browser credential is introduced. [Scope, audit and validation](../04
 
 ## ADR-015 - Single-owner database enforcement
 
-**Date:** 2026-09-28. **Status:** Proposed; Product Owner agreement required before implementation.
+**Date:** 2026-09-28. **Status:** Accepted by the Product Owner's implementation and
+stage-two promotion authorizations. Implemented, tested and promoted in the repository;
+Cloud stage two activation remains pending.
 
 **Context:** Valid non-owner tokens can bypass Next.js and invoke permitted Supabase
 queries/RPCs on their own data. Disabling signup does not remove this access.
 PostgreSQL cannot read the server environment variable.
 
-**Proposal:** Add an administrator-controlled private singleton owner configuration
+**Decision:** Add an administrator-controlled private singleton owner configuration
 and narrow authorization predicate. Add restrictive policies to existing RLS,
 plus public-RPC entry guards (including owner-only assignment actor and target).
 Preserve the current identity helper, ownership isolation, capabilities, provisioning
-and business rules. See the [migration scope and test plan](../04-development/private-auth-v1.md#proposed-database-follow-up-not-implemented-or-applied).
+and business rules. See the [migration scope and test plan](../04-development/private-auth-v1.md#database-hardening-follow-up)
+and the [database hardening record](../04-development/private-auth-database.md).
 
 **Alternatives:** Application-only checks leave direct APIs accessible. Deleting or
 banning all other users does not establish a durable database invariant or instantly
 revoke issued access tokens. A gateway hook alone does not cover other SQL entry
 paths. Rewriting every business routine or managed Auth helper creates wider risk.
 
-**Impact:** One additive migration and separately approved environment-specific
-bootstrap; missing bootstrap deliberately denies application database access.
-App and database UUIDs must agree. No migration SQL or existing Local/Cloud changes
-are included in PR #35; implementation and rollout remain explicitly gated.
+**Impact:** Two additive migrations (`20260928090000_install_private_owner.sql` for
+stage one and the promoted `20260928100000_activate_private_owner.sql` for stage two
+activation) plus a separately approved environment-specific bootstrap; missing
+bootstrap deliberately denies application database access. App and database UUIDs must
+agree. The Product Owner authorized implementation and the stage-two promotion on
+2026-09-28. The hardening is implemented, promoted into the migration path and fully
+validated on disposable resources; no Local or Cloud database was migrated from this
+branch, and Cloud stage two activation remains pending.

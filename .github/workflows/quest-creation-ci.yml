@@ -52,12 +52,14 @@ jobs:
           fi
 
           # `start` applies every available migration: hold back everything newer than
-          # migration eight (Reopen V2, Completion Aliases, the private owner install and
-          # any migration added later) until its own stage. The EXIT trap restores every
-          # held file on success and on failure, so the checked-in set is never incomplete.
+          # migration eight (Reopen V2, Completion Aliases, the private owner install,
+          # the promoted private owner activation and any migration added later) until
+          # its own stage. The EXIT trap restores every held file on success and on
+          # failure, so the checked-in set is never incomplete.
           v2=supabase/migrations/20260926000000_quest_reopen_v2.sql
           alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
           private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          private_activation=supabase/migrations/20260928100000_activate_private_owner.sql
           held_dir="$RUNNER_TEMP/held-migrations"
           mkdir -p "$held_dir"
           test -z "$(ls -A "$held_dir")"
@@ -83,10 +85,11 @@ jobs:
           }
 
           hold_migrations_after 20260923120000
-          # All three known migrations past migration eight must be moved out first.
+          # All four known migrations past migration eight must be moved out first.
           test -e "$held_dir/20260926000000_quest_reopen_v2.sql"
           test -e "$held_dir/20260926120000_quest_completion_aliases.sql"
           test -e "$held_dir/20260928090000_install_private_owner.sql"
+          test -e "$held_dir/20260928100000_activate_private_owner.sql"
           trap restore_migrations EXIT
           npx --no-install supabase start
           npx --no-install supabase db reset --local --version 20260923120000 --no-seed --yes
@@ -99,7 +102,8 @@ jobs:
           test -f "$v2"
           test -f "$alias_migration"
           test -f "$private_owner"
-          echo 'Restored migration files: quest_reopen_v2, quest_completion_aliases and install_private_owner'
+          test -f "$private_activation"
+          echo 'Restored migration files: quest_reopen_v2, quest_completion_aliases, install_private_owner and activate_private_owner'
 
       - name: Verify Stage A has exactly eight migrations
         run: |
@@ -153,11 +157,12 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Stage B applies Reopen V2 only: hold back Completion Aliases, the private
-          # owner install and any migration added after 20260926000000. The EXIT trap
+          # Stage B applies Reopen V2 only: hold back Completion Aliases, both private
+          # owner stages and any migration added after 20260926000000. The EXIT trap
           # restores every held file if the push fails.
           alias_migration=supabase/migrations/20260926120000_quest_completion_aliases.sql
           private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          private_activation=supabase/migrations/20260928100000_activate_private_owner.sql
           held_dir="$RUNNER_TEMP/held-migrations"
           mkdir -p "$held_dir"
           test -z "$(ls -A "$held_dir")"
@@ -183,9 +188,10 @@ jobs:
           }
 
           hold_migrations_after 20260926000000
-          # Completion Aliases and the private owner install must both stay out.
+          # Completion Aliases and both private owner stages must all stay out.
           test -e "$held_dir/20260926120000_quest_completion_aliases.sql"
           test -e "$held_dir/20260928090000_install_private_owner.sql"
+          test -e "$held_dir/20260928100000_activate_private_owner.sql"
           trap restore_migrations EXIT
 
           npx --no-install supabase db push --local --yes
@@ -193,7 +199,8 @@ jobs:
           trap - EXIT
           test -f "$alias_migration"
           test -f "$private_owner"
-          echo 'Restored migration files: quest_completion_aliases and install_private_owner'
+          test -f "$private_activation"
+          echo 'Restored migration files: quest_completion_aliases, install_private_owner and activate_private_owner'
 
       - name: Verify Stage B has exactly nine migrations
         run: |
@@ -261,10 +268,11 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          # Stage C applies Completion Aliases only: hold back the private owner install
-          # and any migration added after 20260926120000. The EXIT trap restores the file
-          # if the push fails.
+          # Stage C applies Completion Aliases only: hold back both private owner stages
+          # and any migration added after 20260926120000. The EXIT trap restores every
+          # held file if the push fails.
           private_owner=supabase/migrations/20260928090000_install_private_owner.sql
+          private_activation=supabase/migrations/20260928100000_activate_private_owner.sql
           held_dir="$RUNNER_TEMP/held-migrations"
           mkdir -p "$held_dir"
           test -z "$(ls -A "$held_dir")"
@@ -291,13 +299,15 @@ jobs:
 
           hold_migrations_after 20260926120000
           test -e "$held_dir/20260928090000_install_private_owner.sql"
+          test -e "$held_dir/20260928100000_activate_private_owner.sql"
           trap restore_migrations EXIT
 
           npx --no-install supabase db push --local --yes
           restore_migrations
           trap - EXIT
           test -f "$private_owner"
-          echo 'Restored migration file: install_private_owner'
+          test -f "$private_activation"
+          echo 'Restored migration files: install_private_owner and activate_private_owner'
 
       - name: Verify Stage C has exactly ten migrations
         run: |
@@ -373,6 +383,7 @@ jobs:
             echo '- Stage B: V2 suites, compatible regression suites and the pre-migration Completion Alias fixture ran'
             echo '- Stage C: Completion Alias migration applied and ten versions verified'
             echo '- Stage C: legacy upgrade proof, alias security/catalog, alias behavior and compatible regressions ran'
+            echo '- Private owner stage one install and promoted stage two activation are held from every checkpoint; migration history stays at eight, nine and ten versions'
             echo '- Supplemental checks: player-exp-preflight.mjs, Reopen V2 and Completion Alias two-session concurrency'
             echo '- Database target: verified run-scoped disposable Docker container; Unix socket only'
           } >> "$GITHUB_STEP_SUMMARY"

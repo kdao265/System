@@ -80,17 +80,22 @@ This is a repository audit and disposable verification, not a Cloud catalogue in
 
 Ownership isolation is **not single-owner enforcement**. Disabling new accounts
 does not invalidate previously issued tokens or existing accounts. PostgreSQL
-cannot read the Next.js environment variable. Application access is restricted
-by this PR, but database-wide single-owner enforcement remains a security gap
-until the following proposal is agreed, implemented, tested and applied.
+cannot read the Next.js environment variable. Application access is restricted by
+this PR; the database-level enforcement described below is implemented in this
+repository, but any database that has not applied it still exposes this gap.
 
-## Proposed database follow-up (not implemented or applied)
+## Database hardening follow-up
 
-See proposed ADR-015. Add an administrator-managed singleton owner UUID in a
+See accepted ADR-015. Add an administrator-managed singleton owner UUID in a
 private schema (Auth foreign key; no client writes or owner-setting RPC), and a
 narrowly privileged predicate comparing verified request identity to that value.
 An absent setting denies access. Its provisioning must be separately approved
-and match the server environment; never put real UUIDs in migrations.
+and match the server environment; never put real UUIDs in migrations. The design is
+implemented and promoted into the migration path
+(`20260928090000_install_private_owner.sql` for stage one and
+`20260928100000_activate_private_owner.sql` for stage two activation) and fully
+validated on disposable resources, but stage two activation has not yet been applied
+to Cloud. See the [ADR-015 database hardening record](private-auth-database.md).
 
 Add restrictive policies alongside existing policies on application tables,
 including published Level configuration, internal command history/aliases and
@@ -103,7 +108,7 @@ both actor and target to be the singleton owner, retaining the capability check.
 Do not change the identity parser to conflate identity and authorization or use
 client-settable GUCs. Do not disable RLS or alter Quest/EXP/Level rules.
 
-Accompanying proposed SQL/catalogue and PostgREST tests:
+Accompanying SQL/catalogue and PostgREST tests:
 
 - Missing singleton fails closed; configured owner succeeds with existing business regressions.
 - Non-owner and anonymous SELECT/UPDATE on every exposed table and every public RPC fail.
@@ -113,7 +118,8 @@ Accompanying proposed SQL/catalogue and PostgREST tests:
 - Trigger provisioning and owner onboarding/refresh/logout remain functional.
 
 These tests must run on disposable instances before requesting a Local/Cloud rollout.
-They are a test plan, not claims that the proposed database enforcement exists.
+They passed on disposable instances; they are not claims that the enforcement has been
+applied to any Local or Cloud database.
 
 ## Validation
 
@@ -134,7 +140,10 @@ disabled signup action directly, and tests rejection when remote revocation fail
 Run `node --test tests/*.test.mjs`, `npm run lint`, `npx tsc --noEmit`, and
 `npm run build`. The smoke harness invokes the production build with its disposable
 URL/key. **Never deploy the smoke build output**; rebuild with the intended public
-Supabase values. No dependencies or migrations are added by this PR.
+Supabase values. The application-boundary validation adds no dependencies. Database
+hardening is tracked separately by [ADR-015](../02-architecture/decisions.md) and
+[private-auth-database.md](private-auth-database.md), with stage-one install and
+stage-two activation migrations.
 
 ## Handoff results — 2026-09-28
 
@@ -169,5 +178,7 @@ Changed files:
 
 All changes remain uncommitted. No push, PR update, merge, deployment, existing
 database operation or Vercel setting change occurred. The direct-Supabase security
-gap and proposed ADR-015 remain unresolved pending Product Owner agreement and a
-separately approved migration rollout; application checks do not close that gap.
+gap is closed only where the ADR-015 migrations have been applied: the hardening is
+implemented and promoted into the migration path and fully validated on disposable
+resources, but stage two activation has not yet been applied to Cloud, so application
+checks alone still do not close the gap there.

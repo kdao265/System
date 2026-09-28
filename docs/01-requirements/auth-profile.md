@@ -45,7 +45,7 @@ match server-only `SYSTEM_OWNER_USER_ID`; absent/invalid configuration denies
 access. Every protected page/action checks this boundary. Rejected password login
 must leave no unauthorized browser session. Owner login, timezone onboarding, SSR
 refresh and logout remain as below. Database ownership isolation is distinct from
-single-owner authorization; see the [audit and proposed follow-up](../04-development/private-auth-v1.md).
+single-owner authorization; see the [audit and hardening follow-up](../04-development/private-auth-v1.md).
 The registration steps below describe the superseded public-registration milestone.
 
 1. Registration submits email/password to Supabase Auth. Only an actual Auth user insertion provisions a profile; a generic signup response is not proof a new identity or session exists.

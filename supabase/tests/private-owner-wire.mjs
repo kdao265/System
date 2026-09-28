@@ -7,7 +7,9 @@ import { createClient } from "@supabase/supabase-js";
 import { startAuthEnvironment } from "../../tests/helpers/auth-environment.mjs";
 
 const env = await startAuthEnvironment({ buildApp: false, activateOwner: false, testMigrationHistory: true });
-const activation = readFileSync(new URL("../staged-migrations/20260928100000_activate_private_owner.sql", import.meta.url), "utf8");
+// ADR-015 stage two is applied here from the promoted migration file: the harness
+// defers it out of its filename-ordered loop until owner configuration exists.
+const activation = readFileSync(new URL("../migrations/20260928100000_activate_private_owner.sql", import.meta.url), "utf8");
 const tables = ["profiles", "quests", "quest_recurrence_rules", "quest_occurrences", "quest_events", "exp_ledger",
   "level_policies", "level_thresholds", "progression_policy_assignments", "level_milestones",
   "level_reward_definitions", "level_reward_unlocks", "level_reward_events"];
@@ -127,7 +129,7 @@ try {
   assert.equal(await policySnapshot(), beforePolicies, "Missing configuration activation partially changed policies");
   assert.deepEqual(await catalog(), baseline, "Missing configuration activation partially changed routines");
   assert.equal(await env.sql("SELECT count(*) FROM system_private.owner_configuration;"), "0");
-  pass("all normal migrations leave stage 2 inactive; missing bootstrap aborts activation without partial changes");
+  pass("migrations through stage one leave stage 2 inactive; missing bootstrap aborts activation without partial changes");
   await env.sql(`INSERT INTO system_internal.operator_grants(user_id, capability)
     VALUES ('${env.owner.id}', 'level_policy_assign'), ('${env.other.id}', 'level_policy_assign');`);
   const oldOwner = await exercise(owner, env.owner);

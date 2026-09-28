@@ -100,8 +100,10 @@ Public signup is disabled in both application action/UI and local configuration.
 The owner must already exist in Supabase Auth. Password login commits session
 cookies only after checking the verified owner UUID. Logout ends the current
 session, clears its cookies and returns to `/login`. Existing RLS isolates users;
-database-wide single-owner enforcement is a [proposed follow-up](docs/04-development/private-auth-v1.md#proposed-database-follow-up-not-implemented-or-applied),
-so pre-existing non-owner tokens can still call permitted Supabase APIs directly.
+database-wide single-owner enforcement is
+[implemented and promoted in the repository](docs/04-development/private-auth-v1.md#database-hardening-follow-up),
+but Cloud stage two activation is still pending, so pre-existing non-owner tokens can
+still call permitted Supabase APIs directly.
 
 The dashboard gate loads the verified owner's Profile through RLS. A null or
 runtime-unsupported timezone directs the user to `/onboarding`; a saved supported

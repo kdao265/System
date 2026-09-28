@@ -2,7 +2,9 @@ import type { DayQuestResult } from "./model";
 import { addCalendarDays, formatCalendarDate, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
 import { QuestCompletionControl, QuestReopenControl } from "./completion-control";
 
-const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
+const navLinkClass = "rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
+const navUnavailableClass = "rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600 pointer-coarse:py-3";
 const statusLabels = {
   draft: "Draft", scheduled: "Scheduled", active: "Active",
   completed: "Completed", failed: "Failed", cancelled: "Cancelled",
@@ -23,21 +25,21 @@ function QuestCard({ timezone, selectedDate, children, loading = false }: {
       <p className="mt-1 text-sm text-zinc-400">Profile timezone: {timezone}</p>
       <nav aria-label="Quest day navigation" className="mt-4 flex flex-wrap items-center gap-2">
         {atMinimum ? <span aria-disabled="true" aria-label="Previous day unavailable"
-          className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600">Previous day</span> :
+          className={navUnavailableClass}>Previous day</span> :
           <a href={`/dashboard?date=${previousDate}`} aria-label="View previous day"
-            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Previous day</a>}
+            className={navLinkClass}>Previous day</a>}
         <a href="/dashboard" aria-label="View today"
-          className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Today</a>
+          className={navLinkClass}>Today</a>
         {atMaximum ? <span aria-disabled="true" aria-label="Next day unavailable"
-          className="rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600">Next day</span> :
+          className={navUnavailableClass}>Next day</span> :
           <a href={`/dashboard?date=${nextDate}`} aria-label="View next day"
-            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Next day</a>}
-        <form action="/dashboard" className="flex items-center gap-2">
+            className={navLinkClass}>Next day</a>}
+        <form action="/dashboard" className="flex w-full min-w-0 flex-wrap items-center gap-2">
           <label htmlFor="quest-date" className="text-sm text-zinc-300">Choose date</label>
           <input id="quest-date" name="date" type="date" min={MIN_CALENDAR_DATE} max={MAX_CALENDAR_DATE} defaultValue={selectedDate}
-            className="rounded-md border border-zinc-600 bg-zinc-950 px-2 py-2 text-sm text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" />
+            className="min-w-0 flex-1 basis-40 rounded-md border border-zinc-600 bg-zinc-950 px-2 py-2 text-sm text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3 pointer-coarse:text-base" />
           <button type="submit"
-            className="rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">View</button>
+            className={navLinkClass}>View</button>
         </form>
       </nav>
       {children}

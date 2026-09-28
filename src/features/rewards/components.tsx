@@ -1,7 +1,7 @@
 import type { RewardsResult } from "./model";
 
 const PREVIEW_SIZE = 5;
-const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
 const lifecycleLabels = { LOCKED: "Locked", UNLOCKED: "Unlocked", REDEEMED: "Redeemed" };
 
 function RewardsCard({ children, loading = false }: { children: React.ReactNode; loading?: boolean }) {

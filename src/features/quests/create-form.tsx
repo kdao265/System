@@ -9,7 +9,7 @@ import { PENDING_PREFIX } from "./create-pending";
 import { formatProfileLocal } from "./time";
 import type { QuestDraft } from "./create-draft";
 
-const control = "mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60";
+const control = "mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:py-3";
 
 // The key isolates draft, pending state and subscriptions before the new account renders.
 export function QuestCreationForm(props: { timezone: string; userId: string }) {
@@ -99,7 +99,7 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
           <div><label htmlFor="quest-priority">Priority (optional)</label><select id="quest-priority" value={draft.priority} onChange={(event) => update("priority", event.target.value as QuestDraft["priority"])} disabled={locked} className={control}><option value="">Unspecified</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
         </div>
         <div aria-live="polite" aria-atomic="true">{state.error && <p role="alert" className="text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="text-sm text-emerald-300">{state.message}</p>}</div>
-        <button type="submit" disabled={locked} className="w-full rounded-md bg-zinc-100 px-4 py-2 font-medium text-zinc-950 disabled:opacity-50">{state.phase === "sending" ? "Confirming request…" : "Schedule Quest"}</button>
+        <button type="submit" disabled={locked} className="w-full rounded-md bg-zinc-100 px-4 py-2 font-medium text-zinc-950 disabled:opacity-50 pointer-coarse:py-3">{state.phase === "sending" ? "Confirming request…" : "Schedule Quest"}</button>
       </form>
     </section>
   );

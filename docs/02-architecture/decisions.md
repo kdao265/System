@@ -243,3 +243,42 @@ retries against dirty state would hide ordering defects.
 fixtures, increasing runtime but preserving isolation. No production dependency,
 RLS, schema or domain rule changes. The existing checkpoint workflow is preserved;
 a separate browser workflow adds coverage. See [lifecycle and task contract](../04-development/playwright-e2e.md).
+
+## ADR-017 - Personal Beta PWA installability and static-only cache strategy
+
+**Date:** 2026-09-28. **Status:** Accepted within the Product Owner's explicit PR #37
+(Personal Beta / PWA V1) implementation request. Authentication, RLS and domain
+semantics are unchanged.
+
+**Context:** SYSTEM is a private single-owner app that should be usable daily from a
+phone as an installed web app. Current Chromium/Android installability expects a web app
+manifest with suitable icons *and* a registered service worker that handles fetches.
+The usual PWA pattern (app-shell cache, offline fallbacks, background sync) conflicts
+with an authenticated private app whose HTML, Server Action/RPC responses, session
+cookies and Supabase traffic are user-specific and must stay network-authoritative.
+
+**Decision:** Add the Next.js-native installability layer only: `app/manifest.ts`,
+root-layout metadata/viewport (`viewport-fit: "cover"`, theme color, Apple tags), an
+original committed icon set, and one deliberately minimal service worker. The worker
+caches nothing except an explicit allowlist of versioned static assets (the manifest and
+the icon set), lets every other request fall through untouched, activates immediately
+(`skipWaiting` plus `clients.claim`), deletes superseded caches on activation, and is
+served `no-store` so a new revision is always fetched. No offline shell, no offline
+Quest/EXP mutation, no background sync, no push and no external analytics.
+
+**Alternatives:** Shipping no service worker reduces Android installability to a
+bookmark/shortcut, which does not meet the goal. Cache-first HTML or an offline app
+shell would serve stale authenticated UI and stale data to a single-owner app. A generic
+PWA/Workbox plugin adds a dependency and broad default cache rules beyond SYSTEM's
+needs. Caching Supabase/API responses would persist user data in device Cache Storage
+and break network-authoritative reads.
+
+**Impact:** Security boundaries are untouched and no code path branches on display mode,
+so RLS, owner authorization and session handling behave identically in a browser tab and
+an installed app. Because application code, HTML and data are never cached, an installed
+app cannot be stranded on stale code and a revision bump discards old static caches;
+users may still see the previous icon/manifest for one navigation until the worker
+updates. Offline use is not supported and shows the browser's normal offline error,
+which the Product Owner accepted for V1. The existing disposable Playwright harness is
+extended rather than duplicated with installability and phone-layout checks. See the
+[Personal Beta PWA guide](../04-development/personal-beta-pwa.md).

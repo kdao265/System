@@ -45,8 +45,10 @@ mounts before SQL or removal. No reset command, Docker volume operation, existin
 Local `System` project, or Production connection is used.
 
 E2E opts into an application source copy under ignored `.e2e/`. Only an explicit
-source/config allowlist is copied, never `.env*`, `.next`, backups or credentials.
-Dependencies are linked read-only by convention; the app has its own production
+source/config allowlist is copied — `src`, `public` (installability icons and the
+service worker), `next.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `package.json`
+and `package-lock.json` — never `.env*`, `.next`, backups or credentials. Dependencies
+are linked read-only by convention; the app has its own production
 build and loopback server. It uses the application's default Next.js/Turbopack
 production build, with shared dependency resolution inside the repository root.
 Application configuration comes only from generated values and a small OS environment

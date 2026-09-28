@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-svh items-center justify-center px-6 py-16">
+    <main className="flex min-h-svh items-center justify-center page-frame">
       <div className="w-full max-w-xl">
         <p className="mb-4 text-sm font-medium tracking-widest text-zinc-400">
           PERSONAL LIFE OS

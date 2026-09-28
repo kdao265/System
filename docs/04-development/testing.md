@@ -21,6 +21,7 @@ Use synthetic or redacted fixtures. Do not use production secrets or perform des
 | Private Auth/action boundaries | `node --test tests/private-auth.test.mjs`; all protected actions, owner configuration, disabled signup and cookie rejection |
 | Application regression suite | `node --test tests/*.test.mjs` |
 | Browser Auth/dashboard + mobile smoke | `npm run test:e2e`; see [isolated Playwright setup and safety](playwright-e2e.md) |
+| PWA installability and phone layout | Part of `npm run test:e2e`: manifest metadata, required icon/asset responses, service-worker script and 360/390/412 px layout checks in the mobile project; see [Personal Beta PWA](personal-beta-pwa.md) |
 | Explicit TypeScript check | `npx tsc --noEmit` |
 | Runtime timezone validation | `node --test tests/timezones.test.mjs` (Node.js 24, no database needed) |
 | Build | `npm run build`; `npm run start` serves the resulting production build |

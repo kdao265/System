@@ -1,5 +1,8 @@
--- ADR-015 stage 2. NOT in the automatic migration directory.
--- Promote only AFTER stage 1 + approved owner provisioning + identity verification.
+-- ADR-015 stage 2 activation, promoted into the automatic migration directory by
+-- Product Owner authorization on 2026-09-28. Its fail-closed preflight still requires
+-- one verified owner configuration with an Auth user and Profile, so the normal
+-- migration sequence cannot activate an unprovisioned database. Apply only after
+-- stage 1 plus approved owner provisioning and identity verification.
 -- See docs/04-development/private-auth-database.md. Atomic and fail-closed.
 BEGIN;
 SET LOCAL lock_timeout = '5s';

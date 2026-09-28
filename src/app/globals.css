@@ -10,3 +10,14 @@ body {
   color: #fafafa;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Page frame for edge-to-edge standalone installs. Each side keeps the existing page
+   spacing unless the installed app reports a larger display cutout or home-indicator
+   inset, in which case the larger value wins. In a normal browser tab every env()
+   value is zero, so spacing is unchanged. */
+@utility page-frame {
+  padding-top: max(4rem, env(safe-area-inset-top));
+  padding-bottom: max(4rem, env(safe-area-inset-bottom));
+  padding-left: max(1.5rem, env(safe-area-inset-left));
+  padding-right: max(1.5rem, env(safe-area-inset-right));
+}

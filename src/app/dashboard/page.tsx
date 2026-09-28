@@ -26,7 +26,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
   const selectedDate = resolveSelectedDate(params.date, profile.timezone!);
   const progression = await getProgressionStatus();
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-16">
+    <main className="mx-auto w-full max-w-2xl page-frame">
       <h1 className="text-3xl font-semibold tracking-[0.2em] text-zinc-100">SYSTEM</h1>
       <div className="mt-8 space-y-4">
         <PlayerSummary email={user.email ?? "unknown account"} displayName={profile.display_name} />
@@ -43,7 +43,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             </p>
             <a
               href={`/dashboard?date=${selectedDate}`}
-              className="mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              className="mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3"
             >
               Retry
             </a>

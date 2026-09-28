@@ -2,7 +2,7 @@ import { LogoutForm } from "@/features/auth/logout-form";
 
 export function ProfileError({ missing }: { missing: boolean }) {
   return (
-    <main className="mx-auto max-w-lg px-6 py-16">
+    <main className="mx-auto max-w-lg page-frame">
       <p className="text-sm tracking-widest text-zinc-400">SYSTEM V1</p>
       <h1 className="mt-3 text-3xl font-semibold">Profile unavailable</h1>
       <p role="alert" className="mt-6 text-zinc-300">

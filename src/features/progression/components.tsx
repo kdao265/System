@@ -46,7 +46,7 @@ function ProgressionInvalid() {
       <p className="mt-1 text-sm text-zinc-400">Please try again from the dashboard.</p>
       <a
         href="/dashboard"
-        className="mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3"
       >
         Retry
       </a>

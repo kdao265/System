@@ -6,6 +6,8 @@ This describes intended boundaries. The application uses Next.js App Router in `
 
 The proposed [Player/EXP foundation](player-exp-database-schema.md), with its [requirements](../01-requirements/player-exp.md), uses Auth ownership, one append-only ledger and derived current EXP. It specifies future atomic Quest credit/reversal integration; production completion remains disabled until the ledger and coordinated commands are implemented and verified.
 
+The Personal Beta layer adds installability only: `src/app/manifest.ts`, root-layout metadata, committed icons and one service worker that caches static assets and never intercepts pages, Server Actions, API routes or Supabase traffic. Authorization stays server-side and reads stay network-authoritative, so an installed app has no different privileges and no offline data. See [ADR-017](decisions.md) and the [Personal Beta PWA guide](../04-development/personal-beta-pwa.md).
+
 ## Intended stack and responsibilities
 
 The approved [Level/reward domain](level-reward-domain-model.md), [requirements](../01-requirements/level-rewards.md) and [physical design](level-reward-database-schema.md) derive current Level from EXP while retaining first-reached milestones and reward snapshots. Future Quest credit, milestone recognition and unlocks share one transaction; UI and AI use the same controlled application commands. No Level/reward behavior is implemented. The approved initial `level_policy_v1` publishes explicit thresholds for Levels 1 through 100, generated from `100 * (L - 1)^2`. Runtime reads persisted thresholds only. Level 100 is the highest published V1 Level, not a permanent SYSTEM cap.

@@ -7,7 +7,7 @@ import { useReopenCoordinator } from "./completion-provider";
 import { getCompletionServerSnapshot } from "./completion-recovery";
 import { getReopenServerSnapshot } from "./reopen-recovery";
 
-const buttonClass = "mt-2 rounded-md border border-amber-500 px-3 py-2 text-sm disabled:opacity-60";
+const buttonClass = "mt-2 rounded-md border border-amber-500 px-3 py-2 text-sm disabled:opacity-60 pointer-coarse:py-3";
 
 /** The provider owns recovery even when this view has no requests to render. */
 export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string }) {

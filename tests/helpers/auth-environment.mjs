@@ -256,7 +256,9 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       mkdirSync(join(root, ".e2e"), { recursive: true });
       disposableDirectory = mkdtempSync(join(root, ".e2e", "app-"));
       appDirectory = disposableDirectory;
-      for (const entry of ["src", "next.config.ts", "tsconfig.json", "postcss.config.mjs", "package.json", "package-lock.json"]) {
+      // `public` holds the installability assets (icons and the service worker), so the
+      // copy must include it for the isolated production build to serve them.
+      for (const entry of ["src", "public", "next.config.ts", "tsconfig.json", "postcss.config.mjs", "package.json", "package-lock.json"]) {
         cpSync(join(root, entry), join(appDirectory, entry), { recursive: true });
       }
       symlinkSync(join(root, "node_modules"), join(appDirectory, "node_modules"), process.platform === "win32" ? "junction" : "dir");

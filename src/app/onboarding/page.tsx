@@ -15,7 +15,7 @@ export default async function OnboardingPage({ searchParams }: {
   const repairTimezone = (await searchParams).repair === "timezone";
   if (isOnboardingComplete(context.profile) && !repairTimezone) redirect("/dashboard");
   return (
-    <main className="flex min-h-svh items-center justify-center px-6 py-16">
+    <main className="flex min-h-svh items-center justify-center page-frame">
       <div className="w-full max-w-md">
         <p className="mb-3 text-sm tracking-widest text-zinc-400">SYSTEM V1</p>
         <h1 className="text-3xl font-semibold">{repairTimezone ? "Repair timezone" : "Profile Setup"}</h1>

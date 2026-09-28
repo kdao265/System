@@ -25,6 +25,10 @@ Run `npx playwright install chromium`, then `npm run test:e2e` with the document
 Docker images cached. Tests create disposable Supabase and application instances;
 they never use Production or the existing Local database.
 
+SYSTEM also installs as a home-screen web app. The
+[Personal Beta / PWA guide](docs/04-development/personal-beta-pwa.md) covers Android and
+iOS installation, standalone expectations, offline limits and the Production checklist.
+
 Use Node.js 24 LTS and npm. From the repository root:
 
 ```sh

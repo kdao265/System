@@ -45,8 +45,11 @@ const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function QuestCompletionRecovery() { return null; }
   export function QuestCompletionProvider({ children }) { return children; }
 `)}`;
+process.env.SYSTEM_OWNER_USER_ID = "11111111-1111-4111-8111-111111111111";
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === "server-only") return { url: "data:text/javascript,export {};", shortCircuit: true };
+    if (specifier === "./owner" && context.parentURL === authUrl) return nextResolve("./owner.ts", context);
     if (context.parentURL === dataUrl) {
       if (["@/features/auth/session", "@/lib/supabase/server"].includes(specifier)) {
         return { url: adapterMocksUrl, shortCircuit: true };
@@ -271,7 +274,7 @@ const authCodes = ["42501", "PGRST301", "PGRST302", "PGRST303", "bad_jwt", "inva
 const isLoginRedirect = (error) => error.digest === "NEXT_REDIRECT;replace;/login;307;";
 
 test("valid Auth session plus RPC permission denial ends on Dashboard with a panel error", async () => {
-  const user = { id: "synthetic-owner", email: "synthetic@example.invalid" };
+  const user = { id: "11111111-1111-4111-8111-111111111111", email: "synthetic@example.invalid" };
   for (const thrown of [false, true]) {
     configure(async () => user, async () => ({
       auth: { getUser: async () => ({ data: { user }, error: null }) },
@@ -304,7 +307,7 @@ test("invalid Auth session follows Dashboard recovery and remains on Login", asy
   assert.match(renderToStaticMarkup(await LoginPage()), /Login form/);
 });
 
-function mockRead(read, requireUser = async () => ({ id: "synthetic-owner" }), getUser = async () => assert.fail("ordinary RPC results must not recheck Auth")) {
+function mockRead(read, requireUser = async () => ({ id: "11111111-1111-4111-8111-111111111111" }), getUser = async () => assert.fail("ordinary RPC results must not recheck Auth")) {
   configure(requireUser, async (readOnly) => {
     assert.equal(readOnly, true);
     return { auth: { getUser }, rpc: async (...args) => {
@@ -331,7 +334,7 @@ test("RPC auth-like errors cannot redirect when fresh Auth verification accepts 
     let checks = 0;
     const validSession = async () => {
       checks++;
-      return { data: { user: { id: "synthetic-owner" } }, error: null };
+      return { data: { user: { id: "11111111-1111-4111-8111-111111111111" } }, error: null };
     };
     mockRead(() => ({ data: null, error }), undefined, validSession);
     assert.deepEqual(await getProgressionStatus(), { status: "unavailable" });
@@ -411,7 +414,7 @@ test("RPC diagnostics are development-only and expose only safe allowlisted fiel
     hint: "password=synthetic-secret; cookie=synthetic-cookie; synthetic@example.invalid",
     details: "Bearer synthetic-jwt; apikey=synthetic-key",
   };
-  const validSession = async () => ({ data: { user: { id: "synthetic-owner" } }, error: null });
+  const validSession = async () => ({ data: { user: { id: "11111111-1111-4111-8111-111111111111" } }, error: null });
   for (const environment of ["production", "test", "development"]) {
     process.env.NODE_ENV = environment;
     mockRead(() => ({ data: null, error: rpcError, status: 403 }), undefined, validSession);

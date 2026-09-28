@@ -17,7 +17,10 @@ Use synthetic or redacted fixtures. Do not use production secrets or perform des
 | --- | --- |
 | Lint | `npm run lint` (ESLint, zero warnings permitted) |
 | Typecheck | Included in `npm run build` with strict TypeScript configuration |
-| Local Auth/Profile integration | With a production server on port 3100 and local Supabase running: `node --env-file=.env.local tests/auth-smoke.mjs`; creates and retains two synthetic local accounts/profiles per full run |
+| Local Auth/Profile integration | `node tests/auth-smoke.mjs`; owns disposable Auth/PostgREST/tmpfs PostgreSQL and production app; tests private auth without existing Local/Cloud or retained accounts |
+| Private Auth/action boundaries | `node --test tests/private-auth.test.mjs`; all protected actions, owner configuration, disabled signup and cookie rejection |
+| Application regression suite | `node --test tests/*.test.mjs` |
+| Explicit TypeScript check | `npx tsc --noEmit` |
 | Runtime timezone validation | `node --test tests/timezones.test.mjs` (Node.js 24, no database needed) |
 | Build | `npm run build`; `npm run start` serves the resulting production build |
 

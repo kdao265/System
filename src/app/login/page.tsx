@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   if (await getAuthenticatedUser()) redirect(await authenticatedDestination());
-  return <AuthForm mode="login" />;
+  return <AuthForm />;
 }

@@ -1,19 +1,13 @@
-// Local-only HTTP integration test. Run against `npm run start -- --port 3100`:
-// node --env-file=.env.local tests/auth-smoke.mjs
-// Creates two synthetic Auth users (and trigger-owned profiles), retained locally.
+// Self-contained disposable integration. Run: node tests/auth-smoke.mjs
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
+import { startAuthEnvironment } from "./helpers/auth-environment.mjs";
 
-const app = "http://localhost:3100";
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-assert(url && key, "Local Supabase configuration is required");
-assert(["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname), "Remote Supabase is prohibited");
-
+const env = await startAuthEnvironment();
+let app;
+const { url, key, owner, other: outsider } = env;
 const jar = new Map();
-const email = `auth-smoke-${randomUUID()}@example.com`;
-const password = `${randomUUID()}Aa1!`;
+const { email, password } = owner;
 const check = (condition, message) => assert(condition, message);
 
 async function request(path, options = {}) {
@@ -35,17 +29,22 @@ async function request(path, options = {}) {
 
 const decode = (text) => text.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
 
-async function submit(path, fields) {
+async function actionBody(path, fields, logout = false) {
   const { html } = await request(path);
   const body = new FormData();
-  const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/)?.[0] ?? "";
+  const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(([form]) => form);
+  const form = (logout ? forms.find((form) => form.includes("Sign out")) : forms[0]) ?? "";
   for (const tag of form.matchAll(/<input\b[^>]*>/g)) {
     const attrs = Object.fromEntries([...tag[0].matchAll(/([\w:-]+)="([^"]*)"/g)].map(([, k, v]) => [k, decode(v)]));
     if (attrs.type === "hidden" && attrs.name) body.append(attrs.name, attrs.value ?? "");
   }
   check([...body.keys()].some((k) => k.startsWith("$ACTION_")), "Server-rendered action form missing");
   for (const [name, value] of Object.entries(fields)) body.set(name, value);
-  return request(path, { method: "POST", body });
+  return body;
+}
+
+async function submit(path, fields, logout = false) {
+  return request(path, { method: "POST", body: await actionBody(path, fields, logout) });
 }
 
 function redirectTo(result, path) {
@@ -53,29 +52,36 @@ function redirectTo(result, path) {
 }
 
 try {
+  app = await env.startApp();
   check((await request("/")).response.status === 200, "Public home failed");
   redirectTo(await request("/dashboard"), "/login");
   redirectTo(await request("/onboarding"), "/login");
   check((await request("/login")).response.status === 200, "Login unavailable");
-  check((await request("/signup")).response.status === 200, "Signup unavailable");
+  redirectTo(await request("/signup"), "/login");
+  check(!(await request("/login")).html.includes('href="/signup"'), "Login exposes signup");
   console.log("PASS: public routes and unauthenticated dashboard protection");
 
-  check((await submit("/signup", { email, password, confirmPassword: "mismatch" })).html.includes("Passwords must match."), "Mismatch feedback missing");
   check((await submit("/login", { email: "", password: "" })).html.includes("Enter your email and password."), "Required validation missing");
-  check((await submit("/login", { email, password })).html.includes("Unable to sign in."), "Safe invalid-credentials feedback missing");
-  console.log("PASS: server-side required/matching validation and safe login failure");
-
-  const registered = await submit("/signup", { email, password, confirmPassword: password });
-  if (registered.html.includes("Signup request received.")) {
-    check(!jar.size || ![...jar.keys()].some((k) => /auth-token(?:\.\d+)?$/.test(k)), "Pending signup must not create a session");
-    redirectTo(await request("/dashboard"), "/login");
-    console.log("PASS: confirmation-pending signup stays unauthenticated; confirm email before testing login/logout");
-    process.exit(0);
-  }
+  check((await submit("/login", { email, password: "invalid-password" })).html.includes("Unable to sign in."), "Safe invalid-credentials feedback missing");
+  check((await submit("/login", { email: outsider.email, password: outsider.password })).html.includes("Unable to sign in."), "Non-owner login not rejected");
+  check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Rejected login left session cookies");
+  redirectTo(await request("/dashboard"), "/login");
+  const disabled = await fetch(url + "/auth/v1/signup", {
+    method: "POST", redirect: "error", headers: { apikey: key, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "disabled@example.invalid", password }),
+  });
+  check(!disabled.ok && (await disabled.json()).error_code === "signup_disabled", "Direct Auth signup must be disabled");
+  const anonymous = await fetch(url + "/auth/v1/signup", {
+    method: "POST", redirect: "error", headers: { apikey: key, "Content-Type": "application/json" }, body: "{}",
+  });
+  check(!anonymous.ok, "Anonymous Auth signup must be disabled");
+  check(await env.sql("SELECT count(*) FROM auth.users;") === "2", "Disabled registration created an account");
+  console.log("PASS: disabled signup, invalid credentials and non-owner login rejection without session cookies");
+  const registered = await submit("/login", { email, password });
   redirectTo(registered, "/dashboard");
   redirectTo(await request("/dashboard"), "/onboarding");
   redirectTo(await request("/login"), "/onboarding");
-  redirectTo(await request("/signup"), "/onboarding");
+  redirectTo(await request("/signup"), "/login");
   const setup = await request("/onboarding");
   check(setup.html.includes("Profile Setup") && setup.html.includes('value="Asia/Ho_Chi_Minh"'), "Setup or required timezone option missing");
   check(/<option[^>]*value=""[^>]*selected/.test(setup.html), "Timezone must start with an explicit empty selection");
@@ -105,9 +111,23 @@ try {
     getAll: () => [...otherJar].map(([name, value]) => ({ name, value })),
     setAll: (cookies) => cookies.forEach(({ name, value }) => otherJar.set(name, value)),
   } });
-  const otherSignup = await other.auth.signUp({ email: `profile-isolation-${randomUUID()}@example.com`, password: `${randomUUID()}Aa1!` });
-  check(!otherSignup.error && otherSignup.data.session && otherSignup.data.user, "Isolation fixture signup failed");
-  const otherId = otherSignup.data.user.id;
+  const otherLogin = await other.auth.signInWithPassword({ email: outsider.email, password: outsider.password });
+  check(!otherLogin.error && otherLogin.data.session, "Non-owner direct session fixture failed");
+  const otherId = outsider.id;
+  // Replay an owner-rendered Server Action with anonymous and real non-owner cookies.
+  const forgedAction = await actionBody("/onboarding", { display_name: "Forbidden", timezone: "UTC" });
+  const ownerCookies = new Map(jar);
+  jar.clear();
+  redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
+  otherJar.forEach((value, name) => jar.set(name, value));
+  redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/onboarding"), "/login");
+  redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
+  const rejectedAgain = await submit("/login", { email: outsider.email, password: outsider.password });
+  check(rejectedAgain.html.includes("Unable to sign in."), "Existing non-owner session bypassed login");
+  check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Rejected login retained existing non-owner cookies");
+  jar.clear(); ownerCookies.forEach((value, name) => jar.set(name, value));
+  console.log("PASS: direct non-owner session denied protected pages and replayed Profile action; anonymous action denied");
   const crossUser = await client.from("profiles").update({ display_name: "Forbidden" }).eq("user_id", otherId).select("user_id");
   check(!crossUser.error && crossUser.data?.length === 0, "RLS allowed a cross-user update");
 
@@ -118,8 +138,12 @@ try {
   const saved = await client.from("profiles").select("user_id,display_name,timezone,created_at,updated_at").single();
   check(saved.data?.user_id === identity.user.id && saved.data?.display_name === null && saved.data?.timezone === "Asia/Ho_Chi_Minh", "Owner save/optional name normalization failed");
   check(saved.data.created_at === profiles[0].created_at && Date.parse(saved.data.updated_at) >= Date.parse(profiles[0].updated_at) && Date.parse(saved.data.updated_at) !== Date.parse("2000-01-01T00:00:00Z"), "Browser timestamp fields were trusted");
-  const otherProfile = await other.from("profiles").select("display_name,timezone").single();
-  check(otherProfile.data?.display_name === null && otherProfile.data?.timezone === null, "Forged ownership changed another profile");
+  const otherProfile = await other.from("profiles").select("display_name,timezone");
+  check(!otherProfile.error && otherProfile.data?.length === 0, "Non-owner profile must be hidden by restrictive RLS");
+  check(await env.sql(`SELECT display_name IS NULL AND timezone IS NULL FROM public.profiles WHERE user_id = '${otherId}';`) === "t", "Forged ownership changed another profile");
+  const directRpc = await other.rpc("get_current_exp");
+  check(directRpc.error?.code === "42501", "Non-owner direct RPC must be denied");
+  console.log("PASS: activated database RLS hides non-owner data and rejects direct non-owner RPCs");
   await other.auth.signOut({ scope: "local" });
   console.log("PASS: safe timezone rejection, optional name, RLS isolation and ignored browser ownership/timestamps");
 
@@ -134,7 +158,7 @@ try {
   check(dashboard.html.includes(email) && dashboard.html.includes("Profile Tester") && dashboard.html.includes("Asia/Ho_Chi_Minh"), "Dashboard identity/profile missing");
   check(dashboard.response.headers.get("cache-control")?.includes("no-store"), "Private response must not be cached");
   redirectTo(await request("/login"), "/dashboard");
-  redirectTo(await request("/signup"), "/dashboard");
+  redirectTo(await request("/signup"), "/login");
   redirectTo(await request("/onboarding"), "/dashboard");
   console.log("PASS: completed-user redirects, saved name/timezone and re-gating after timezone clearing");
 
@@ -153,16 +177,36 @@ try {
   check((await request("/dashboard")).html.includes(email), "Refreshed cookies did not survive the next request");
   console.log("PASS: proxy refresh writes cookies and preserves the next authenticated request");
 
-  redirectTo(await submit("/dashboard", {}), "/login");
+  redirectTo(await submit("/dashboard", {}, true), "/login");
   check(![...jar.keys()].some((k) => /auth-token(?:\.\d+)?$/.test(k)), "Logout did not clear session cookies");
   redirectTo(await request("/dashboard"), "/login");
   redirectTo(await submit("/login", { email, password }), "/dashboard");
   check((await request("/dashboard")).html.includes(email), "Password login failed");
-  redirectTo(await submit("/dashboard", {}), "/login");
+  redirectTo(await submit("/dashboard", {}, true), "/login");
   console.log("PASS: logout clears cookies and protects dashboard; password login succeeds");
-  console.log("Two local synthetic Auth users/profiles retained. No credentials printed.");
+  // Reuse the production build, but change runtime server-only configuration.
+  const configuredApp = app;
+  redirectTo(await submit("/login", { email, password }), "/dashboard");
+  const activeOwnerCookies = new Map(jar);
+  check((await request("/dashboard")).html.includes(email), "Configuration checks require a valid owner session");
+  jar.clear();
+  for (const ownerSetting of ["", "not-a-uuid"]) {
+    app = await env.startApp(ownerSetting);
+    redirectTo(await request("/dashboard"), "/login");
+    check((await submit("/login", { email, password })).html.includes("Unable to sign in."), "Bad configuration permitted login");
+    check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Bad configuration wrote a session");
+    activeOwnerCookies.forEach((value, name) => jar.set(name, value));
+    redirectTo(await request("/dashboard"), "/login");
+    redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
+    jar.clear();
+  }
+  app = configuredApp;
+  console.log("PASS: missing and invalid runtime owner configuration deny login, existing session and Profile action");
 } catch (error) {
   // Avoid dumping responses, cookie jars or SDK objects on a failed assertion.
   console.error(error instanceof assert.AssertionError ? error.message : "Local smoke test failed; check local service availability.");
   process.exitCode = 1;
+} finally {
+  await env.close();
+  console.log("Disposable auth containers and network removed; existing Local and Cloud untouched.");
 }

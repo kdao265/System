@@ -162,3 +162,49 @@ same-cycle command-ID wording; the historical text remains for traceability.
 
 **Related:** [Completion Alias contract](quest-command-api-v1.md#11-completion-alias-v1-amendment),
 [backend task and rollout](../04-development/completion-alias-v1.md).
+
+## ADR-014 - Private Auth V1 application boundary
+
+**Date:** 2026-09-28. **Status:** Accepted by the Product Owner's PR #35 implementation request.
+
+**Context:** SYSTEM is a private single-owner application. Existing SSR Auth accepts
+any valid Auth user, and the original signup flow is public.
+
+**Decision:** Preserve Supabase Auth, SSR cookie refresh and RLS. Add a server-only
+`SYSTEM_OWNER_USER_ID` UUID allowlist at the shared server identity boundary and
+password login. Fail closed on absent/invalid configuration; all protected actions
+use that boundary. Disable website signup and its action, and keep operational
+Supabase public/anonymous signup disabled. Buffer login cookies until identity is
+accepted. Logout and owner timezone onboarding retain their current behavior.
+
+**Alternatives:** Email matching, UI-only checks and proxy-only gates cannot enforce
+server authorization. A new identity provider is unnecessary. A database singleton
+is not part of the approved application implementation; see ADR-015.
+
+**Consequences:** Every environment needs the server UUID. Existing database RLS
+still isolates users rather than enforcing one SYSTEM owner. No domain rule or
+privileged browser credential is introduced. [Scope, audit and validation](../04-development/private-auth-v1.md).
+
+## ADR-015 - Single-owner database enforcement
+
+**Date:** 2026-09-28. **Status:** Proposed; Product Owner agreement required before implementation.
+
+**Context:** Valid non-owner tokens can bypass Next.js and invoke permitted Supabase
+queries/RPCs on their own data. Disabling signup does not remove this access.
+PostgreSQL cannot read the server environment variable.
+
+**Proposal:** Add an administrator-controlled private singleton owner configuration
+and narrow authorization predicate. Add restrictive policies to existing RLS,
+plus public-RPC entry guards (including owner-only assignment actor and target).
+Preserve the current identity helper, ownership isolation, capabilities, provisioning
+and business rules. See the [migration scope and test plan](../04-development/private-auth-v1.md#proposed-database-follow-up-not-implemented-or-applied).
+
+**Alternatives:** Application-only checks leave direct APIs accessible. Deleting or
+banning all other users does not establish a durable database invariant or instantly
+revoke issued access tokens. A gateway hook alone does not cover other SQL entry
+paths. Rewriting every business routine or managed Auth helper creates wider risk.
+
+**Impact:** One additive migration and separately approved environment-specific
+bootstrap; missing bootstrap deliberately denies application database access.
+App and database UUIDs must agree. No migration SQL or existing Local/Cloud changes
+are included in PR #35; implementation and rollout remain explicitly gated.

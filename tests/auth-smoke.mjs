@@ -55,6 +55,7 @@ try {
   app = await env.startApp();
   check((await request("/")).response.status === 200, "Public home failed");
   redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/calendar"), "/login");
   redirectTo(await request("/onboarding"), "/login");
   check((await request("/login")).response.status === 200, "Login unavailable");
   redirectTo(await request("/signup"), "/login");
@@ -66,6 +67,7 @@ try {
   check((await submit("/login", { email: outsider.email, password: outsider.password })).html.includes("Unable to sign in."), "Non-owner login not rejected");
   check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Rejected login left session cookies");
   redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/calendar"), "/login");
   const disabled = await fetch(url + "/auth/v1/signup", {
     method: "POST", redirect: "error", headers: { apikey: key, "Content-Type": "application/json" },
     body: JSON.stringify({ email: "disabled@example.invalid", password }),
@@ -80,6 +82,7 @@ try {
   const registered = await submit("/login", { email, password });
   redirectTo(registered, "/dashboard");
   redirectTo(await request("/dashboard"), "/onboarding");
+  redirectTo(await request("/calendar"), "/onboarding");
   redirectTo(await request("/login"), "/onboarding");
   redirectTo(await request("/signup"), "/login");
   const setup = await request("/onboarding");
@@ -121,6 +124,7 @@ try {
   redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
   otherJar.forEach((value, name) => jar.set(name, value));
   redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/calendar"), "/login");
   redirectTo(await request("/onboarding"), "/login");
   redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
   const rejectedAgain = await submit("/login", { email: outsider.email, password: outsider.password });
@@ -151,6 +155,7 @@ try {
   const cleared = await client.from("profiles").update({ timezone: null }).eq("user_id", identity.user.id);
   check(!cleared.error, "Owner timezone clear failed");
   redirectTo(await request("/dashboard"), "/onboarding");
+  redirectTo(await request("/calendar"), "/onboarding");
   redirectTo(await submit("/onboarding", { display_name: "  Profile Tester  ", timezone: "Asia/Ho_Chi_Minh" }), "/dashboard");
   const named = await client.from("profiles").select("display_name").single();
   check(named.data?.display_name === "Profile Tester", "Display name was not trimmed");
@@ -180,6 +185,7 @@ try {
   redirectTo(await submit("/dashboard", {}, true), "/login");
   check(![...jar.keys()].some((k) => /auth-token(?:\.\d+)?$/.test(k)), "Logout did not clear session cookies");
   redirectTo(await request("/dashboard"), "/login");
+  redirectTo(await request("/calendar"), "/login");
   redirectTo(await submit("/login", { email, password }), "/dashboard");
   check((await request("/dashboard")).html.includes(email), "Password login failed");
   redirectTo(await submit("/dashboard", {}, true), "/login");
@@ -193,10 +199,12 @@ try {
   for (const ownerSetting of ["", "not-a-uuid"]) {
     app = await env.startApp(ownerSetting);
     redirectTo(await request("/dashboard"), "/login");
+    redirectTo(await request("/calendar"), "/login");
     check((await submit("/login", { email, password })).html.includes("Unable to sign in."), "Bad configuration permitted login");
     check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Bad configuration wrote a session");
     activeOwnerCookies.forEach((value, name) => jar.set(name, value));
     redirectTo(await request("/dashboard"), "/login");
+    redirectTo(await request("/calendar"), "/login");
     redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
     jar.clear();
   }

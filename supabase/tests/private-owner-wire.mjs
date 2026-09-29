@@ -12,7 +12,7 @@ const env = await startAuthEnvironment({ buildApp: false, activateOwner: false, 
 const activation = readFileSync(new URL("../migrations/20260928100000_activate_private_owner.sql", import.meta.url), "utf8");
 const tables = ["profiles", "quests", "quest_recurrence_rules", "quest_occurrences", "quest_events", "exp_ledger",
   "level_policies", "level_thresholds", "progression_policy_assignments", "level_milestones",
-  "level_reward_definitions", "level_reward_unlocks", "level_reward_events"];
+  "level_reward_definitions", "level_reward_unlocks", "level_reward_events", "schedule_events"];
 const rpcNames = ["get_current_exp", "get_progression_status", "list_level_rewards", "get_reward_history", "list_day_quest_occurrences",
   "assign_level_policy", "configure_level_reward", "update_level_reward", "cancel_level_reward", "redeem_level_reward",
   "create_one_off_quest", "complete_quest_occurrence", "reopen_quest_occurrence_v2", "get_quest_completion_resolution_v1"].sort();
@@ -116,6 +116,11 @@ async function exercise(client, account) {
 }
 
 try {
+  // Probe catalog columns, never assume schema_migrations has a generic `id`.
+  // This raw-SQL harness does not install or fabricate CLI migration history.
+  const historyColumns = await env.sql(`SELECT string_agg(column_name, ',' ORDER BY ordinal_position)
+    FROM information_schema.columns WHERE table_schema = 'supabase_migrations' AND table_name = 'schema_migrations';`);
+  console.log(`Migration-history catalog columns in disposable database: ${historyColumns || '(relation absent; migrations applied directly by checkpoint harness)'}`);
   // Original multi-user suites already ran at their migration checkpoints in the
   // harness. Retired V1 APIs are not temporarily re-granted to make them pass.
   const owner = await login(env.owner);
@@ -143,6 +148,10 @@ try {
     INSERT INTO public.quest_recurrence_rules(quest_id,user_id,recurrence_type,anchor_date)
     SELECT id,user_id,'daily','2026-09-28' FROM public.quests WHERE title='Fixture recurrence';`);
   await env.sql(`INSERT INTO system_private.owner_configuration(user_id) VALUES ('${env.owner.id}');`);
+  // ADR-019 seeds one Schedule Event per account so the schedule_events row is as
+  // non-vacuous as every other protected table. This is fixture seeding only: the real
+  // write path is exercised over PostgREST after activation, below.
+  await env.sql(`INSERT INTO public.schedule_events(id,user_id,title,start_at) SELECT gen_random_uuid(),id,'Fixture schedule event','2026-09-29T02:00:00Z' FROM auth.users;`);
   // An unfamiliar RPC body must abort the entire activation, including policies
   // already staged in its transaction. Restore only this disposable test change.
   const originalExp = await env.sql("SELECT pg_get_functiondef('public.get_current_exp()'::regprocedure);");
@@ -198,7 +207,45 @@ try {
       assert((await outsider.from(table).update({ id: randomUUID() }).not("id", "is", null)).error, `${table}: forbidden UPDATE allowed`);
     }
   }
-  pass("all 13 populated public tables: owner scoped reads, hidden non-owner rows, denied anonymous access and forbidden writes");
+  pass("all 14 populated public tables: owner scoped reads, hidden non-owner rows, denied anonymous access and forbidden writes");
+
+  // ADR-019: the Calendar surface follows the same ADR-015 wire contract as every other
+  // routine. Identity comes only from the verified token, and a non-owner is refused with
+  // 42501 rather than answered with an empty projection or a silent write.
+  const calendarArgs = {
+    p_event_id: randomUUID(), p_title: "Fixed class", p_start_at: "2026-09-29T02:00:00Z",
+    p_end_at: "2026-09-29T03:30:00Z", p_all_day: false, p_category: "class", p_notes: null,
+  };
+  const made = await ok(owner, "create_schedule_event", calendarArgs);
+  assert.equal(made.replay, false, "First create must not report a replay");
+  assert.equal(made.event_id, calendarArgs.p_event_id);
+  assert.equal(made.user_id, env.owner.id);
+  const replayCreate = await ok(owner, "create_schedule_event", calendarArgs);
+  assert.deepEqual(replayCreate, { ...made, replay: true }, "A retried create identity must answer identically");
+  assert.equal(replayCreate.replay, true);
+  const window = { p_from: "2026-09-29", p_to: "2026-09-29" };
+  const day = await ok(owner, "get_calendar_events", window);
+  assert(Array.isArray(day) && day.some((entry) => entry.entry_id === made.event_id && entry.source === "schedule_event"),
+    "Created Schedule Event missing from the owner Calendar projection");
+  assert(day.every((entry) => entry.source === "schedule_event" || entry.source === "quest_occurrence"),
+    "Calendar projection invented a third entry source");
+  const edited = await ok(owner, "update_schedule_event", { ...calendarArgs, p_title: "Fixed class v2", p_category: null });
+  assert.equal(edited.replay, false, "A real edit must report a write");
+  const editedAgain = await ok(owner, "update_schedule_event", { ...calendarArgs, p_title: "Fixed class v2", p_category: null });
+  assert.equal(editedAgain.replay, true, "Re-applying identical state must not write again");
+  assert.equal(editedAgain.updated_at, edited.updated_at, "A replayed edit must not move updated_at");
+  assert.equal(await ok(owner, "delete_schedule_event", { p_event_id: made.event_id }), true);
+  assert.equal(await ok(owner, "delete_schedule_event", { p_event_id: made.event_id }), false,
+    "A retried delete must not remove a second row");
+  for (const client of [outsider, anon]) {
+    await denied(client, "get_calendar_events", window);
+    for (const [name, args] of [["create_schedule_event", calendarArgs],
+      ["update_schedule_event", calendarArgs], ["delete_schedule_event", { p_event_id: made.event_id }]]) {
+      await denied(client, name, args);
+    }
+  }
+  pass("Calendar read and all three Schedule Event writes require the owner over real PostgREST, stay idempotent per identity and reject non-owner tokens");
+
   for (const client of [owner, outsider, anon]) {
     await denied(client, "quest_valid_weekdays", { days: [1] });
     await denied(client, "reopen_quest_occurrence", { command_id: randomUUID(), occurrence_id: approved.created.occurrence_id, origin: "web_ui" });

@@ -32,7 +32,11 @@ DECLARE
     ];
 BEGIN
     PERFORM pg_temp.assert_true(approved IS NOT NULL AND outsider IS NOT NULL, 'populated owner/outsider fixtures');
-    PERFORM pg_temp.assert_true((SELECT count(*) FROM pg_policy WHERE polname='system_single_owner')=15, '15 restrictive policies');
+    -- 15 restrictive policies come from this activation; the sixteenth is the identical
+    -- system_single_owner guard that 20260929120000_create_schedule_events.sql installs on
+    -- its own new table, because this migration's table list is frozen. Calendar-specific
+    -- policy shape is asserted by supabase/tests/calendar-schedule-catalog.sql.
+    PERFORM pg_temp.assert_true((SELECT count(*) FROM pg_policy WHERE polname='system_single_owner')=16, '16 restrictive policies');
     FOREACH target IN ARRAY protected LOOP
         PERFORM pg_temp.assert_true((SELECT relrowsecurity FROM pg_class WHERE oid=target), 'RLS enabled');
         PERFORM pg_temp.assert_true(EXISTS (

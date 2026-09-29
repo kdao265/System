@@ -365,3 +365,62 @@ AC-32, AC-33, AC-39, AC-40), [Quest database schema](quest-database-schema.md) s
 [Recurring Quest migration](../../supabase/migrations/20260928181000_create_recurring_quests.sql),
 [behavior suite](../../supabase/tests/recurring-quests.sql) and
 [catalog suite](../../supabase/tests/recurring-quests-catalog.sql).
+
+## ADR-019 - The Calendar is a read-only projection over two owning tables
+
+**Date:** 2026-09-29. **Status:** Accepted - Product Owner approved PR #40: all-day and timed events, existing recurring Quest projection, last-write-wins editing and `/calendar`. No Schedule Event recurrence.
+
+**Context:** [Calendar/Schedule requirements](../01-requirements/calendar-schedule.md) CS-04 to
+CS-07 require one ordered view that mixes two kinds of thing that already have different owners and
+different lifecycles: Quest occurrences owned by the Quest Engine, and non-Quest time blocks that do
+not exist yet. ADR-018 closes with an explicit constraint on this consumer: future Calendar work
+"must reuse these same server commands and occurrence identities, not independently generate slots or
+rewards." Migration one already freezes the occurrence contract (`status` plus
+`scheduled_at`/`deadline_at`, `ck_occurrence_schedule`, `source_slot_date`, `uq_recurring_slot`), and
+ADR-015 freezes one activation pattern for every new owner table. The open question is where calendar
+semantics may live without creating a second scheduler, a second completion model or a second
+ownership path.
+
+**Decision:** Store no calendar. Keep two owning tables — `public.quest_occurrences` (unchanged) and
+a new additive `public.schedule_events` (owner id, title, start, optional end, all-day flag, category
+label, note, timestamps) — and add one read RPC, `get_calendar_events(date_from, date_to)`, that
+`UNION ALL`s the two sources into one ordered set of calendar entries and returns only the columns a
+day or week grid needs. The RPC is `SECURITY INVOKER`-scoped through existing owner policies with `system_private.require_owner()` before any row access, matching the routine boundary that `list_recurring_quests` and
+`list_day_quest_occurrences` already use. Writes go through three owner-scoped idempotent commands
+(`create_schedule_event`, `update_schedule_event`, `delete_schedule_event`) on `schedule_events`
+only. No Quest row, event kind, reward, ledger row, rule or `materialize_quest_day` behavior changes;
+the Calendar never materializes.
+
+`schedule_events` follows ADR-015 unchanged: RLS enabled, owner policies keyed on the verified
+request identity, a dedicated NOLOGIN/NOBYPASSRLS `schedule_command_owner` owns the three SECURITY DEFINER writes but not the table. Authenticated has owner-bound SELECT and RPC EXECUTE; direct writes and anonymous/service-role access are revoked. No `private_owner` role is introduced: this is the existing Quest command-role pattern. The read side reuses the Profile timezone already required by onboarding; the
+projection returns timed instants and authoritative all-day date bounds. Existing Quest time/date utilities interpret timed input and display in the Profile zone. Untimed recurring occurrences use their existing `source_slot_date`, without inventing a time or copying an occurrence.
+
+**Alternatives:** (a) A dedicated `calendar_entries` table that copies Quest occurrences into itself
+would give one simple query but create a second source of truth that must be reconciled on every
+completion, reopen, reschedule and materialization, and it would break CS-AC-04 by construction.
+(b) Extending `quests` with a non-Quest kind would let the Calendar reuse the Quest machinery, but
+every Quest read, status check, reward rule and archive predicate would then have to exclude a kind
+that can never complete — the exact duplicated-engine risk ADR-018 rejected. (c) Generating
+occurrence rows for classes and shifts and simply marking them non-rewarding would put appointments
+inside the completion and EXP pipeline and make "did I attend" a Quest decision. (d) A database view
+instead of an RPC cannot enforce the ADR-015 entry guard the way the existing RPCs do, and would
+widen the exposed column surface. (e) Client-side merging of two separate reads needs no SQL, but it
+duplicates ordering, midnight-spanning and range logic in the browser, contradicting ADR-010.
+
+**Impact:** One additive migration, one new owner-activated table with its own policies and indexes,
+four new RPCs granted to `authenticated` only, one new feature folder under `src/features/`, one new
+protected route, and one new behavior/catalog test pair registered in `tests/helpers/auth-environment.mjs`
+at the new migration checkpoint. The `system_single_owner` policy and RPC-guard counts in ADR-015 grow by
+exactly the new table and new guards and must be re-verified, not restated. `quest-completion-resolution-wire.mjs`
+already asserts migrations one to ten only and is stale since migration eleven (IDEA-003); this ADR
+neither fixes nor further breaks it. The new role receives only an owner-bound Profile timezone read policy; existing policies, the frozen event
+payload, the completion command and the EXP ledger are unchanged. Schedule Event recurrence is explicitly out of V1; future design requires its own approval.
+
+**Related:** [Calendar/Schedule requirements](../01-requirements/calendar-schedule.md) (CS-01..CS-12,
+CS-AC-01..CS-AC-07, OQ-1..OQ-6), [ADR-015](#adr-015--single-owner-database-enforcement),
+[ADR-018](#adr-018--recurring-quest-definitions-materialize-lazily-on-read),
+[Quest database schema](quest-database-schema.md) sections on occurrence scheduling and read patterns,
+[coding guidelines](../04-development/coding-guidelines.md) and
+[testing](../04-development/testing.md).
+
+**Correctness details:** the four RPC names/signatures remain intact. Instant parameters transport all-day dates in the current Profile zone; SQL stores authoritative `start_date`/exclusive `end_date`, and the projection emits null all-day clock values. Missing end means one day; a provided end denotes the last included date. Events without an end appear only on their start day. Removal retains a `removed_at` tombstone against late create retries without introducing attendance, completion, reward or EXP state. Identical updates are no-ops; concurrent updates remain last-write-wins. No historical migration is changed. See [implementation and validation](../04-development/calendar-schedule-v1.md).

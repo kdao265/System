@@ -58,6 +58,7 @@ const { getAuthenticatedUser, requireUser } = await import("../src/features/auth
 const { login, signup } = await import("../src/features/auth/actions.ts");
 const { saveProfile } = await import("../src/features/profile/actions.ts");
 const { changeRecurrencePause } = await import("../src/features/quests/recurrence-action.ts");
+const { saveScheduleEvent } = await import("../src/features/calendar/actions.ts");
 const { createQuest } = await import("../src/features/quests/create-action.ts");
 const { completeQuest } = await import("../src/features/quests/completion-action.ts");
 const { reopenQuest } = await import("../src/features/quests/reopen-action.ts");
@@ -102,7 +103,7 @@ test("verified identity must match owner; metadata, email and unverified session
 });
 
 test("every protected action denies anonymous/non-owner and misconfiguration before data access", async () => {
-  for (const action of [saveProfile, createQuest, completeQuest, reopenQuest, resolveQuestCompletion, changeRecurrencePause]) {
+  for (const action of [saveProfile, createQuest, completeQuest, reopenQuest, resolveQuestCompletion, changeRecurrencePause, saveScheduleEvent]) {
     for (const [setting, user] of [[owner, null], [owner, { id: other }], ["", { id: owner }], ["invalid", { id: owner }]]) {
       process.env.SYSTEM_OWNER_USER_ID = setting;
       mocks.configure(user);

@@ -1,22 +1,38 @@
-﻿import { localTimeToUtc, utcToLocalInput } from "./time";
+import { localTimeToUtc, utcToLocalInput } from "./time";
 import { validateQuestCreationRequest, type QuestCreationRequest } from "./create-model";
+import { isRecurring, validateRecurringRequest, type CreationRequest } from "./recurring-model";
 import type { PendingCreation } from "./create-pending";
 
 export type QuestDraft = {
+  recurrence_mode: "one_off" | "daily" | "weekly" | "monthly";
+  start_date: string; end_date: string; weekdays: number[]; month_day: string;
   title: string; description: string; scheduled_at: string; deadline_at: string;
   default_reward_exp: string; importance: "main" | "side";
   priority: "" | "low" | "medium" | "high" | "critical";
 };
-export const emptyDraft: QuestDraft = { title: "", description: "", scheduled_at: "", deadline_at: "", default_reward_exp: "0", importance: "side", priority: "" };
+export const emptyDraft: QuestDraft = { recurrence_mode: "one_off", start_date: "", end_date: "", weekdays: [], month_day: "1", title: "", description: "", scheduled_at: "", deadline_at: "", default_reward_exp: "0", importance: "side", priority: "" };
 export function draftFromPending(operation: PendingCreation): QuestDraft {
+  const request = operation.request;
+  if (isRecurring(request)) return { ...emptyDraft, ...request,
+    description: request.description ?? "", priority: request.priority ?? "", default_reward_exp: String(request.default_reward_exp),
+    end_date: request.end_date ?? "", weekdays: request.recurrence_mode === "weekly" ? [...request.weekdays] : [],
+    month_day: request.recurrence_mode === "monthly" ? String(request.month_day) : "1" };
   return {
-    ...operation.request, description: operation.request.description ?? "", priority: operation.request.priority ?? "",
-    default_reward_exp: String(operation.request.default_reward_exp),
-    scheduled_at: operation.request.scheduled_at ? utcToLocalInput(operation.request.scheduled_at, operation.timezone) : "",
-    deadline_at: operation.request.deadline_at ? utcToLocalInput(operation.request.deadline_at, operation.timezone) : "",
+    ...emptyDraft, ...request, description: request.description ?? "", priority: request.priority ?? "",
+    default_reward_exp: String(request.default_reward_exp),
+    scheduled_at: request.scheduled_at ? utcToLocalInput(request.scheduled_at, operation.timezone) : "",
+    deadline_at: request.deadline_at ? utcToLocalInput(request.deadline_at, operation.timezone) : "",
   };
 }
-export function requestFromDraft(draft: QuestDraft, timezone: string): { request: QuestCreationRequest; error?: never } | { error: string; request?: never } {
+export function requestFromDraft(draft: QuestDraft, timezone: string): { request: CreationRequest; error?: never } | { error: string; request?: never } {
+  if (draft.recurrence_mode && draft.recurrence_mode !== "one_off") {
+    const request = { title: draft.title.trim(), description: draft.description.trim() || null,
+      importance: draft.importance, priority: draft.priority || null, default_reward_exp: Number(draft.default_reward_exp),
+      recurrence_mode: draft.recurrence_mode, start_date: draft.start_date, end_date: draft.end_date || null,
+      ...(draft.recurrence_mode === "weekly" ? { weekdays: [...new Set(draft.weekdays)].sort((a, b) => a - b) } : {}),
+      ...(draft.recurrence_mode === "monthly" ? { month_day: Number(draft.month_day) } : {}) };
+    return validateRecurringRequest(request) ? { request } : { error: "Review the title, EXP, date range and recurrence selection. Weekly Quests need at least one weekday; monthly days must be 1 to 31." };
+  }
   const scheduled = draft.scheduled_at ? localTimeToUtc(draft.scheduled_at, timezone) : { ok: true as const, value: "" };
   const deadline = draft.deadline_at ? localTimeToUtc(draft.deadline_at, timezone) : { ok: true as const, value: "" };
   if (!scheduled.ok || !deadline.ok) {

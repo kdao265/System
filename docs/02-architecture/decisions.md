@@ -282,3 +282,86 @@ updates. Offline use is not supported and shows the browser's normal offline err
 which the Product Owner accepted for V1. The existing disposable Playwright harness is
 extended rather than duplicated with installability and phone-layout checks. See the
 [Personal Beta PWA guide](../04-development/personal-beta-pwa.md).
+
+## ADR-018 - Recurring Quest definitions materialize lazily on read
+
+**Date:** 2026-09-29. **Status:** Accepted / Implemented in the repository. The Product
+Owner accepted ADR-018 and its versioned application extension for PR #39. Database,
+creation/recovery, day materialization and pause/resume UI are implemented and validated
+on `feat/recurring-quests-v1`; no deployment, commit, push or PR operation was performed.
+
+**Context:** RR-01 to RR-07 require a reusable recurring definition plus one occurrence per
+eligible slot, each with its own lifecycle, completion and reward entitlement. Migration
+one already stores everything this needs — `quest_recurrence_rules`, `quests.recurrence_mode`,
+`quests.materialized_occurrence_count`, the occurrence origin columns and the partial unique
+index `uq_recurring_slot` — but no routine creates or generates a recurring definition, so a
+recurring Quest is currently unreachable. Section 18 of the schema document states the write
+contract and explicitly does not specify a scheduler. Creating a second engine, a second
+completion path or a second EXP source would duplicate frozen pipeline guarantees.
+
+**Decision:** Add one additive migration that contributes two receipt types and four routines
+and nothing else: `create_recurring_quest`, `materialize_quest_day`, `set_quest_recurrence_pause`
+and `list_recurring_quests`. A recurring definition writes the same `quests` row, the same
+single rule, and two definition events (`created` and `recurrence_changed`), then produces no
+occurrence. `materialize_quest_day(date)` is the only generation trigger: it lazily creates at
+most one unscheduled `draft` occurrence per eligible rule for one profile-local day, so a
+recurring occurrence is an ordinary occurrence that completes, reopens and is credited through
+the unchanged completion command and EXP ledger.
+
+Generation is gated on the profile-local today or later. A past day that was never materialized
+is skipped, never backfilled, and consumes no `occurrence_limit`, which is section 18.2 read
+literally and satisfies AC-33. Determinism is layered: the shared owner advisory lock, then the
+Quest row `FOR UPDATE` around the limit check and counter increment, then `ON CONFLICT DO
+NOTHING` against `uq_recurring_slot` with `ROW_COUNT` deciding whether the cumulative counter
+moves. Slots carry a calendar `source_slot_date` and never an invented instant, because
+section 18.4 forbids a manufactured deadline and the frozen `ck_occurrence_schedule` check
+requires an instant before a status may be `scheduled`. No cron, worker, queue or precreation
+horizon exists.
+
+`public.list_day_quest_occurrences(date)` is left byte-identical. The promoted ADR-015
+activation migration pins its exact source hash and the historical day-read suites assert its
+catalog shape, so recurrence enters the read path through a sibling routine instead. The four
+new routines carry `system_private.require_owner()` in their own bodies because the deferred
+activation migration guards only its frozen pre-existing RPC list.
+
+**Alternatives:** A scheduler or precreation horizon would create occurrences nobody asked for
+and contradicts RR-03 and AC-33. Editing the day-read projection would break a hash-pinned
+migration. A separate recurring completion command would fork the completion and EXP contract
+that AC-41 already pins. Materializing explicitly requested past days would manufacture an
+obligation per missed slot, which RR-05 forbids. Emitting a Quest Event per generated slot would
+require widening the frozen `ck_event_type` vocabulary with a synthetic kind.
+
+**Consequences:** Recurring Quests reuse the existing occurrence, completion, reopen and EXP
+pipeline unchanged, so AC-35, AC-38, AC-40 and AC-41 hold without new machinery. Materializing
+a slot writes no Quest Event: provenance lives in the occurrence origin columns, the cumulative
+counter and `created_at`, while definition changes do write `created`, `recurrence_changed` and
+`recurrence_stopped`. The Product Owner also accepted the application extension for PR #39:
+the existing Dashboard creates One-off/Daily/Weekly/Monthly Quests, materializes the selected
+day before its ordinary read, labels recurring occurrences, and lists definitions with
+pause/resume. One-off creation keeps the exact v2 storage contract. Recurring creation uses
+an exact v3 envelope under the same origin-wide lock; recovery inventories both, preserving
+command identity without converting or widening v2. Replacing v2 or silently adding fields
+to its shape would strand or reinterpret uncertain one-off commands, so both are rejected.
+Pause/resume persists exact account/Quest/command/state snapshots before dispatch, retains
+uncertain results and refreshes authoritative state after confirmed receipts. Server actions
+verify the expected account, and all SQL routines retain ADR-015 owner enforcement and RLS.
+
+The application integration regression proved that creation replay must survive later pause
+and Profile-timezone changes. The narrow migration fix compares immutable creation request
+fields and validates the recorded timezone as provenance, without requiring current pause or
+timezone values to equal their creation state. Historical events and occurrences are untouched.
+No new engine, schema, privileges or calendar semantics were introduced by this correction.
+
+Daily uses each eligible Profile-local date; Weekly uses selected ISO weekdays; Monthly uses
+the chosen day or the shorter month's last day and retains the chosen day for later months.
+Dates are inclusive. Unmaterialized slots follow current Profile timezone; existing provenance,
+completion and EXP remain fixed. Arbitrary schedule editing/versioning is deferred. Future
+Calendar/chatbot consumers must reuse these same server commands and occurrence identities,
+not independently generate slots or rewards. See the [application/recovery and validation
+record](../04-development/recurring-quests-v1.md).
+
+**Related:** [Quest engine requirements](../01-requirements/quest-engine.md) (RR-01..RR-07,
+AC-32, AC-33, AC-39, AC-40), [Quest database schema](quest-database-schema.md) section 18,
+[Recurring Quest migration](../../supabase/migrations/20260928181000_create_recurring_quests.sql),
+[behavior suite](../../supabase/tests/recurring-quests.sql) and
+[catalog suite](../../supabase/tests/recurring-quests-catalog.sql).

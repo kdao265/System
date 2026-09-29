@@ -30,6 +30,7 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   export const invalidations = [];
   export function revalidatePath(...args) { invalidations.push(args); }
   export function LogoutForm() { return null; }
+  export function RecurringQuestsPanel() { return null; }
   export function RewardsPanel() { return null; }
   export function RewardsLoading() { return null; }
   export function QuestCreationForm() { return null; }
@@ -41,7 +42,7 @@ const hooks = registerHooks({
     if (context.parentURL?.startsWith(sourceRoot.href)) {
       if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
         "@/features/auth/logout-form", "@/features/profile/onboarding-form",
-        "@/features/rewards/panel", "@/features/rewards/components", "@/features/quests/create-form",
+        "@/features/quests/recurring-panel", "@/features/rewards/panel", "@/features/rewards/components", "@/features/quests/create-form",
         "@/features/quests/completion-recovery-ui"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };
       }
@@ -99,6 +100,10 @@ function mockRead(read, getUser = async () => assert.fail("unexpected fresh Auth
   configure(async () => owner, async (readOnly) => {
     assert.equal(readOnly, true);
     return { auth: { getUser }, rpc: async (...args) => {
+      if (args[0] === "materialize_quest_day") {
+        assert.deepEqual(args, ["materialize_quest_day", { p_day: selectedDate }]);
+        return { data: 0, error: null };
+      }
       assert.deepEqual(args, ["list_day_quest_occurrences", { p_day: selectedDate }]);
       return read();
     } };
@@ -286,7 +291,7 @@ function pageClient(rpc, profile = { display_name: "Operator", timezone: "UTC" }
   return {
     auth: { getUser: async () => ({ data: { user: owner }, error: null }) },
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: profile, error: null }) }) }) }),
-    rpc,
+    rpc: (name, args) => name === "materialize_quest_day" ? Promise.resolve({ data: 0, error: null }) : rpc(name, args),
   };
 }
 
@@ -460,4 +465,23 @@ test("non-today read failure and both retry links preserve the selected date", a
   assert.match(progressionFailure, new RegExp(`href="/dashboard\\?date=${selectedDate}"[^>]*>Retry`));
   const progressionRetry = await streamMarkup(await DashboardPage({ searchParams: Promise.resolve({ date: selectedDate }) }));
   assert.match(progressionRetry, /No Quests for this day/);
+});
+
+test("day read materializes on the server before listing and fails closed when generation fails", async () => {
+  const selectedDate = "2026-09-29";
+  for (const materialization of [{ data: 1, error: null }, { data: null, error: { code: "PZ001" } }, { data: null, error: { code: "XX000" } }, { data: "1", error: null }]) {
+    const calls = [];
+    configure(async () => owner, async () => ({ rpc: async (name, args) => {
+      calls.push(name); assert.deepEqual(args, { p_day: selectedDate });
+      if (name === "materialize_quest_day") return materialization;
+      assert.equal(name, "list_day_quest_occurrences"); return { data: [base], error: null };
+    } }));
+    const result = await getDayQuests(selectedDate);
+    if (materialization.data === 1) {
+      assert.equal(result.status, "ok"); assert.deepEqual(calls, ["materialize_quest_day", "list_day_quest_occurrences"]);
+    } else {
+      assert.equal(result.status, materialization.error?.code === "PZ001" ? "timezone-required" : materialization.error ? "unavailable" : "invalid");
+      assert.deepEqual(calls, ["materialize_quest_day"]);
+    }
+  }
 });

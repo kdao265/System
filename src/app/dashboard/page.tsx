@@ -5,6 +5,7 @@ import { ProfileError } from "@/features/profile/profile-error";
 import { getProgressionStatus } from "@/features/progression/data";
 import { ExpProgressCard, PlayerSummary } from "@/features/progression/components";
 import { Suspense } from "react";
+import { RecurringQuestsPanel } from "@/features/quests/recurring-panel";
 import { DailyQuestsPanel } from "@/features/quests/panel";
 import { DailyQuestLoading } from "@/features/quests/components";
 import { RewardsPanel } from "@/features/rewards/panel";
@@ -54,6 +55,9 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
           <QuestCompletionRecovery selectedDate={selectedDate} />
           <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} />}>
             <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} userId={user.id} />
+          </Suspense>
+          <Suspense fallback={<p role="status">Loading recurring Quests...</p>}>
+            <RecurringQuestsPanel userId={user.id} />
           </Suspense>
           <Suspense fallback={<RewardsLoading />}>
             <RewardsPanel />

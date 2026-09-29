@@ -1,11 +1,12 @@
-﻿"use server";
+"use server";
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/features/auth/session";
 import { getProfileContext } from "@/features/profile/session";
 import { isSupportedTimezone } from "@/features/profile/timezones";
 import { createOneOffQuest } from "./create-data";
-import { validateQuestCreationRequest } from "./create-model";
+import { validateCreationRequest, isRecurring } from "./recurring-model";
+import { createRecurringQuest } from "./recurring-data";
 import { UUID } from "./create-pending";
 import { creationSuccessMessage } from "./create-message";
 
@@ -33,7 +34,7 @@ export async function createQuest(_previous: unknown, formData: FormData): Promi
   } catch { request = null; }
   if (typeof commandId !== "string" || !UUID.test(commandId) ||
       !isSupportedTimezone(timezone) || (mode !== "new" && mode !== "retry") ||
-      !validateQuestCreationRequest(request)) {
+      !validateCreationRequest(request)) {
     return { outcome: "rejected", reason: "validation", error: "The Quest details are invalid. Review the form and try again." };
   }
   const { profile } = await getProfileContext();
@@ -42,8 +43,15 @@ export async function createQuest(_previous: unknown, formData: FormData): Promi
       currentTimezone: isSupportedTimezone(profile?.timezone) ? profile.timezone : undefined,
       error: "Your Profile timezone changed. Review the original timing before using the current Profile timezone." };
   }
-  // Retries already contain absolute instants. Profile edits must not reinterpret them.
+  // Retry one-off instants and recurring calendar dates exactly as submitted.
+  // Future recurring slots use the current Profile timezone, as defined by SQL.
   try {
+    if (isRecurring(request)) {
+      const receipt = await createRecurringQuest(commandId, request);
+      revalidatePath("/dashboard");
+      return { outcome: "success", success: { replay: receipt.replay,
+        message: "Recurring Quest created. Eligible occurrences appear when you view their day, using your current Profile timezone." } };
+    }
     const receipt = await createOneOffQuest(commandId, request);
     revalidatePath("/dashboard");
     const displayTimezone = isSupportedTimezone(profile?.timezone) ? profile.timezone : timezone;
@@ -56,4 +64,3 @@ export async function createQuest(_previous: unknown, formData: FormData): Promi
     return { outcome: "unknown", error: "The creation outcome is unknown. Retry the exact saved request to confirm it." };
   }
 }
-

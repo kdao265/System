@@ -38,6 +38,11 @@ const { localTimeToUtc } = await import("../src/features/quests/time.ts");
 const { creationSuccessMessage } = await import("../src/features/quests/create-message.ts");
 const { createQuest } = await import("../src/features/quests/create-action.ts");
 const { configure, calls, invalidations } = await import(mocksUrl);
+const { validateRecurringRequest } = await import("../src/features/quests/recurring-model.ts");
+const { validateRecurringReceipt } = await import("../src/features/quests/recurring-receipt.ts");
+const { parseRecurringQuests } = await import("../src/features/quests/recurring-list.ts");
+const { RecurrencePauseLifecycle, PAUSE_PREFIX } = await import("../src/features/quests/recurrence-pending.ts");
+const { changeRecurrencePause } = await import("../src/features/quests/recurrence-action.ts");
 hooks.deregister();
 
 const A = "10000000-0000-4000-8000-000000000001";
@@ -81,6 +86,16 @@ async function fill(controller) {
 }
 function deferred() { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const recurring = { title: "Daily reading", description: null, importance: "side", priority: null, default_reward_exp: 37,
+  recurrence_mode: "daily", start_date: "2026-09-29", end_date: null };
+function recurringReceipt(args, replay = false) {
+  const r = args.request;
+  return { command_id: args.command_id, quest_id: A, recurrence_rule_id: B, definition_created_event_id: A,
+    recurrence_changed_event_id: B, recurrence_mode: r.recurrence_mode,
+    recurrence_type: r.recurrence_mode === "weekly" ? "selected_weekdays" : r.recurrence_mode,
+    anchor_date: r.start_date, end_date: r.end_date, weekdays: r.weekdays ?? null, month_day: r.month_day ?? null,
+    occurrence_limit: null, default_reward_exp: r.default_reward_exp, replay };
+}
 function form({ account = A, timezone = "UTC", mode = "new", request = base, id = uuid() } = {}) {
   const data = new FormData();
   for (const [key, value] of Object.entries({ expected_account: account, timezone, mode, request_json: JSON.stringify(request), command_id: id })) data.set(key, value);
@@ -324,4 +339,146 @@ test("silent no-op persistence and removal are detected by verification", async 
   await c.submit(); assert.equal(h.sent.length, 0); assert.equal(c.getSnapshot().phase, "blocked");
   h.storage.setItem = write; await c.recover(); h.storage.removeItem = () => {};
   await c.submit(); assert.equal(h.sent.length, 1); assert.equal(c.getSnapshot().phase, "blocked"); assert.equal(h.storage.values.size, 1);
+});
+
+test("recurring requests are closed, mode-specific and validate dates and SQL bounds", () => {
+  for (const request of [recurring, { ...recurring, recurrence_mode: "weekly", weekdays: [1, 3, 7] }, { ...recurring, recurrence_mode: "monthly", month_day: 31 }]) {
+    assert.equal(validateRecurringRequest(request), true);
+    assert.equal(validateQuestCreationRequest(request), false, "v2 contract must not widen");
+  }
+  for (const patch of [{ recurrence_mode: "one_off" }, { recurrence_mode: "weekly", weekdays: [] }, { recurrence_mode: "weekly", weekdays: [1, 1] }, { recurrence_mode: "weekly", weekdays: [7, 1] }, { recurrence_mode: "weekly", weekdays: [0] }, { recurrence_mode: "monthly", month_day: 32 }, { month_day: 1 }, { scheduled_at: null }, { start_date: "2026-02-30" }, { start_date: "0000-01-01" }, { end_date: "2026-01-01" }, { default_reward_exp: 2147483648 }]) {
+    assert.equal(validateRecurringRequest({ ...recurring, ...patch }), false, JSON.stringify(patch));
+  }
+});
+
+test("v2 and v3 recovery coexist unchanged; version/request/key substitutions and command collisions reject", () => {
+  const h = setup();
+  const old = { version: 2, userId: A, commandId: uuid(), timezone: "UTC", request: base };
+  const next = { version: 3, userId: A, commandId: uuid(), timezone: "UTC", request: recurring };
+  persistPending(h.deps.storage, old); persistPending(h.deps.storage, next);
+  assert.equal(h.storage.getItem(pendingStorageKey(A, old.commandId)), JSON.stringify(old));
+  assert.equal(h.storage.getItem(pendingStorageKey(A, next.commandId, 3)), JSON.stringify(next));
+  assert.deepEqual(readPendingCreations(h.deps.storage, A).operations, [old, next]);
+  assert.throws(() => persistPending(h.deps.storage, { ...next, commandId: old.commandId }));
+  for (const value of [{ ...next, version: 2 }, { ...next, version: 4 }, { ...next, request: base }, { ...next, extra: true }, { ...old, version: 3 }]) {
+    const storage = new MemoryStorage(); const raw = JSON.stringify(value);
+    storage.setItem(pendingStorageKey(A, value.commandId, value.version === 2 ? 2 : 3), raw);
+    assert.equal(readPendingCreations(() => storage, A).status, "corrupt"); assert.equal(storage.length, 1);
+  }
+});
+
+test("recurring commit then lost response recovers v3 dates and exact command after refresh/timezone change", async () => {
+  const effects = new Map();
+  const respond = (_name, args) => {
+    assert.equal(_name, "create_recurring_quest");
+    assert.equal(args.origin, "web_ui"); assert.equal(Object.hasOwn(args, "userId"), false);
+    if (!effects.has(args.command_id)) { effects.set(args.command_id, JSON.stringify(args.request)); throw Error("lost response after commit"); }
+    assert.equal(effects.get(args.command_id), JSON.stringify(args.request));
+    return { data: recurringReceipt(args, true), error: null };
+  };
+  configure(respond);
+  const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
+  c.updateDraft("recurrence_mode", "weekly"); c.updateDraft("start_date", recurring.start_date);
+  c.updateDraft("end_date", "2026-12-31"); c.updateDraft("weekdays", [7, 1]);
+  await c.submit();
+  const saved = c.getSnapshot().operations[0]; assert.equal(saved.version, 3); assert.deepEqual(saved.request.weekdays, [1, 7]);
+  configure(respond, "Asia/Ho_Chi_Minh");
+  const restored = h.make(A, "Asia/Ho_Chi_Minh"); await restored.recover();
+  assert.equal(restored.getSnapshot().draft.recurrence_mode, "weekly");
+  assert.equal(restored.getSnapshot().draft.end_date, "2026-12-31");
+  await restored.retry(saved.commandId);
+  assert.equal(effects.size, 1); assert.equal(h.storage.length, 0);
+  assert.equal(h.sent[0].request_json, h.sent[1].request_json); assert.equal(h.sent[0].command_id, h.sent[1].command_id);
+  assert.equal(invalidations.length, 1);
+});
+
+test("daily and monthly drafts create through recurring RPC; one-off drafts still use v2", async () => {
+  for (const cadence of ["daily", "monthly"]) {
+    configure((_name, args) => ({ data: recurringReceipt(args), error: null }));
+    const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
+    c.updateDraft("recurrence_mode", cadence); c.updateDraft("start_date", recurring.start_date); c.updateDraft("month_day", "31");
+    await c.submit(); assert.equal(c.getSnapshot().phase, "ready"); assert.equal(calls[0].name, "create_recurring_quest");
+    const request = JSON.parse(h.sent[0].request_json); assert.equal(Object.hasOwn(request, "scheduled_at"), false);
+    assert.equal(request.month_day, cadence === "monthly" ? 31 : undefined);
+  }
+  const h = setup(); const c = h.make(); await fill(c); await c.submit(); assert.equal(c.getSnapshot().operations[0].version, 2);
+});
+
+test("recurring receipt mismatch and RPC errors preserve exact pending data", async () => {
+  for (const response of [(args) => ({ data: { ...recurringReceipt(args), anchor_date: "2026-01-01" }, error: null }), () => ({ data: null, error: { code: "42501" } })]) {
+    configure((_name, args) => response(args));
+    const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
+    c.updateDraft("recurrence_mode", "daily"); c.updateDraft("start_date", recurring.start_date);
+    await c.submit(); assert.equal(c.getSnapshot().phase, "uncertain"); assert.equal(h.storage.length, 1);
+  }
+  const id = uuid(); const receipt = recurringReceipt({ command_id: id, request: recurring });
+  assert.equal(validateRecurringReceipt(receipt, id, recurring), true);
+  for (const patch of [{ replay: "yes" }, { extra: true }, { weekdays: [] }, { command_id: uuid() }, { occurrence_limit: 2 }, { recurrence_changed_event_id: A }]) {
+    assert.equal(validateRecurringReceipt({ ...receipt, ...patch }, id, recurring), false);
+  }
+});
+
+test("recurring creation retains account/timezone preflight checks", async () => {
+  configure(() => assert.fail("no RPC"), "Asia/Ho_Chi_Minh");
+  assert.equal((await createQuest({}, form({ request: recurring }))).reason, "timezone");
+  assert.equal((await createQuest({}, form({ request: recurring, account: B }))).reason, "account");
+  assert.equal((await createQuest({}, form({ request: { ...recurring, month_day: 1 } }))).reason, "validation");
+});
+
+function pauseSetup(send = async () => unknown, storage = new MemoryStorage()) {
+  const lock = locks(); const sent = [];
+  const deps = { storage: () => storage, lock: (work) => lock(A, work), uuid,
+    send: async (operation) => { sent.push(operation); return send(operation); } };
+  return { storage, sent, deps, make: () => new RecurrencePauseLifecycle(A, B, deps) };
+}
+function pauseReceipt(operation) { return { command_id: operation.commandId, quest_id: operation.questId, recurrence_rule_id: A,
+  recurrence_mode: "daily", paused: operation.paused, stopped_at: operation.paused ? "2026-09-29T12:00:00Z" : null, state_event_id: B, replay: false }; }
+
+test("pause/resume action checks account and shape before RPC; errors and bad receipts are uncertain", async () => {
+  const operation = { userId: A, questId: B, commandId: uuid(), paused: true };
+  configure(() => assert.fail("no RPC"));
+  assert.equal((await changeRecurrencePause({ ...operation, userId: B })).outcome, "rejected");
+  assert.equal((await changeRecurrencePause({ ...operation, paused: "true" })).outcome, "rejected");
+  for (const response of [{ data: null, error: { code: "42501" } }, { data: { ...pauseReceipt(operation), paused: false }, error: null }]) {
+    configure(() => response); assert.equal((await changeRecurrencePause(operation)).outcome, "unknown");
+  }
+  configure((name, args) => { assert.equal(name, "set_quest_recurrence_pause"); assert.deepEqual(args, { command_id: operation.commandId, quest_id: B, paused: true, origin: "web_ui" }); return { data: pauseReceipt(operation), error: null }; });
+  assert.equal((await changeRecurrencePause(operation)).outcome, "success"); assert.equal(invalidations.length, 1);
+});
+
+test("pause double submit is gated and reload replays immutable operation before allowing resume", async () => {
+  const pending = deferred(); const h = pauseSetup(() => pending.promise); const c = h.make(); await c.recover();
+  const task = c.submit(true); await tick(); await c.submit(true); assert.equal(h.sent.length, 1); assert.equal(h.storage.length, 1);
+  pending.resolve(unknown); await task;
+  const restored = h.make(); await restored.recover(); assert.equal(restored.getSnapshot().phase, "uncertain");
+  await restored.submit(false); assert.equal(h.sent.length, 1);
+  h.deps.send = async (op) => { assert.deepEqual(op, h.sent[0]); return { outcome: "success" }; };
+  await restored.retry(); assert.equal(h.storage.length, 0); assert.equal(restored.getSnapshot().phase, "ready");
+});
+
+test("pause recovery retains retry rejection, detects tampering and suppresses stale account responses", async () => {
+  const h = pauseSetup(async () => ({ outcome: "unknown" })); const c = h.make(); await c.recover(); await c.submit(true);
+  h.deps.send = async () => ({ outcome: "rejected" }); await c.retry(); assert.equal(h.storage.length, 1);
+  const raw = h.storage.getItem(PAUSE_PREFIX + A + ":" + B);
+  h.storage.setItem(PAUSE_PREFIX + A + ":" + B, raw.replace('"paused":true', '"paused":false'));
+  await c.recover(); assert.equal(c.getSnapshot().phase, "blocked");
+  const pending = deferred(); const other = pauseSetup(() => pending.promise); const active = other.make(); await active.recover();
+  const task = active.submit(false); await tick(); active.deactivate(); pending.resolve({ outcome: "success" }); await task;
+  assert.equal(other.storage.length, 1); assert.equal(active.getSnapshot().phase, "blocked");
+});
+
+test("pause storage failure blocks dispatch; lost transport restores same command for retry", async () => {
+  const h = pauseSetup(async () => { throw Error("lost"); }); const c = h.make(); await c.recover();
+  h.storage.failure = "write"; await c.submit(true); assert.equal(h.sent.length, 0);
+  h.storage.failure = undefined; await c.recover(); await c.submit(true);
+  assert.equal(c.getSnapshot().phase, "uncertain"); const id = h.sent[0].commandId;
+  h.storage.values.clear(); await c.recover(); await c.retry(); assert.equal(h.sent[1].commandId, id);
+});
+
+test("recurring list validates complete server projection without generating slots", () => {
+  const row = { quest_id: A, title: recurring.title, recurrence_mode: "daily", recurrence_type: "daily", paused: false,
+    anchor_date: recurring.start_date, end_date: null, weekdays: null, month_day: null, occurrence_limit: null,
+    default_reward_exp: 37, materialized_occurrence_count: 1, last_slot_date: recurring.start_date };
+  assert.deepEqual(parseRecurringQuests([row]), [row]); assert.deepEqual(parseRecurringQuests([]), []);
+  for (const input of [null, [row, row], [{ ...row, weekdays: [1] }], [{ ...row, paused: "false" }], [{ ...row, default_reward_exp: undefined }], [{ ...row, last_slot_date: "bad" }]]) assert.equal(parseRecurringQuests(input), null);
 });

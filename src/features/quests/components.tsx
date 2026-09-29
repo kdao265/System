@@ -86,6 +86,7 @@ export function DailyQuestList({ result, timezone, selectedDate, userId }: { res
               <h3 className="min-w-0 flex-1 basis-40 font-medium text-zinc-100">{quest.quest_title}</h3>
               <p className="text-sm text-zinc-300">Status: {statusLabels[quest.status]}</p>
             </div>
+            {quest.source_slot_date && <p className="mt-2 text-sm text-zinc-400">Recurring occurrence ? {formatCalendarDate(quest.source_slot_date)}</p>}
             <dl className="mt-3 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
               {([
                 ["Scheduled", quest.scheduled_at], ["Deadline", quest.deadline_at],

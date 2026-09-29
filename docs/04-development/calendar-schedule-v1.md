@@ -1,5 +1,9 @@
 # Calendar / Schedule V1 — PR #40
 
+This document records the original Schedule V1 work and its historical validation.
+For the subsequent Day/Week/Month presentation, see
+[Calendar Visual / Month View V1](calendar-visual-month-v1.md).
+
 Task contract: continue `feat/calendar-schedule-v1`, preserving the prior agent's
 uncommitted work. The Product Owner's implementation request supersedes the old
 initial-governance documentation-only restriction. No dependencies, historical

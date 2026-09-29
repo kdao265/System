@@ -21,3 +21,21 @@ body {
   padding-left: max(1.5rem, env(safe-area-inset-left));
   padding-right: max(1.5rem, env(safe-area-inset-right));
 }
+
+/* Calendar palette. The two entry colors are derived UI styling for the two Calendar
+   sources (Schedule Event vs Quest occurrence) and exist nowhere in the database: a
+   row's kind is its `source`, never a stored color. Neutrals keep the grid quiet so
+   Today (sky) and the selected day (white ring) stay the loudest things on screen. */
+@theme {
+  --color-cal-line: #27272a;      /* grid rule */
+  --color-cal-cell: #111113;      /* in-month cell */
+  --color-cal-outside: #0b0b0d;   /* adjacent-month cell */
+  --color-cal-event: #38bdf8;     /* Schedule Event (sky, matches the existing accent) */
+  --color-cal-quest: #a78bfa;     /* Quest occurrence (violet, matches Quest accents) */
+}
+
+/* Hour rules for the Week timeline: one line every 2.75rem (the height of one hour),
+   drawn as a background so the grid needs no per-hour elements. */
+@utility cal-timeline {
+  background-image: repeating-linear-gradient(to bottom, var(--color-cal-line) 0 1px, transparent 1px 2.75rem);
+}

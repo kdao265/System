@@ -42,3 +42,9 @@ export function formatCalendarDate(value: string): string {
   const [year, month, day] = value.split("-").map(Number);
   return `${MONTH_NAMES[month - 1]} ${day}, ${year}`;
 }
+
+/** The containing month's heading for a `YYYY-MM-DD` day, e.g. "September 2026". */
+export function formatCalendarMonth(value: string): string {
+  const [year, month] = value.split("-").map(Number);
+  return `${MONTH_NAMES[month - 1]} ${String(year).padStart(4, "0")}`;
+}

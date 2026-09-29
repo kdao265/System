@@ -30,6 +30,8 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
       signOut: async () => { log.push("signOut"); if (revokeFails) throw new Error("unavailable"); return { error: null }; },
     }, from: () => { throw new Error("Protected data reached"); } };
   }
+  export function createRecurringQuest() { throw new Error("Protected RPC reached"); }
+  export function setRecurrencePause() { throw new Error("Protected RPC reached"); }
   export function createOneOffQuest() { throw new Error("Protected RPC reached"); }
   export function completeQuestOccurrence() { throw new Error("Protected RPC reached"); }
   export function reopenQuestOccurrence() { throw new Error("Protected RPC reached"); }
@@ -55,6 +57,7 @@ const { configuredOwnerId, isSystemOwner } = await import("../src/features/auth/
 const { getAuthenticatedUser, requireUser } = await import("../src/features/auth/session.ts");
 const { login, signup } = await import("../src/features/auth/actions.ts");
 const { saveProfile } = await import("../src/features/profile/actions.ts");
+const { changeRecurrencePause } = await import("../src/features/quests/recurrence-action.ts");
 const { createQuest } = await import("../src/features/quests/create-action.ts");
 const { completeQuest } = await import("../src/features/quests/completion-action.ts");
 const { reopenQuest } = await import("../src/features/quests/reopen-action.ts");
@@ -99,7 +102,7 @@ test("verified identity must match owner; metadata, email and unverified session
 });
 
 test("every protected action denies anonymous/non-owner and misconfiguration before data access", async () => {
-  for (const action of [saveProfile, createQuest, completeQuest, reopenQuest, resolveQuestCompletion]) {
+  for (const action of [saveProfile, createQuest, completeQuest, reopenQuest, resolveQuestCompletion, changeRecurrencePause]) {
     for (const [setting, user] of [[owner, null], [owner, { id: other }], ["", { id: owner }], ["invalid", { id: owner }]]) {
       process.env.SYSTEM_OWNER_USER_ID = setting;
       mocks.configure(user);

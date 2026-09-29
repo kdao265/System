@@ -1,24 +1,24 @@
-﻿import { isSupportedTimezone } from "@/features/profile/timezones";
+import { isSupportedTimezone } from "@/features/profile/timezones";
 import { validateQuestCreationRequest, type QuestCreationRequest } from "./create-model";
+import { validateRecurringRequest, isRecurring, type RecurringRequest } from "./recurring-model";
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PENDING_PREFIX = "system.quest-creation.pending.v2:";
+export const RECURRING_PENDING_PREFIX = "system.quest-creation.pending.v3:";
 const LEGACY_PREFIX = "system.quest-creation.pending.v1:";
 export type PendingCreation = {
-  version: 2;
   userId: string;
   commandId: string;
   timezone: string;
-  request: QuestCreationRequest;
-};
+} & ({ version: 2; request: QuestCreationRequest } | { version: 3; request: RecurringRequest });
 export type StorageAccess = () => Storage;
 export type PendingRead =
   | { status: "missing"; operations: PendingCreation[] }
   | { status: "valid"; operations: PendingCreation[] }
   | { status: "corrupt" | "unavailable"; operations: PendingCreation[] };
 
-export function pendingStorageKey(userId: string, commandId: string) {
-  return `${PENDING_PREFIX}${userId}:${commandId}`;
+export function pendingStorageKey(userId: string, commandId: string, version: 2 | 3 = 2) {
+  return `${version === 2 ? PENDING_PREFIX : RECURRING_PENDING_PREFIX}${userId}:${commandId}`;
 }
 
 export function isPending(value: unknown, userId: string): value is PendingCreation {
@@ -26,14 +26,16 @@ export function isPending(value: unknown, userId: string): value is PendingCreat
   const row = value as Record<string, unknown>;
   const keys = ["version", "userId", "commandId", "timezone", "request"];
   if (Object.keys(row).length !== keys.length || keys.some((key) => !Object.hasOwn(row, key))) return false;
-  if (row.version !== 2 || row.userId !== userId || !UUID.test(userId) ||
+  if ((row.version !== 2 && row.version !== 3) || row.userId !== userId || !UUID.test(userId) ||
       typeof row.commandId !== "string" || !UUID.test(row.commandId) ||
-      !isSupportedTimezone(row.timezone) || !validateQuestCreationRequest(row.request)) return false;
+      !isSupportedTimezone(row.timezone)) return false;
+  if (!(row.version === 2 ? validateQuestCreationRequest(row.request) : validateRecurringRequest(row.request))) return false;
+  const request = row.request as QuestCreationRequest | RecurringRequest;
   // Browser snapshots are normalized once, then replayed byte-for-byte.
-  return row.request.title === row.request.title.trim() &&
-    (row.request.description === null || (row.request.description !== "" && row.request.description === row.request.description.trim())) &&
-    [row.request.scheduled_at, row.request.deadline_at].every((time) =>
-      time === null || new Date(time).toISOString() === time);
+  return request.title === request.title.trim() &&
+    (request.description === null || (request.description !== "" && request.description === request.description.trim())) &&
+    (isRecurring(request) || [request.scheduled_at, request.deadline_at].every((time) =>
+      time === null || new Date(time).toISOString() === time));
 }
 
 /** Call while holding the browser lock. Never turn unreadable data into an empty account. */
@@ -45,16 +47,17 @@ export function readPendingCreations(access: StorageAccess, userId: string): Pen
     // require explicit recovery instead of silently forgetting an uncertain command.
     if (storage.getItem(LEGACY_PREFIX + userId) !== null) return { status: "corrupt", operations: [] };
     const operations: PendingCreation[] = [];
-    const prefix = PENDING_PREFIX + userId + ":";
+    const prefixes = [PENDING_PREFIX, RECURRING_PENDING_PREFIX].map((prefix) => prefix + userId + ":");
     const keys = Array.from({ length: storage.length }, (_, i) => storage.key(i));
     for (const key of keys) {
-      if (!key?.startsWith(prefix)) continue;
+      if (!key || !prefixes.some((prefix) => key.startsWith(prefix))) continue;
       const raw = storage.getItem(key);
       let value: unknown;
       try { value = JSON.parse(raw ?? "null"); } catch { return { status: "corrupt", operations: [] }; }
-      if (!isPending(value, userId) || key !== pendingStorageKey(userId, value.commandId)) {
+      if (!isPending(value, userId) || key !== pendingStorageKey(userId, value.commandId, value.version)) {
         return { status: "corrupt", operations: [] };
       }
+      if (operations.some((operation) => operation.commandId === value.commandId)) return { status: "corrupt", operations: [] };
       operations.push(value);
     }
     operations.sort((a, b) => a.commandId.localeCompare(b.commandId));
@@ -68,8 +71,8 @@ export function readPendingCreations(access: StorageAccess, userId: string): Pen
 export function persistPending(access: StorageAccess, operation: PendingCreation) {
   const storage = access();
   if (!isPending(operation, operation.userId)) throw new Error("Invalid pending record");
-  const key = pendingStorageKey(operation.userId, operation.commandId);
-  if (storage.getItem(key) !== null) throw new Error("Pending command already exists");
+  const key = pendingStorageKey(operation.userId, operation.commandId, operation.version);
+  if (([2, 3] as const).some((version) => storage.getItem(pendingStorageKey(operation.userId, operation.commandId, version)) !== null)) throw new Error("Pending command already exists");
   const serialized = JSON.stringify(operation);
   storage.setItem(key, serialized);
   if (storage.getItem(key) !== serialized) throw new Error("Pending write could not be verified");
@@ -78,11 +81,10 @@ export function persistPending(access: StorageAccess, operation: PendingCreation
 /** A caller must hold the same browser lock as insertion/retry. */
 export function removePending(access: StorageAccess, operation: PendingCreation) {
   const storage = access();
-  const key = pendingStorageKey(operation.userId, operation.commandId);
+  const key = pendingStorageKey(operation.userId, operation.commandId, operation.version);
   const raw = storage.getItem(key);
   if (raw === null) throw new Error("Pending record unexpectedly missing");
   if (JSON.stringify(JSON.parse(raw)) !== JSON.stringify(operation)) throw new Error("Pending record changed");
   storage.removeItem(key);
   if (storage.getItem(key) !== null) throw new Error("Pending removal could not be verified");
 }
-

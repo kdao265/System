@@ -99,3 +99,14 @@ Get-Content -Raw supabase/tests/quest-creation.sql | docker exec -i supabase_db_
 The current suites cover normalization, absolute timestamp and numeric rejection, snapshots and counter, exact event pair/payload, replay/conflicts/partial/extra/tampered history, owner isolation and authenticated RLS reads, auth/origin, post-staging rollback, privileges/RLS and the no-EXP/no-progression boundary.
 
 The deferred local concurrency harness uses two independent PostgreSQL connections against the same disposable database. Session A and Session B authenticate as the **same owner user ID** and call `create_one_off_quest` with the same owner and identical `command_id`; one receipt must have `replay = false`, the other `replay = true`, and exactly one definition/occurrence/two-event effect must exist. A second case uses the same owner user ID and command ID with different normalized titles; one session must accept and the other must reject `23505`, with no second Quest. A different owner is used only by the separate cross-owner isolation test. The harness must be run only after the migration is applied; it is designed here but not executed because this task prohibits SQL/database execution.
+
+## Recurring creation extension (PR #39)
+
+One-off v2 storage and its exact seven-field request remain unchanged. The accepted
+[Recurring Quests V1 application contract](../04-development/recurring-quests-v1.md#application-surface-and-recovery)
+adds separate v3 recurring snapshots under the same Web Lock and recovery lifecycle.
+The reader inventories both namespaces, checks embedded versions against their exact
+request schemas and keys, and never migrates or widens a stored v2 request. Recurring
+creation calls `create_recurring_quest`; it produces a definition receipt, while the
+server materializes occurrences on a requested-day read. The existing one-off RPC,
+receipt validation and absolute-instant replay are unchanged.

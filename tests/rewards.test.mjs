@@ -28,6 +28,7 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   }
   export function revalidatePath() {}
   export function LogoutForm() { return null; }
+  export function RecurringQuestsPanel() { return null; }
   export function QuestCreationForm() { return null; }
   export function QuestCompletionRecovery() { return null; }
 `)}`;
@@ -35,7 +36,7 @@ const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (context.parentURL?.startsWith(sourceRoot.href)) {
       if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
-        "@/features/auth/logout-form", "@/features/quests/create-form",
+        "@/features/quests/recurring-panel", "@/features/auth/logout-form", "@/features/quests/create-form",
         "@/features/quests/completion-recovery-ui"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };
       }
@@ -243,11 +244,12 @@ function pageClient(read, auth = async () => ({ data: { user: owner }, error: nu
     auth: { getUser: auth },
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { display_name: "Operator", timezone: "UTC" }, error: null }) }) }) }),
     rpc(name, ...args) {
-      if (name === "list_day_quest_occurrences") {
+      if (name === "list_day_quest_occurrences" || name === "materialize_quest_day") {
         assert.equal(args.length, 1);
         assert.match(args[0].p_day, /^\d{4}-\d{2}-\d{2}$/);
       }
       else assert.equal(args.length, 0);
+      if (name === "materialize_quest_day") return Promise.resolve({ data: 0, error: null });
       if (name === "get_progression_status") return Promise.resolve({ data: progression, error: null });
       if (name === "list_day_quest_occurrences") return Promise.resolve({ data: [], error: null });
       assert.equal(name, "list_level_rewards", "history and writes must never be called");

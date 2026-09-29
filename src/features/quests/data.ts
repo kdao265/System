@@ -31,11 +31,14 @@ async function readFailure(error: unknown): Promise<DayQuestResult> {
   return { status: "unavailable" };
 }
 
-/** Server-rendered feature boundary. No privileged client, cross-user cache or writes. */
+/** Server-rendered feature boundary. Owner-authenticated lazy materialization precedes the unchanged day projection. */
 export async function getDayQuests(selectedDate: string): Promise<DayQuestResult> {
   try {
     if (!await getAuthenticatedUser()) return { status: "session-expired" };
     const supabase = await createServerSupabaseClient(true);
+    const materialized = await supabase.rpc("materialize_quest_day", { p_day: selectedDate });
+    if (materialized.error) return readFailure(materialized.error);
+    if (!Number.isInteger(materialized.data) || materialized.data < 0) return { status: "invalid" };
     const { data, error } = await supabase.rpc("list_day_quest_occurrences", { p_day: selectedDate });
     return error ? readFailure(error) : parseDayQuests(data);
   } catch (caught) {

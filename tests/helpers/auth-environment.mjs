@@ -189,6 +189,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       "20260923120000": ["quest-creation-catalog", "quest-creation"],
       "20260926000000": ["quest-reopen-v2-catalog", "quest-reopen-v2"],
       "20260926120000": ["quest-completion-alias-catalog", "quest-completion-alias"],
+      "20260928181000": ["recurring-quests-catalog", "recurring-quests"],
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();

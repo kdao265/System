@@ -45,6 +45,9 @@ export async function loginOwner(page: Page, owner: { email: string; password: s
   }
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("region", { name: "Player status", exact: true })).toContainText(owner.email);
+  // The streamed loading card also contains a date form. Wait for the real card
+  // before filling it, otherwise Suspense can replace the edited fallback input.
+  await expect(page.getByRole("region", { name: "Daily Quests", exact: true })).toHaveAttribute("aria-busy", "false");
   await page.getByLabel("Choose date", { exact: true }).fill(questDay);
   await page.getByRole("button", { name: "View", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard\\?date=${questDay}$`));

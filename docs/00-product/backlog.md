@@ -11,6 +11,11 @@ Capture ideas here without automatically adding them to V1. The Product Owner de
 | IDEA-005 | Physical Android/iOS install, keyboard and safe-area verification | PWA / QA | Validate behavior beyond Chromium phone emulation | Deferred; requires devices | [PR #38 limitations](../04-development/daily-use-hardening-v1.md) |
 | IDEA-006 | Surface recurring Quest creation, pause/resume and day materialization in the app | Quest Engine | Make the recurrence contract reachable by the owner | Resolved in PR #39 working tree; validated 2026-09-29 | [ADR-018](../02-architecture/decisions.md) and [implementation/validation](../04-development/recurring-quests-v1.md). Existing create form, additive v3 recovery with v2 compatibility, server materialization and Dashboard pause/resume are implemented; no deployment performed |
 
+Calendar follow-up (deferred, not part of PR #40): persist exact uncertain Schedule
+Event requests across refresh/navigation, with owner scoping and an explicit recovery
+surface. Current retries remain in the mounted editor; see
+[Calendar recovery limits](../04-development/calendar-schedule-v1.md#application-and-recovery).
+
 ## Entry format
 
 - ID and short title:

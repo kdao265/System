@@ -48,3 +48,18 @@ checks, including actual committed-response loss and exact recovery. Owner login
 automatic per-test Quest fixture, so importing the fixture from multiple specs is safe.
 Run browser suites sequentially: they share the configured report/artifact directories.
 See [final results and limitations](recurring-quests-v1.md#validation-performed).
+
+## Calendar / Schedule V1 validation
+
+`node supabase/tests/private-owner-wire.mjs` now runs 21 SQL checkpoint suites,
+including Calendar catalog and behavior at `20260929120000`, then 11 owner/security
+groups. Historical suites keep their original checkpoints. The harness probes
+actual migration-history columns rather than assuming an `id` column.
+
+`node --test tests/*.test.mjs` includes Calendar input/timezone/day projection and
+action boundaries, with the Calendar action added to existing owner-auth checks.
+`node tests/auth-smoke.mjs` also checks the protected Calendar route.
+`npx playwright test --list` discovers 19 tests; the three Calendar journeys cover
+timed create/edit/remove, existing one-off/recurring Quest projection, uncertain
+response recovery, duplicate submits and all-day/mobile usability at 360/390/412 px.
+See [Calendar handoff and final results](calendar-schedule-v1.md).

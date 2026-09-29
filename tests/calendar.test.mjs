@@ -27,10 +27,143 @@ registerHooks({ resolve(specifier, context, next) {
 const { eventArguments, parseCalendar, entriesForDay, entryDraft, calendarWeek } = await import("../src/features/calendar/model.ts");
 const { saveScheduleEvent } = await import("../src/features/calendar/actions.ts");
 const { getCalendar } = await import("../src/features/calendar/data.ts");
+const { calendarMonth, calendarView, weekdayLabel, shiftPeriod, viewWindow, daySummaries, monthCells, profileDayMinutes, timelineSpan, timelineLanes, TIMELINE_HEIGHT } = await import("../src/features/calendar/view.ts");
 const mocks = await import(mockUrl);
 const id = "11111111-1111-4111-8111-111111111111";
 const draft = { title: " Appointment ", start: "2026-09-20T00:30", end: "2026-09-20T01:30", allDay: false, category: " class ", notes: "note" };
 const entry = { source: "schedule_event", entry_id: id, quest_id: null, title: "Appointment", status: null, start_at: "2026-09-19T15:30:00Z", end_at: "2026-09-19T16:30:00Z", all_day: false, start_date: null, end_date: null, category: null, notes: null, source_slot_date: null };
+
+test("Month navigation uses adjacent months, clamps dates and respects calendar limits", () => {
+  for (const [day, amount, expected] of [
+    ["2026-01-31", 1, "2026-02-28"],
+    ["2024-03-31", -1, "2024-02-29"],
+    ["2026-12-31", 1, "2027-01-31"],
+    ["2026-01-15", -1, "2025-12-15"],
+    ["0004-01-31", 1, "0004-02-29"],
+    ["0001-01-01", -1, null],
+    ["9999-12-31", 1, null],
+  ]) assert.equal(shiftPeriod("month", day, amount), expected);
+  const grid = calendarMonth("2026-09-19");
+  assert.equal(grid.days[0], "2026-08-31");
+  assert.equal(grid.days.at(-1), "2026-10-04");
+  assert.deepEqual(viewWindow("month", "2026-09-19"), { from: "2026-08-31", to: "2026-10-04" });
+  assert.ok(calendarMonth("0004-02-15").days.includes("0004-02-29"));
+});
+
+test("Month windows cover complete Monday-first weeks across short, leap and six-row months", () => {
+  for (const [day, first, last, rows] of [
+    ["2021-02-14", "2021-02-01", "2021-02-28", 4],
+    ["2024-02-29", "2024-01-29", "2024-03-03", 5],
+    ["2026-03-15", "2026-02-23", "2026-04-05", 6],
+    ["2026-12-31", "2026-11-30", "2027-01-03", 5],
+  ]) {
+    const grid = calendarMonth(day);
+    assert.equal(grid.days[0], first);
+    assert.equal(grid.days.at(-1), last);
+    assert.equal(grid.weeks.length, rows);
+    assert.equal(new Set(grid.days).size, rows * 7);
+    assert.deepEqual(viewWindow("month", day), { from: first, to: last });
+    for (const week of grid.weeks) {
+      assert.deepEqual(week.map(weekdayLabel), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+      assert.deepEqual(calendarWeek(week[6]), week);
+      assert.deepEqual(calendarWeek(week[0]), week);
+    }
+  }
+  assert.equal(viewWindow("month", "0001-01-01").from, "0001-01-01");
+  assert.equal(viewWindow("month", "9999-12-31").to, "9999-12-31");
+  assert.deepEqual(viewWindow("day", "2026-09-20"), { from: "2026-09-20", to: "2026-09-20" });
+  assert.deepEqual(viewWindow("week", "2026-09-20"), { from: "2026-09-14", to: "2026-09-20" });
+  for (const value of [undefined, "unknown", ["month"]]) assert.equal(calendarView(value), "week");
+  for (const value of ["day", "week", "month"]) assert.equal(calendarView(value), value);
+});
+
+test("Month shifts preserve each day when possible in both directions, without fixed-day jumps", () => {
+  for (const day of ["01", "15", "28"]) {
+    assert.equal(shiftPeriod("month", `2026-03-${day}`, -1), `2026-02-${day}`);
+    assert.equal(shiftPeriod("month", `2026-03-${day}`, 1), `2026-04-${day}`);
+  }
+  assert.equal(shiftPeriod("month", "2026-05-31", -1), "2026-04-30");
+  assert.equal(shiftPeriod("month", "2026-05-31", 1), "2026-06-30");
+  assert.equal(shiftPeriod("month", "1900-01-31", 1), "1900-02-28");
+  assert.equal(shiftPeriod("month", "2000-01-31", 1), "2000-02-29");
+  assert.equal(shiftPeriod("week", "2026-03-01", -1), "2026-02-22");
+  assert.equal(shiftPeriod("day", "2026-03-01", -1), "2026-02-28");
+});
+
+test("Month chip budgets retain hidden counts and the full selected-day agenda", () => {
+  const grid = calendarMonth("2026-09-19");
+  const entries = Array.from({ length: 10 }, (_, index) => ({ ...entry, entry_id: `${index}` }));
+  const summaries = daySummaries(entries, grid.days, "UTC");
+  const cell = monthCells(grid, summaries).flat().find((cell) => cell.day === "2026-09-19");
+  assert.equal(cell.chips.length, 3);
+  assert.equal(cell.more, 7);
+  assert.equal(cell.dots.length, 4);
+  assert.equal(cell.dotMore, 6);
+  assert.equal(summaries[cell.day].items.length, 10);
+  assert.equal(entriesForDay(entries, "2026-09-20", "UTC").length, 0);
+});
+
+test("timeline clock parsing shares Profile timezone and padded calendar dates", () => {
+  assert.deepEqual(profileDayMinutes("2026-09-19T18:30:00Z", "Asia/Ho_Chi_Minh"), { day: "2026-09-20", minutes: 90 });
+  assert.deepEqual(profileDayMinutes("0004-02-29T09:15:00Z", "UTC"), { day: "0004-02-29", minutes: 555 });
+  assert.deepEqual(profileDayMinutes("2026-11-01T05:30:00Z", "America/New_York"), { day: "2026-11-01", minutes: 90 });
+  assert.deepEqual(profileDayMinutes("2026-11-01T06:30:00Z", "America/New_York"), { day: "2026-11-01", minutes: 90 });
+});
+
+test("Month cells budget busy rows without losing order, identities or overflow counts", () => {
+  const grid = calendarMonth("2026-09-19");
+  const busyWeek = grid.weeks[2];
+  const entries = busyWeek.flatMap((day) => Array.from({ length: 6 }, (_, index) => ({
+    ...entry, entry_id: `${day}:${index}`, start_at: `${day}T${String(8 + index).padStart(2, "0")}:00:00Z`, end_at: null,
+  })));
+  const cells = monthCells(grid, daySummaries(entries, grid.days, "UTC"));
+  assert.equal(cells[2].reduce((sum, cell) => sum + cell.chips.length, 0), 7);
+  for (const cell of cells[2]) {
+    assert.equal(cell.chips.length, 1);
+    assert.equal(cell.more, 5);
+    assert.equal(cell.dots.length, 4);
+    assert.equal(cell.dotMore, 2);
+    assert.equal(cell.chips[0].entry_id, `${cell.day}:0`);
+    assert.deepEqual(cell.dots.map((item) => item.entry_id), [0, 1, 2, 3].map((index) => `${cell.day}:${index}`));
+  }
+  const empty = cells.flat().find((cell) => cell.day === "2026-08-31");
+  assert.deepEqual(empty, { day: "2026-08-31", outside: true, chips: [], more: 0, dots: [], dotMore: 0 });
+  assert.equal(cells.flat().find((cell) => cell.day === "2026-09-01").outside, false);
+  assert.equal(entries.length, 42);
+});
+
+test("timeline spans place timed events and Quests in Profile-local columns", () => {
+  const days = ["2026-09-19", "2026-09-20"];
+  const timed = { ...entry, start_at: "2026-09-20T02:00:00Z", end_at: "2026-09-20T03:30:00Z" };
+  assert.deepEqual(timelineSpan(timed, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 132, height: 66, starts: true });
+  assert.deepEqual(timelineSpan({ ...timed, source: "quest_occurrence" }, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 132, height: 66, starts: true });
+  assert.equal(timelineSpan({ ...timed, all_day: true }, days, "UTC"), null);
+  assert.equal(timelineSpan({ ...timed, start_at: null, source_slot_date: days[0] }, days, "UTC"), null);
+  assert.equal(timelineSpan(timed, ["2026-09-21"], "UTC"), null);
+  assert.deepEqual(timelineSpan({ ...timed, start_at: "2026-09-20T09:00:00Z", end_at: null }, days, "UTC"), { column: 1, top: 132, height: 33, starts: true });
+});
+
+test("timeline spans clip at working hours and midnight and retain timed continuations", () => {
+  const span = (start, end, day = "2026-09-20") => timelineSpan({ ...entry, start_at: start, end_at: end }, [day], "UTC");
+  assert.equal(span("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"), null);
+  assert.deepEqual(span("2026-09-20T05:30:00Z", "2026-09-20T07:00:00Z"), { column: 0, top: 0, height: 44, starts: false });
+  const late = span("2026-09-20T23:55:00Z", "2026-09-21T01:00:00Z");
+  assert.equal(late.top + late.height, TIMELINE_HEIGHT);
+  assert.deepEqual(span("2026-09-19T23:30:00Z", "2026-09-20T09:00:00Z"), { column: 0, top: 0, height: 132, starts: false });
+  assert.equal(span("2026-09-19T23:30:00Z", "2026-09-20T00:00:00Z"), null);
+  assert.equal(timelineSpan({ ...entry, source: "quest_occurrence", start_at: "2026-09-19T23:30:00Z", end_at: "2026-09-20T09:00:00Z" }, ["2026-09-20"], "UTC"), null);
+});
+
+test("timeline lanes reuse touching intervals and separate overlapping clusters", () => {
+  assert.deepEqual(timelineLanes([]), { lanes: [], count: 1 });
+  assert.deepEqual(timelineLanes([{ top: 0, height: 44 }, { top: 44, height: 44 }]), { lanes: [0, 0], count: 1 });
+  const spans = [{ top: 0, height: 100 }, { top: 0, height: 20 }, { top: 10, height: 30 }, { top: 20, height: 10 }, { top: 100, height: 44 }];
+  const result = timelineLanes(spans);
+  assert.deepEqual(result, { lanes: [0, 1, 2, 1, 0], count: 3 });
+  for (let i = 0; i < spans.length; i++) for (let j = i + 1; j < spans.length; j++) {
+    if (spans[i].top + spans[i].height > spans[j].top) assert.notEqual(result.lanes[i], result.lanes[j]);
+  }
+});
 
 test("Calendar uses Profile timezone, validates time ordering and rejects DST gaps/folds", () => {
   const result = eventArguments(draft, "Asia/Tokyo", id);

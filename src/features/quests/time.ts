@@ -64,8 +64,17 @@ export function formatProfileLocal(value: string, timezone: string) {
   }).format(new Date(value));
 }
 
+/** Just the Profile-local clock time (e.g. "9:00 AM") for one instant. */
+export function formatProfileClock(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function utcToLocalInput(value: string, timezone: string) {
   const parts = formatter(timezone).formatToParts(new Date(value));
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+  return `${values.year.padStart(4, "0")}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }

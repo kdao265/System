@@ -6,6 +6,11 @@
 **Owner:** Product Owner (decision) / orchestrator (drafting). **Date:** 2026-09-29.
 **Related:** PR #40 (approved), [ADR-018](../02-architecture/decisions.md#adr-018--recurring-quest-definitions-materialize-lazily-on-read), [ADR-019 (approved)](../02-architecture/decisions.md#adr-019--the-calendar-is-a-read-only-projection-over-two-owning-tables), [V1 scope — Planning](../00-product/scope-v1.md), [Auth/Profile timezone](auth-profile.md), [Quest engine](quest-engine.md).
 
+The Product Owner's Calendar Visual / Month View V1 task extends the presentation
+to Day / Week / Month on `feat/calendar-visual-month-v1`. See the
+[visual view handoff](../04-development/calendar-visual-month-v1.md) for current
+behavior and validation; the earlier Schedule V1 handoff records the original release.
+
 Calendar sits in the Planning module, which [V1 scope](../00-product/scope-v1.md) lists as a
 conceptual baseline and [PROJECT_CONTEXT](../PROJECT_CONTEXT.md) lists as **not shipped
 functionality**. Scope line 31 forbids inferring a schema from that table, so this document is the
@@ -64,7 +69,7 @@ commands and occurrence identities, not independently generate slots or rewards"
 | CS-07 | Reading the Calendar does not materialize, reschedule, complete, fail or cancel any occurrence. |
 | CS-08 | Creating, editing or removing a Schedule Event preserves the existing contracts: create deduplicates by event identity, update sets full desired state (last write wins), and remove is repeatable. Replay markers/removal booleans distinguish whether this call wrote; no duplicate entry is created. |
 | CS-09 | A Schedule Event spanning midnight is displayed on each profile-local day it touches. |
-| CS-10 | The Calendar offers a day view and a week view of the same range data; switching views changes only the window shown, not the data source. |
+| CS-10 | The Calendar offers Day, Week and Month views of the same projection; switching views changes only the window shown, not the data source. |
 | CS-11 | Calendar is reachable from the dashboard as a protected route; an unauthenticated or non-owner visitor gets the existing session redirect, never calendar data. |
 | CS-12 | Every Schedule Event write and every Calendar read is authorized by the same single-owner predicate the existing tables use; no path bypasses it. |
 
@@ -139,4 +144,29 @@ per-category automation; editing Quest occurrences through a calendar gesture.
 | OQ-3 | Retain the implemented optional free-text category (40 characters). Fixed vocabulary deferred. | Existing schema | None |
 | OQ-4 | Last-write-wins is accepted for V1. | Product Owner approved | Resolved |
 | OQ-5 | Entry listing only; free/busy and overload warnings deferred. | V1 scope | None |
-| OQ-6 | Protected `/calendar`, SYSTEM navigation, day/week views. | Product Owner approved | Resolved |
+| OQ-6 | Protected `/calendar`, SYSTEM navigation, Day/Week/Month views (Month added by the approved visual-view task). | Product Owner approved | Resolved |
+
+## 12. Calendar Visual / Month View V1
+
+- Month uses a Monday–Sunday grid of whole weeks covering the selected month,
+  including muted adjacent-month dates. Previous/Next move exactly one calendar
+  month, preserving the day number when possible and otherwise clamping to the
+  destination month's last day. Today uses the Profile timezone.
+- Selecting a cell retains Month mode, selects that date and shows only its full
+  agenda below the grid. Selecting an adjacent-month cell opens that date's month.
+  View switching preserves the selected date. Selection and Today have distinct
+  emphasis; an empty selected day still has an explicit empty agenda.
+- Month summaries distinguish Schedule Events (sky) from Quest occurrences
+  (violet). Wider screens show bounded title chips and `+N more`; compact screens,
+  including 360/390/412 px, show bounded dots and `+N`. The agenda retains every
+  entry and its full title, source and time information.
+- Week adds a Profile-local 06:00–midnight timeline and a band for all-day,
+  untimed and off-hours entries. Overnight Schedule Events use each day's clipped
+  time slice. Quest membership stays governed by its existing scheduled/slot date.
+  Full day agendas remain available. Day retains the existing selected-day list
+  and Schedule Event editor.
+- Calendar remains a time projection, not a second Quest engine. The visual work
+  adds no storage, recurrence generation, Quest mutation or dependency. Authoritative
+  all-day dates and existing Profile timezone conversion remain unchanged.
+- Drag/drop, recurring Schedule Events, reminders/notifications, Google Calendar
+  integration and chatbot entry remain intentionally deferred.

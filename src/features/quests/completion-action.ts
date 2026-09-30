@@ -18,7 +18,7 @@ export async function completeQuest(_previous: unknown, formData: FormData): Pro
   try {
     const receipt = await completeQuestOccurrence(commandId, occurrenceId, Number(cycle));
     let refreshRequired = false;
-    try { revalidatePath("/dashboard"); }
+    try { revalidatePath("/dashboard"); revalidatePath("/goals"); }
     catch { refreshRequired = true; }
     return { outcome: "success", refreshRequired, success: { message: `${receipt.replay ? "Completion confirmed from an earlier request." : "Quest completed."} ${String(receipt.exp_amount)} EXP awarded.`, replay: receipt.replay } };
   } catch (error) {

@@ -360,7 +360,7 @@ test("non-today refresh retry invokes actual UI router callback after historical
   configure((_name, args) => ({ data: resolution("recorded", args.command_id, args.occurrence_id), error: null }), A, true);
   const h = browser(t, store); h.setRows([]); await tick(); h.render();
   await h.click("Check completion resolution", C);
-  assert.equal(calls.length, 1); assert.equal(invalidations.length, 0);
+  assert.equal(calls.length, 1); assert.equal(invalidations.length, 0); // Simulated cache failure preserves resolution.
   assert.match(h.renderer.html(), /Completion is confirmed. Refresh/);
   let refreshes = 0;
   setRefresh(() => { refreshes++; assert.equal(h.window.location.search, "?date=" + selectedDate); throw Error("refresh failed"); });
@@ -669,12 +669,12 @@ const completionForm = (patch = {}) => {
   return form;
 };
 
-test("resolution action uses exactly the owner-authenticated three-argument RPC without mutation or cache invalidation", async () => {
+test("resolution action uses exactly the owner-authenticated three-argument RPC and refreshes Goal projections without mutation", async () => {
   configure(() => ({ data: resolution("recorded"), error: null }), A);
   const result = await resolveQuestCompletion({}, completionForm());
   assert.equal(result.outcome, "resolved");
   assert.deepEqual(calls, [{ name: "get_quest_completion_resolution_v1", args: { command_id: C, occurrence_id: O, expected_execution_cycle: 3 } }]);
-  assert.equal(invalidations.length, 0);
+  assert.deepEqual(invalidations, [["/goals"]]);
   for (const patch of [{ command_id: "bad" }, { occurrence_id: "bad" }, { execution_cycle: "0" }, { execution_cycle: "2147483648" }, { execution_cycle: "3.0" }]) {
     assert.equal((await resolveQuestCompletion({}, completionForm(patch))).reason, "validation");
   }

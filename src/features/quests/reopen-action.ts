@@ -15,7 +15,7 @@ export async function reopenQuest(_previous: unknown, formData: FormData): Promi
   if (typeof commandId !== "string" || !UUID.test(commandId) || typeof occurrenceId !== "string" || !UUID.test(occurrenceId) || typeof cycle !== "string" || !/^[1-9][0-9]*$/.test(cycle) || Number(cycle) > 2147483647) return { outcome: "rejected", reason: "validation", refreshRequired: false, error: "The reopen request is invalid. Refresh Daily Quests and try again." };
   try {
     const receipt = await reopenQuestOccurrence(commandId, occurrenceId, Number(cycle)); let refreshRequired = false;
-    try { revalidatePath("/dashboard"); } catch { refreshRequired = true; }
+    try { revalidatePath("/dashboard"); revalidatePath("/goals"); } catch { refreshRequired = true; }
     return { outcome: "success", refreshRequired, success: { replay: receipt.replay, message: receipt.replay ? "Reopen confirmed from an earlier request." : "Quest reopened." } };
   } catch (error) {
     // These exact pairs are raised by V2 before mutation. Other constraints and

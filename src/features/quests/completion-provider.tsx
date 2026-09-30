@@ -8,8 +8,7 @@ import { COMPLETION_PREFIX } from "./completion-pending";
 import { COMPLETION_LOCK, CompletionRecoveryLifecycle } from "./completion-recovery";
 import { reopenQuest } from "./reopen-action";
 import { REOPEN_PREFIX } from "./reopen-pending";
-import { ReopenRecoveryLifecycle } from "./reopen-recovery";
-import type { DayQuestResult } from "./model";
+import { ReopenRecoveryLifecycle, type ReopenObservation } from "./reopen-recovery";
 
 const CompletionContext = createContext<CompletionRecoveryLifecycle | null>(null);
 const ReopenContext = createContext<ReopenRecoveryLifecycle | null>(null);
@@ -26,8 +25,8 @@ export function useReopenCoordinator() {
   return coordinator;
 }
 
-/** Only the server Quest panel supplies this read; refresh callbacks never do. */
-export function QuestReopenRead({ userId, result }: { userId: string; result: DayQuestResult }) {
+/** Only server Quest/Goal panels supply this read; refresh callbacks never do. */
+export function QuestReopenRead({ userId, result }: { userId: string; result: ReopenObservation }) {
   const coordinator = useReopenCoordinator();
   useEffect(() => { void coordinator.observeServerRead(userId, result); }, [coordinator, userId, result]);
   return null;

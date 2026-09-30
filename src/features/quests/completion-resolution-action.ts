@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireUser } from "@/features/auth/session";
 import { UUID } from "./create-pending";
 import { getQuestCompletionResolution } from "./completion-resolution-data";
@@ -16,7 +17,10 @@ export async function resolveQuestCompletion(_previous: unknown, form: FormData)
   const commandId = form.get("command_id"); const occurrenceId = form.get("occurrence_id"); const cycle = form.get("execution_cycle");
   if (typeof commandId !== "string" || !UUID.test(commandId) || typeof occurrenceId !== "string" || !UUID.test(occurrenceId) || typeof cycle !== "string" || !/^[1-9][0-9]*$/.test(cycle) || Number(cycle) > 2147483647) return { outcome: "rejected", reason: "validation", error: "The saved completion request is invalid. Preserve it for reconciliation." };
   try {
-    return { outcome: "resolved", resolution: await getQuestCompletionResolution(commandId, occurrenceId, Number(cycle)) };
+    const resolution = await getQuestCompletionResolution(commandId, occurrenceId, Number(cycle));
+    // Recovery may discover an earlier commit or reopen. Never use its receipt as current progress.
+    try { revalidatePath("/goals"); } catch { /* The Goals page also refreshes on navigation/focus. */ }
+    return { outcome: "resolved", resolution };
   } catch {
     // Even a definitive resolver error says nothing about an earlier mutation's outcome.
     return { outcome: "unknown", error: "Completion resolution is unavailable or could not be verified. Your original request is preserved. Check resolution again." };

@@ -3,6 +3,10 @@ import type { DayQuestResult } from "./model";
 import { persistPendingReopen, persistReopenBlock, readPendingReopens, removePendingReopen, type PendingReopen, type ReopenBlock, type ReopenRead } from "./reopen-pending";
 
 export type ReopenConfirmation = { operation: PendingReopen; message: string; replay: boolean; cleanupPending: boolean };
+// Recovery consumes only server-observed identity/cycle, from a day or Goal read.
+export type ReopenObservation = Exclude<DayQuestResult, { status: "ok" }> | {
+  status: "ok"; quests: { occurrence_id: string; execution_cycle: number }[];
+};
 export type ReopenView = {
   phase: "recovering" | "ready" | "sending" | "uncertain" | "awaiting-refresh" | "blocked";
   storage: ReopenRead["status"] | "unchecked";
@@ -37,7 +41,7 @@ export class ReopenRecoveryLifecycle {
   private readonly deps: ReopenDependencies;
   // A late row callback cannot reuse a cycle whose rejection was reconciled.
   private staleCycles = new Set<string>();
-  private pendingRead?: DayQuestResult;
+  private pendingRead?: ReopenObservation;
   private state: ReopenView = REOPEN_SERVER_SNAPSHOT;
   constructor(userId: string, deps: ReopenDependencies) { this.userId = userId; this.deps = deps; }
   getSnapshot = () => this.state;
@@ -112,7 +116,7 @@ export class ReopenRecoveryLifecycle {
     }
   }
   async recover() { await this.locked(() => { if (this.readInventory()) this.settle(); }); }
-  async observeServerRead(userId: string, result: DayQuestResult) {
+  async observeServerRead(userId: string, result: ReopenObservation) {
     if (!this.active || userId !== this.userId || result.status !== "ok") return;
     this.pendingRead = result;
     await this.consumeServerRead();

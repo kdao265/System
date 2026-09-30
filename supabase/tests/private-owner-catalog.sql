@@ -2,7 +2,7 @@
 -- Run only after activation on the disposable owner/non-owner fixtures.
 BEGIN;
 GRANT authenticated, anon, quest_command_owner, progression_command_owner,
-    level_policy_assignment_owner, profile_provisioner, system_owner_reader TO CURRENT_USER;
+    level_policy_assignment_owner, profile_provisioner, system_owner_reader, goal_command_owner TO CURRENT_USER;
 CREATE FUNCTION pg_temp.assert_true(value boolean, label text) RETURNS void
 LANGUAGE plpgsql AS $$ BEGIN
     IF value IS DISTINCT FROM true THEN RAISE EXCEPTION 'Private owner assertion failed: %', label; END IF;
@@ -32,11 +32,9 @@ DECLARE
     ];
 BEGIN
     PERFORM pg_temp.assert_true(approved IS NOT NULL AND outsider IS NOT NULL, 'populated owner/outsider fixtures');
-    -- 15 restrictive policies come from this activation; the sixteenth is the identical
-    -- system_single_owner guard that 20260929120000_create_schedule_events.sql installs on
-    -- its own new table, because this migration's table list is frozen. Calendar-specific
-    -- policy shape is asserted by supabase/tests/calendar-schedule-catalog.sql.
-    PERFORM pg_temp.assert_true((SELECT count(*) FROM pg_policy WHERE polname='system_single_owner')=16, '16 restrictive policies');
+    -- Historical activation installs 15, Calendar adds one and Goals adds three.
+    -- Per-table policy/ACL shape is also asserted at each feature checkpoint.
+    PERFORM pg_temp.assert_true((SELECT count(*) FROM pg_policy WHERE polname='system_single_owner')=19, '19 restrictive policies');
     FOREACH target IN ARRAY protected LOOP
         PERFORM pg_temp.assert_true((SELECT relrowsecurity FROM pg_class WHERE oid=target), 'RLS enabled');
         PERFORM pg_temp.assert_true(EXISTS (
@@ -64,7 +62,7 @@ BEGIN
     PERFORM pg_temp.assert_true(EXISTS (SELECT 1 FROM pg_proc
         WHERE oid='system_private.require_owner()'::regprocedure AND NOT prosecdef
             AND proconfig=ARRAY['search_path=pg_catalog']), 'entry guard does not elevate');
-    FOREACH role_name IN ARRAY ARRAY['quest_command_owner','progression_command_owner','level_policy_assignment_owner','profile_provisioner','system_owner_reader'] LOOP
+    FOREACH role_name IN ARRAY ARRAY['quest_command_owner','progression_command_owner','level_policy_assignment_owner','profile_provisioner','system_owner_reader','goal_command_owner'] LOOP
         PERFORM pg_temp.assert_true(EXISTS (SELECT 1 FROM pg_roles WHERE rolname=role_name
             AND NOT rolcanlogin AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreaterole AND NOT rolcreatedb), 'constrained role');
         PERFORM pg_temp.assert_true(NOT has_schema_privilege(role_name, 'public', 'CREATE')
@@ -73,7 +71,7 @@ BEGIN
             AND NOT pg_has_role('anon', role_name, 'MEMBER')
             AND NOT pg_has_role('authenticator', role_name, 'MEMBER'), 'no client executor membership');
     END LOOP;
-    FOREACH role_name IN ARRAY ARRAY['authenticated','anon','service_role','quest_command_owner','progression_command_owner','level_policy_assignment_owner','profile_provisioner'] LOOP
+    FOREACH role_name IN ARRAY ARRAY['authenticated','anon','service_role','quest_command_owner','progression_command_owner','level_policy_assignment_owner','profile_provisioner','goal_command_owner'] LOOP
         PERFORM pg_temp.assert_true(NOT has_table_privilege(role_name, config_table, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
             AND NOT has_any_column_privilege(role_name, config_table, 'SELECT,INSERT,UPDATE,REFERENCES'), 'singleton inaccessible to clients/executors');
     END LOOP;
@@ -82,7 +80,7 @@ BEGIN
 
     -- Actual table access under each executor with missing, wrong and correct
     -- identities. Fixtures populate every protected table, including history.
-    FOREACH role_name IN ARRAY ARRAY['authenticated','anon','quest_command_owner','progression_command_owner','level_policy_assignment_owner'] LOOP
+    FOREACH role_name IN ARRAY ARRAY['authenticated','anon','quest_command_owner','progression_command_owner','level_policy_assignment_owner','goal_command_owner'] LOOP
         FOREACH actor IN ARRAY ARRAY[approved, outsider, NULL::uuid] LOOP
             PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', actor, 'role', 'authenticated')::text, true);
             PERFORM set_config('request.jwt.claim.sub', '', true);

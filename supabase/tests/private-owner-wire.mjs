@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { startAuthEnvironment } from "../../tests/helpers/auth-environment.mjs";
+import { exerciseGoalsWire } from "./helpers/goals-wire.mjs";
 
 const env = await startAuthEnvironment({ buildApp: false, activateOwner: false, testMigrationHistory: true });
 // ADR-015 stage two is applied here from the promoted migration file: the harness
@@ -246,6 +247,10 @@ try {
   }
   pass("Calendar read and all three Schedule Event writes require the owner over real PostgREST, stay idempotent per identity and reject non-owner tokens");
 
+  // ADR-020 owns its guards immediately; historical ADR-015 checkpoints stay pinned.
+  const goalCalls = await exerciseGoalsWire(env, owner, outsider, anon);
+  pass("Goals: seven owner-guarded RPCs, retained replay, no Quest/EXP side effects and concurrent membership/revision safety");
+
   for (const client of [owner, outsider, anon]) {
     await denied(client, "quest_valid_weekdays", { days: [1] });
     await denied(client, "reopen_quest_occurrence", { command_id: randomUUID(), occurrence_id: approved.created.occurrence_id, origin: "web_ui" });
@@ -276,6 +281,11 @@ try {
   await env.sql("DELETE FROM system_private.owner_configuration;");
   for (const client of [owner, outsider, anon]) {
     for (const [name, args] of approved.calls) await denied(client, name, args);
+    for (const [name, args] of goalCalls) await denied(client, name, args);
+    for (const table of ["goals", "goal_quest_links"]) {
+      const result = await client.from(table).select("*");
+      assert(result.error || result.data.length === 0, `${table}: missing config leaked data`);
+    }
     for (const table of tables) {
       const result = await client.from(table).select("*");
       assert(result.error || result.data.length === 0, `${table}: missing config leaked data`);

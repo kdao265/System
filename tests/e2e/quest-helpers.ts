@@ -80,7 +80,11 @@ export async function expectCompleted(page: Page, title: string) {
 export async function completeQuest(page: Page, title: string) {
   const row = questRow(page, title);
   await row.getByRole("button", { name: "Complete", exact: true }).click();
-  await expect(row.getByRole("status")).toContainText("An earlier completion request is confirmed.");
+  // The row's own receipt is transient: the revalidated read unmounts the
+  // completion control and renders the completed projection instead. Assert the
+  // durable acknowledgement owner (Quest recovery) before reading committed state.
+  await expect(page.getByRole("region", { name: "Quest recovery", exact: true }))
+    .toContainText(`Quest completed. ${rewardExp} EXP awarded.`);
   // Completion deliberately requires a current-state read. Both recovery panels
   // may offer this same accessible link; either reloads the selected day.
   await page.getByRole("link", { name: "Reload selected day", exact: true }).first().click();

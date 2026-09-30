@@ -29,8 +29,9 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
   return (
     <main className="mx-auto w-full max-w-2xl page-frame">
       <h1 className="text-3xl font-semibold tracking-[0.2em] text-zinc-100">SYSTEM</h1>
-      <nav aria-label="SYSTEM navigation" className="mt-4">
+      <nav aria-label="SYSTEM navigation" className="mt-4 flex flex-wrap gap-2">
         <a href={`/calendar?date=${selectedDate}`} className="inline-flex min-h-11 items-center rounded-md border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Calendar</a>
+        <a href="/goals" className="inline-flex min-h-11 items-center rounded-md border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Goals / Main Quests</a>
       </nav>
       <div className="mt-8 space-y-4">
         <PlayerSummary email={user.email ?? "unknown account"} displayName={profile.display_name} />

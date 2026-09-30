@@ -11,14 +11,14 @@ import { getReopenServerSnapshot } from "./reopen-recovery";
 const buttonClass = "mt-2 rounded-md border border-amber-500 px-3 py-2 text-sm disabled:opacity-60 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 
 /** The provider owns recovery even when this view has no requests to render. */
-export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string }) {
+export function QuestCompletionRecovery({ selectedDate, refreshHref: suppliedHref, refreshLabel = "Dashboard" }: { selectedDate: string; refreshHref?: string; refreshLabel?: string }) {
   const online = useOnline();
   const coordinator = useCompletionCoordinator();
   const reopenCoordinator = useReopenCoordinator();
   const state = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot, getCompletionServerSnapshot);
   const reopenState = useSyncExternalStore(reopenCoordinator.subscribe, reopenCoordinator.getSnapshot, getReopenServerSnapshot);
   const router = useRouter();
-  const refreshHref = `/dashboard?date=${selectedDate}`;
+  const refreshHref = suppliedHref ?? `/dashboard?date=${selectedDate}`;
   const staleCount = reopenState.blocks.filter((item) => item.reason === "stale").length;
   useEffect(() => {
     if (reopenState.confirmations.length > 0 || staleCount > 0) void reopenCoordinator.refreshDashboard(() => router.refresh());
@@ -53,17 +53,17 @@ export function QuestCompletionRecovery({ selectedDate }: { selectedDate: string
       ))}
       {state.phase === "blocked" && <button type="button" onClick={() => coordinator.recover()} disabled={state.busy} className={buttonClass}>Check recovery again</button>}
       {(state.confirmations.length > 0 || state.dispositions.length > 0) && <div className="mt-3">
-        {state.refreshRequired && <p role="status" className="text-sm text-amber-200">{state.confirmations.length > 0 ? "Completion is confirmed. " : ""}Refresh the Dashboard to read the latest state.</p>}
+        {state.refreshRequired && <p role="status" className="text-sm text-amber-200">{state.confirmations.length > 0 ? "Completion is confirmed. " : ""}Refresh the {refreshLabel} to read the latest state.</p>}
         {state.refreshError && <p role="alert">{state.refreshError}</p>}
-        <button type="button" onClick={() => coordinator.refreshDashboard(() => router.refresh())} disabled={state.refreshing} className={buttonClass}>Refresh Dashboard</button>
-        <a href={refreshHref} className="ml-3 text-sm underline">Reload selected day</a>
+        <button type="button" onClick={() => coordinator.refreshDashboard(() => router.refresh())} disabled={state.refreshing} className={buttonClass}>{`Refresh ${refreshLabel}`}</button>
+        <a href={refreshHref} className="ml-3 text-sm underline">{suppliedHref ? "Reload Goals" : "Reload selected day"}</a>
       </div>}
       {reopenState.error && <p role="alert" className="mt-4 text-sm text-amber-200">{reopenState.error}</p>}
-      {reopenState.blocks.map(({ operation, reason }) => <div key={operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3"><p className="text-sm">{reason === "conflict" ? "Reopen conflict: the original request is preserved for reconciliation against command history. Identical retries are blocked." : "This stale reopen request is preserved until a fresh Dashboard read shows the changed Quest cycle."}</p></div>)}
+      {reopenState.blocks.map(({ operation, reason }) => <div key={operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3"><p className="text-sm">{reason === "conflict" ? "Reopen conflict: the original request is preserved for reconciliation against command history. Identical retries are blocked." : "This stale reopen request is preserved until a fresh Quest read shows the changed Quest cycle."}</p></div>)}
       {reopenState.operations.map((operation) => <div key={operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3"><p className="text-sm">A reopen is awaiting confirmation. Its original request is preserved.</p><button type="button" data-command-id={operation.commandId} onClick={() => { if (navigator.onLine) return reopenCoordinator.retry(operation.commandId); }} disabled={!online || reopenState.busy || reopenState.phase === "blocked"} className={buttonClass}>Retry exact reopen</button></div>)}
-      {reopenState.confirmations.map((confirmation) => <div key={confirmation.operation.commandId} className="mt-3 rounded-md border border-emerald-800 p-3"><p role="status" className="text-sm text-emerald-300">{confirmation.message}</p><p className="mt-1 text-xs text-zinc-400">This confirms the historical request; the Dashboard must reread the current Quest and EXP state.</p>{confirmation.cleanupPending && <><p className="mt-2 text-sm text-amber-200">Confirmation is saved here; browser recovery cleanup still needs to finish.</p><button type="button" data-command-id={confirmation.operation.commandId} onClick={() => reopenCoordinator.retryConfirmation(confirmation.operation.commandId)} disabled={reopenState.busy} className={buttonClass}>Retry reopen recovery confirmation</button></>}</div>)}
+      {reopenState.confirmations.map((confirmation) => <div key={confirmation.operation.commandId} className="mt-3 rounded-md border border-emerald-800 p-3"><p role="status" className="text-sm text-emerald-300">{confirmation.message}</p><p className="mt-1 text-xs text-zinc-400">This confirms the historical request; the current page must reread the current Quest and EXP state.</p>{confirmation.cleanupPending && <><p className="mt-2 text-sm text-amber-200">Confirmation is saved here; browser recovery cleanup still needs to finish.</p><button type="button" data-command-id={confirmation.operation.commandId} onClick={() => reopenCoordinator.retryConfirmation(confirmation.operation.commandId)} disabled={reopenState.busy} className={buttonClass}>Retry reopen recovery confirmation</button></>}</div>)}
       {reopenState.phase === "blocked" && <button type="button" onClick={() => reopenCoordinator.recover()} disabled={reopenState.busy} className={buttonClass}>Check reopen recovery again</button>}
-      {(reopenState.confirmations.length > 0 || reopenState.refreshRequired) && <div className="mt-3"><>{reopenState.refreshRequired && <p role="status" className="text-sm text-amber-200">Reopen requires a fresh Dashboard read before any further action.</p>}{reopenState.refreshError && <p role="alert">{reopenState.refreshError}</p>}<button type="button" onClick={() => reopenCoordinator.refreshDashboard(() => router.refresh())} disabled={reopenState.refreshing} className={buttonClass}>Refresh Dashboard</button><a href={refreshHref} className="ml-3 text-sm underline">Reload selected day</a></></div>}
+      {(reopenState.confirmations.length > 0 || reopenState.refreshRequired) && <div className="mt-3"><>{reopenState.refreshRequired && <p role="status" className="text-sm text-amber-200">Reopen requires a fresh Quest read before any further action.</p>}{reopenState.refreshError && <p role="alert">{reopenState.refreshError}</p>}<button type="button" onClick={() => reopenCoordinator.refreshDashboard(() => router.refresh())} disabled={reopenState.refreshing} className={buttonClass}>{`Refresh ${refreshLabel}`}</button><a href={refreshHref} className="ml-3 text-sm underline">{suppliedHref ? "Reload Goals" : "Reload selected day"}</a></></div>}
     </section>
   );
 }

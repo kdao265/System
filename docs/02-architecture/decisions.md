@@ -424,3 +424,84 @@ CS-AC-01..CS-AC-07, OQ-1..OQ-6), [ADR-015](#adr-015--single-owner-database-enfor
 [testing](../04-development/testing.md).
 
 **Correctness details:** the four RPC names/signatures remain intact. Instant parameters transport all-day dates in the current Profile zone; SQL stores authoritative `start_date`/exclusive `end_date`, and the projection emits null all-day clock values. Missing end means one day; a provided end denotes the last included date. Events without an end appear only on their start day. Removal retains a `removed_at` tombstone against late create retries without introducing attendance, completion, reward or EXP state. Identical updates are no-ops; concurrent updates remain last-write-wins. No historical migration is changed. See [implementation and validation](../04-development/calendar-schedule-v1.md).
+
+## ADR-020 - Goals as Main Quests with live derived progress
+
+**Date:** 2026-09-30. **Status:** Accepted architecture, finalized under the Product Owner's
+approval and nine final product decisions. Not implemented; this task does not authorize implementation.
+
+**Context:** Goals must group existing one-off Quests without another task/completion engine.
+Existing Quest definitions have importance and unused parent UUID placeholders; occurrences
+own execution state and fixed parent snapshots. Older requirements describe contribution delivery
+and suppress new progress for archived parents. Those semantics need an explicit amendment for
+the requested current-membership ratio; they are not silently inherited by a new Goal table.
+
+**Decision:** Present a Goal as a Main Quest, a linked Quest as a Sub Quest and a standalone Quest
+as a normal Quest. Importance, priority and historical uses of main remain independent; never
+infer membership from them. Link an existing one-off definition and
+its unique existing occurrence as a Sub Quest, with at most one current Goal per Quest. Keep
+standalone Quests. Derive completed/total from current links and current occurrence status;
+nonempty all-complete is derived, never persisted. Persist archival only. Archived Goals retain
+membership and display live counts but reject Goal edits until restored. Quest completion,
+Reopen V2, EXP and Calendar contracts remain unchanged. Exact derived completion is
+`total_subquests > 0 AND completed_subquests = total_subquests`; empty means 0%, completed=false,
+including when archived. Percentage is unweighted read/presentation data, never mutable storage.
+The current occurrence's completed status is authoritative, so ordinary completion/reopen changes
+the next consistent read without a Goal repair command. Attaching completed work counts
+immediately; detaching removes the member from the denominator and, if completed, numerator.
+
+Use `public.goals`, retained membership intervals in `public.goal_quest_links` and private
+immutable `system_internal.goal_commands` receipts for durable idempotency. Revision-guard Goal
+mutations; replay accepted requests before checking live revisions. A dedicated RLS-bound Goal
+executor gets only Goal writes and owner-bound Quest reads, not Quest/EXP mutation capability.
+Every public entry point follows ADR-015, with restrictive policies installed on new objects.
+
+Enforce cardinality with partial unique index `uq_goal_quest_current` on quest_id WHERE
+detached_at IS NULL. Archived Goals retain current membership; detached rows do not block
+attachment elsewhere. Normal detach closes an interval, never hard-deletes it. Exact accepted
+attach/detach retries return historical receipts without recreating or closing later membership.
+Fresh metadata/attach/detach requests reject while archived, including would-be no-ops. Restore
+first; archive/restore is desired-state and idempotent. Recorded retries while archived perform
+no mutation. Historical completion snapshots are deferred to a future Goal History/Milestone feature.
+
+V1 exposes stable attach-order only: stored position, append after the current maximum under
+locks, deterministic position then link ID reads, preserved survivor order after detach, and
+reattachment at the end. Manual reorder is deferred; there is no V1 reorder RPC, input or column
+UPDATE grant. Position and a reserved journal command type already support future reorder without
+a table/column/index/constraint change or backfill; the future RPC and authorization grant need
+separate approval and must reject archived Goals. No V1 RPC accepts the reserved reorder type.
+This leaves seven public RPCs: create, update metadata, set archived, attach, detach, get and list.
+
+Attach SQL validates one_off definition, absence of any recurrence rule and exactly one existing
+occurrence with null recurrence provenance under the shared owner lock. Recurring/stopped/paused
+series and their occurrences reject server-side. Existing archived Quest links remain counted by
+occurrence status; fresh attach rejects archived Quests. Retained restrictive FKs block deleting
+referenced Quests/occurrences even after detach. No Quest archive/delete flow is introduced.
+
+**Explicit amendment:** For Goals/Main Quest V1, membership replaces the unimplemented
+fixed-parent contribution integration described in Quest requirements sections 7/19 and AC-14,
+Quest domain model sections 10/21, and Quest physical design sections 8/17. Main Quest UI terminology
+names the Goal, independently of existing `importance = main`. Archived Goal counts remain live.
+Do not populate or rewrite legacy parent fields, snapshots or completion event payloads; reject
+nonnull legacy attribution during attach pending reconciliation. Broader Projects and historical
+contribution reporting remain deferred. This accepted amendment takes precedence for Goals V1;
+older documents are retained as history outside the three-file finalization scope.
+
+**Alternatives:** Reusing direct_goal_id would mix mutable grouping with frozen occurrence
+attribution and require wider Quest command changes. Many-to-many membership is unnecessary for
+V1 and conflicts with the earlier single-parent direction. Persisted completion/percentage or
+event-driven counters require synchronization and reopen compensation. Two tables with only
+desired-state writes cannot safely replay an earlier attach/archive after a later detach/restore;
+immutable receipts add storage while preserving later intent. A separate task engine duplicates
+the accepted Quest lifecycle and is excluded. Exposing manual reorder now adds an unnecessary
+command/UI surface; stable attach-order with position retained is the smaller V1 contract.
+
+**Consequences:** Progress can decrease after reopen or attach, increase after detach, and change
+while archived. No permanent Goal completion milestone or EXP is implied. Retained links block
+Quest/occurrence deletion even after detach. Additive role-specific read policies are required
+because existing restrictive Quest policies enumerate their roles. Application refresh coverage
+must include Goals after existing Quest actions; historical migrations and Calendar are unchanged.
+
+**Related:** [Finalized requirements](../01-requirements/goals-main-quest-v1.md),
+[audited schema/RPC/security/test/rollout architecture](goals-main-quest-v1.md), ADR-012, ADR-013,
+ADR-015, ADR-018 and ADR-019. No implementation, migration or database action is authorized here.

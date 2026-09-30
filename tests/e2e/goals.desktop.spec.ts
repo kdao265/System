@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { test, expect } from "./quest-fixtures";
-import { completeQuest, createQuest, expectQuestHistory, questDay, reopenQuest } from "./quest-helpers";
+import { completeQuest, createQuest, expectQuestHistory, questDay, reopenQuest, rewardExp } from "./quest-helpers";
 import { attachQuest, createGoal, goalDetail, subRow } from "./goals-helpers";
 
 test("Main Quest live projection, normal Quest lifecycle, archive/restore and protection", async ({ page, environment }) => {
@@ -49,9 +49,14 @@ test("Main Quest live projection, normal Quest lifecycle, archive/restore and pr
   await expect(detail.getByRole("heading", { name: `${title} edited`, exact: true })).toBeVisible();
   // Shared controls also work in Goal detail without a parallel completion engine.
   await subRow(page, titles[0]).getByRole("button", { name: "Complete", exact: true }).click();
-  await expect(subRow(page, titles[0]).getByRole("status")).toContainText("completion request is confirmed");
+  // The row's own receipt is transient: the revalidated Goal read unmounts the
+  // completion control and renders the completed projection instead. Assert the
+  // durable acknowledgement owner (Quest recovery) and then the committed state.
+  await expect(page.getByRole("region", { name: "Quest recovery", exact: true })).toContainText(`Quest completed. ${rewardExp} EXP awarded.`);
   await page.getByRole("link", { name: "Reload Goals", exact: true }).first().click();
   await expect(detail).toContainText("1 / 2 Sub Quests");
+  await expect(subRow(page, titles[0])).toContainText("Status: Completed");
+  await expect(subRow(page, titles[0]).getByRole("button", { name: "Reopen", exact: true })).toBeVisible();
   await subRow(page, titles[0]).getByRole("button", { name: "Reopen", exact: true }).click();
   await subRow(page, titles[0]).getByRole("button", { name: "Confirm reopen", exact: true }).click();
   await expect(detail).toContainText("0 / 2 Sub Quests");

@@ -7,6 +7,7 @@ import ts from "typescript";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { redirect } from "next/navigation.js";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime.js";
 import { AuthInvalidJwtError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { formatExactInteger, mapExpProgress, mapProgressionOutcome, toExactInteger, toPgLevel } from "../src/features/progression/numbers.ts";
 
@@ -295,7 +296,10 @@ test("valid Auth session plus RPC permission denial ends on Dashboard with a pan
     // Exercise both real redirect gates: previously Dashboard redirected back
     // to login here, while LoginPage kept accepting the same valid session.
     await assert.rejects(LoginPage(), (error) => error.digest === "NEXT_REDIRECT;replace;/dashboard;307;");
-    const html = renderToStaticMarkup(await DashboardPage());
+    const tree = createElement(AppRouterContext.Provider, {
+      value: { refresh() { assert.fail("SSR must not request client refresh"); } },
+    }, await DashboardPage());
+    const html = renderToStaticMarkup(tree);
     assert.match(html, /synthetic@example.invalid/);
     assert.match(html, /Progression status is unavailable right now/);
     assert.match(html, /role="alert"/);

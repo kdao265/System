@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import type { Page } from "@playwright/test";
 import { test, expect } from "./quest-fixtures";
 import {
   completeQuest,
@@ -12,13 +13,23 @@ import {
 } from "./quest-helpers";
 import { attachQuest, createGoal, goalDetail } from "./goals-helpers";
 
-function disposableClient(environment: any) {
+type DisposableEnvironment = {
+  url: string;
+  key: string;
+  owner: { id: string; email: string; password: string };
+  other: { id: string; email: string; password: string };
+  sql: (statement: string) => Promise<string>;
+};
+
+function disposableClient(environment: DisposableEnvironment) {
   return createClient(environment.url, environment.key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
-async function signIn(client: ReturnType<typeof createClient>, account: { email: string; password: string }) {
+type DisposableClient = ReturnType<typeof disposableClient>;
+
+async function signIn(client: DisposableClient, account: { email: string; password: string }) {
   const auth = await client.auth.signInWithPassword({
     email: account.email,
     password: account.password,
@@ -26,14 +37,14 @@ async function signIn(client: ReturnType<typeof createClient>, account: { email:
   if (auth.error) throw new Error(`Disposable login failed: ${auth.error.message}`);
 }
 
-async function questIdByTitle(client: ReturnType<typeof createClient>, title: string) {
+async function questIdByTitle(client: DisposableClient, title: string) {
   const rows = await client.from("quests").select("id,title").eq("title", title);
   if (rows.error) throw new Error(`Disposable Quest lookup failed: ${rows.error.message}`);
   if (rows.data?.length !== 1) throw new Error(`Expected exactly one disposable Quest named ${title}`);
   return rows.data[0].id as string;
 }
 
-async function oneOffOccurrence(client: ReturnType<typeof createClient>, questId: string) {
+async function oneOffOccurrence(client: DisposableClient, questId: string) {
   const rows = await client
     .from("quest_occurrences")
     .select("id,status,execution_cycle")
@@ -43,7 +54,7 @@ async function oneOffOccurrence(client: ReturnType<typeof createClient>, questId
   return rows.data[0] as { id: string; status: string; execution_cycle: number };
 }
 
-async function originFor(environment: any, questId: string) {
+async function originFor(environment: DisposableEnvironment, questId: string) {
   const origin = (await environment.sql(`
 SELECT payload->>'origin'
 FROM public.quest_events
@@ -61,11 +72,15 @@ function expectRpcError(result: { error: { message?: string } | null }, text: st
   expect(result.error?.message ?? "").toContain(text);
 }
 
-function rpcRow(data: unknown) {
-  return Array.isArray(data) ? data[0] : data;
+function rpcRow(data: unknown): Record<string, unknown> {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    throw new Error("Expected one RPC receipt row");
+  }
+  return row as Record<string, unknown>;
 }
 
-async function createOneOff(page: any, label: string) {
+async function createOneOff(page: Page, label: string) {
   await page.goto(`/dashboard?date=${questDay}`);
   return createQuest(page, label);
 }
@@ -94,8 +109,8 @@ test("Quest Archive/Delete V1 preserves audit history, exact EXP and safety boun
         p_origin: origin,
       });
       if (archived.error) throw new Error(`Archive failed: ${archived.error.message}`);
-      expect((rpcRow(archived.data) as any).replay).toBe(false);
-      expect((rpcRow(archived.data) as any).changed).toBe(true);
+      expect(rpcRow(archived.data).replay).toBe(false);
+      expect(rpcRow(archived.data).changed).toBe(true);
 
       const replay = await owner.rpc("set_one_off_quest_archived_v1", {
         p_command_id: archiveCommand,
@@ -104,9 +119,21 @@ test("Quest Archive/Delete V1 preserves audit history, exact EXP and safety boun
         p_origin: origin,
       });
       if (replay.error) throw new Error(`Archive replay failed: ${replay.error.message}`);
-      expect((rpcRow(replay.data) as any).replay).toBe(true);
+      expect(rpcRow(replay.data).replay).toBe(true);
+
+      const stored = await owner.from("quests").select("archived_at").eq("id", questId).single();
+      expect(stored.error).toBeNull();
+      expect(stored.data?.archived_at).toBeTruthy();
+      const day = await owner.rpc("list_day_quest_occurrences", { p_day: questDay });
+      const calendar = await owner.rpc("get_calendar_events", { p_from: questDay, p_to: questDay });
+      expect(day.error).toBeNull();
+      expect(calendar.error).toBeNull();
+      // Fresh authenticated RPC reads distinguish a projection defect from stale UI/cache.
+      expect.soft(day.data.filter((row: { quest_id: string }) => row.quest_id === questId), "Archived Quest in fresh day RPC").toEqual([]);
+      expect.soft(calendar.data.filter((row: { quest_id: string }) => row.quest_id === questId), "Archived Quest in fresh Calendar RPC").toEqual([]);
 
       await page.reload();
+      await expect(page.getByRole("region", { name: "Daily Quests", exact: true })).toHaveAttribute("aria-busy", "false");
       await expect(questRow(page, title)).toHaveCount(0);
 
       const restore = await owner.rpc("set_one_off_quest_archived_v1", {
@@ -117,7 +144,15 @@ test("Quest Archive/Delete V1 preserves audit history, exact EXP and safety boun
       });
       if (restore.error) throw new Error(`Restore failed: ${restore.error.message}`);
 
+      const restoredDay = await owner.rpc("list_day_quest_occurrences", { p_day: questDay });
+      const restoredCalendar = await owner.rpc("get_calendar_events", { p_from: questDay, p_to: questDay });
+      expect(restoredDay.error).toBeNull();
+      expect(restoredCalendar.error).toBeNull();
+      expect(restoredDay.data.filter((row: { quest_id: string }) => row.quest_id === questId)).toHaveLength(1);
+      expect(restoredCalendar.data.filter((row: { quest_id: string }) => row.quest_id === questId)).toHaveLength(1);
+
       await page.reload();
+      await expect(page.getByRole("region", { name: "Daily Quests", exact: true })).toHaveAttribute("aria-busy", "false");
       await expect(questRow(page, title)).toHaveCount(1);
 
       const conflictingReplay = await owner.rpc("set_one_off_quest_archived_v1", {
@@ -142,8 +177,8 @@ test("Quest Archive/Delete V1 preserves audit history, exact EXP and safety boun
         p_origin: origin,
       });
       if (deleted.error) throw new Error(`Delete failed: ${deleted.error.message}`);
-      expect((rpcRow(deleted.data) as any).replay).toBe(false);
-      expect((rpcRow(deleted.data) as any).occurrence_id).toBe(occurrence.id);
+      expect(rpcRow(deleted.data).replay).toBe(false);
+      expect(rpcRow(deleted.data).occurrence_id).toBe(occurrence.id);
 
       const replay = await owner.rpc("delete_one_off_quest_v1", {
         p_command_id: command,
@@ -151,7 +186,7 @@ test("Quest Archive/Delete V1 preserves audit history, exact EXP and safety boun
         p_origin: origin,
       });
       if (replay.error) throw new Error(`Delete replay failed: ${replay.error.message}`);
-      expect((rpcRow(replay.data) as any).replay).toBe(true);
+      expect(rpcRow(replay.data).replay).toBe(true);
 
       const browserQuest = await owner.from("quests").select("id").eq("id", questId);
       if (browserQuest.error) throw new Error(`Deleted Quest browser read failed: ${browserQuest.error.message}`);
@@ -179,6 +214,7 @@ WHERE q.id='${questId}'::uuid;
 `)).toBe("true|true|cancelled|1");
 
       await page.reload();
+      await expect(page.getByRole("region", { name: "Daily Quests", exact: true })).toHaveAttribute("aria-busy", "false");
       await expect(questRow(page, title)).toHaveCount(0);
 
       const restoreDeleted = await owner.rpc("set_one_off_quest_archived_v1", {
@@ -228,7 +264,7 @@ WHERE q.id='${questId}'::uuid;
         origin,
       });
       if (alias.error) throw new Error(`Completion alias registration failed: ${alias.error.message}`);
-      expect((rpcRow(alias.data) as any).replay).toBe(true);
+      expect(rpcRow(alias.data).replay).toBe(true);
 
       const aliasCollision = await owner.rpc("delete_one_off_quest_v1", {
         p_command_id: aliasCommand,
@@ -291,6 +327,7 @@ SELECT
 `)).toBe("1|1");
 
       await page.reload();
+      await expect(page.getByRole("region", { name: "Daily Quests", exact: true })).toHaveAttribute("aria-busy", "false");
       expect(await readExp(page)).toBe(before);
       await expect(questRow(page, title)).toHaveCount(0);
     });
@@ -364,6 +401,8 @@ WHERE quest_id='${questId}'::uuid
         p_origin: ownerOrigin,
       });
       expectRpcError(forbidden, "SYSTEM owner authorization required");
+      expectRpcError(await other.rpc("list_day_quest_occurrences", { p_day: questDay }), "SYSTEM owner authorization required");
+      expectRpcError(await other.rpc("get_calendar_events", { p_from: questDay, p_to: questDay }), "SYSTEM owner authorization required");
 
       const stillVisible = await owner.from("quests").select("id").eq("id", ownerQuestId);
       if (stillVisible.error) throw new Error(`Owner Quest verification failed: ${stillVisible.error.message}`);

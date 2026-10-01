@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/primitives";
 import type { DayQuestResult } from "./model";
 import { addCalendarDays, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
 import { QuestCompletionControl, QuestReopenControl } from "./completion-control";
+import { QuestManagementControl } from "./management-control";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
 const navLinkClass = "rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
@@ -87,7 +88,12 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, locale 
           <li key={quest.occurrence_id} className="dashboard-quest-row" data-completed={quest.status === "completed"}>
             <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
               <h3 className="min-w-0 flex-1 basis-40 font-medium text-zinc-100">{quest.quest_title}</h3>
-              <Badge tone={quest.status === "completed" ? "success" : "muted"}>{t.status}: {t.states[quest.status]}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge tone={quest.status === "completed" ? "success" : "muted"}>{t.status}: {t.states[quest.status]}</Badge>
+                {quest.source_slot_date === null && userId &&
+                  <QuestManagementControl userId={userId} questId={quest.quest_id}
+                    title={quest.quest_title} status={quest.status} locale={locale} />}
+              </div>
             </div>
             {quest.source_slot_date && <p className="mt-2 text-sm text-zinc-400">{t.recurring} · {displayDate(quest.source_slot_date, locale)}</p>}
             <dl className="mt-3 grid min-w-0 gap-3 text-sm sm:grid-cols-2">

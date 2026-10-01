@@ -120,6 +120,13 @@ export async function startAuthEnvironment({ buildApp = true, activateOwner = tr
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     });
+    // Opt-in debugging: leave databases running (tmpfs would be lost on stop),
+    // retain their network and app copy, and never touch previous runs.
+    if (process.env.SYSTEM_E2E_PRESERVE === "1") {
+      console.log(`PRESERVED: ${networkName}; app copy ${disposableDirectory ?? "none"}`);
+      if (failures.length) throw new AggregateError(failures, "App shutdown failed; test resources preserved");
+      return;
+    }
     for (const id of [...resources].reverse()) await attempt(async () => {
       await inspect(id);
       await docker(["rm", "-f", id], { label: "Remove own disposable container" });
@@ -175,6 +182,8 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     // fixture and its configuration exist, reproducing the approved deployment order:
     // stage-one install, owner provisioning and verification, then stage-two activation.
     const deferredActivation = "20260928100000_activate_private_owner.sql";
+    // Activation verifies the historical read checksum before its later correction.
+    const postActivationProjection = "20261002023000_quest_active_projections.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -195,7 +204,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();
-      if (file === deferredActivation) continue;
+      if (file === deferredActivation || file === postActivationProjection) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -253,6 +262,14 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     if (activateOwner) {
       await sql(`INSERT INTO system_private.owner_configuration(user_id) VALUES ('${owner.id}');`);
       await sql(readFileSync(new URL(deferredActivation, migrationDir), "utf8"));
+      const projectionCatalog = `SELECT json_agg(row_to_json(p) ORDER BY p.oid) FROM (
+        SELECT oid, proowner, proacl, prosecdef, provolatile, proconfig, prorettype, proargtypes
+        FROM pg_proc WHERE oid IN ('public.list_day_quest_occurrences(date)'::regprocedure,
+          'public.get_calendar_events(date,date)'::regprocedure)
+      ) p;`;
+      const beforeProjection = await sql(projectionCatalog);
+      await sql(readFileSync(new URL(postActivationProjection, migrationDir), "utf8"));
+      assert.equal(await sql(projectionCatalog), beforeProjection, "Projection correction must preserve identity, signature and security boundary");
     }
     if (isolatedApp) {
       assert(buildApp && activateOwner, "Isolated E2E app requires a fresh build and activated owner");

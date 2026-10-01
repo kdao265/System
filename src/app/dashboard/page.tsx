@@ -19,6 +19,8 @@ import { resolveSelectedDate } from "@/features/quests/dates";
 import { QuestCreationForm } from "@/features/quests/create-form";
 import { QuestCompletionRecovery } from "@/features/quests/completion-recovery-ui";
 import { QuestCompletionProvider } from "@/features/quests/completion-provider";
+import { ArchivedQuestsPanel } from "@/features/quests/archived-panel";
+import { QuestManagementProvider } from "@/features/quests/management-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
         <p className="type-metadata text-muted break-all">{user.email}</p>
       </section>
       <QuestCompletionProvider userId={user.id}>
+        <QuestManagementProvider userId={user.id} locale={locale}>
         <div className="dashboard-grid">
           <div className="dashboard-slot-level"><LevelSnapshot result={progression} locale={locale} selectedDate={selectedDate} /></div>
           <div className="dashboard-slot-main">
@@ -71,8 +74,12 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             <p className="mb-3 type-metadata text-muted">{t.legacyHint}</p>
             <div lang="en"><QuestCreationForm timezone={profile.timezone!} userId={user.id} /></div>
           </div>
+          <Suspense fallback={<Panel aria-busy="true"><p role="status">{getDictionary(locale).questManage.loadingArchived}</p></Panel>}>
+            <ArchivedQuestsPanel userId={user.id} locale={locale} timezone={profile.timezone!} />
+          </Suspense>
           <div lang="en"><Suspense fallback={<RewardsLoading />}><RewardsPanel /></Suspense></div>
         </div>
+        </QuestManagementProvider>
       </QuestCompletionProvider>
       <footer lang="en" className="mt-8"><LogoutForm /></footer>
     </main>

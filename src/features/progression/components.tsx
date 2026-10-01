@@ -1,20 +1,16 @@
+import { Panel, ProgressBar } from "@/components/ui/primitives";
 import type { ExpProgress } from "./numbers";
 
 function Card({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <section
-      aria-label={label}
-      className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/80 p-6 [overflow-wrap:anywhere] shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]"
-    >
-      {children}
-    </section>
+    <Panel aria-label={label}>{children}</Panel>
   );
 }
 
 export function PlayerSummary({ email, displayName }: { email: string; displayName: string | null }) {
   return (
     <Card label="Player status">
-      <p className="text-xs font-medium tracking-[0.3em] text-zinc-400">PLAYER</p>
+      <p className="type-metadata tracking-widest text-muted">PLAYER</p>
       <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-50">
         {displayName || "Operator"}
       </h2>
@@ -26,7 +22,7 @@ export function PlayerSummary({ email, displayName }: { email: string; displayNa
 function ProgressionUnavailable() {
   return (
     <Card label="Progression status: not configured">
-      <p className="text-xs font-medium tracking-[0.3em] text-zinc-400">PROGRESSION</p>
+      <p className="type-metadata tracking-widest text-muted">PROGRESSION</p>
       <p className="mt-3 text-zinc-300">Level system not configured.</p>
       <p className="mt-1 text-sm text-zinc-400">
         No progression policy is assigned to your account yet. Ask the administrator to publish and
@@ -39,7 +35,7 @@ function ProgressionUnavailable() {
 function ProgressionInvalid() {
   return (
     <Card label="Progression status: data error">
-      <p className="text-xs font-medium tracking-[0.3em] text-zinc-400">PROGRESSION</p>
+      <p className="type-metadata tracking-widest text-muted">PROGRESSION</p>
       <p role="alert" className="mt-3 break-words text-zinc-300">
         Progression data could not be read safely.
       </p>
@@ -59,13 +55,13 @@ function ProgressionAvailable({ exp }: { exp: Extract<ExpProgress, { state: "ava
   return (
     <Card label="Progression status">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs font-medium tracking-[0.3em] text-zinc-400">PROGRESSION</p>
+        <p className="type-metadata tracking-widest text-muted">PROGRESSION</p>
         {exp.highestLevel !== null && (
           <p className="text-xs tracking-widest text-zinc-400">Highest Level {exp.highestLevel}</p>
         )}
       </div>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="min-w-0 text-4xl font-bold tracking-tight text-amber-300">
+        <h2 className="min-w-0 type-stat text-level">
           Level {exp.currentLevel}
         </h2>
         <span className="min-w-0 break-all font-mono text-sm text-zinc-400">
@@ -77,20 +73,9 @@ function ProgressionAvailable({ exp }: { exp: Extract<ExpProgress, { state: "ava
         <p className="mt-4 text-sm font-medium tracking-widest text-amber-300/90">MAX LEVEL</p>
       ) : (
         <>
-          <div
-            role="progressbar"
-            aria-label={`Level ${exp.currentLevel} progress`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent ?? 0}
-            aria-valuetext={`${percent ?? 0} percent toward Level ${exp.nextLevel}, ${exp.expToNextText ?? ""} EXP remaining`}
-            className="mt-5 h-2 w-full overflow-hidden rounded-full bg-zinc-800"
-          >
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300"
-              style={{ width: `${percent ?? 0}%` }}
-            />
-          </div>
+          <ProgressBar value={percent ?? 0} label={`Level ${exp.currentLevel} progress`}
+            valueText={`${percent ?? 0} percent toward Level ${exp.nextLevel}, ${exp.expToNextText ?? ""} EXP remaining`}
+            className="mt-5" />
           <p className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-zinc-400">
             <span>{percent ?? 0}%</span>
             <span className="min-w-0 break-all font-mono">

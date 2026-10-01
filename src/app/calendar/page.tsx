@@ -1,3 +1,4 @@
+import { AppHeader } from "@/components/app-header";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getProfileContext, isOnboardingComplete } from "@/features/profile/session";
@@ -32,9 +33,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const previous = shiftPeriod(view, date, -1), next = shiftPeriod(view, date, 1);
   const href = (day: string, mode = view) => `/calendar?date=${day}&view=${mode}`;
   const month = entries === null ? null : monthCells(grid, daySummaries(entries, grid.days, timezone));
-  return <main className="mx-auto w-full max-w-2xl page-frame">
-    <Link prefetch={false} href="/dashboard" className="inline-flex min-h-11 items-center text-sm text-zinc-400 underline">SYSTEM / Dashboard</Link>
-    <h1 className="mt-4 text-3xl font-semibold tracking-wide">Calendar</h1>
+  return <main lang="en" className="mx-auto w-full max-w-2xl page-frame">
+    <AppHeader current="calendar" />
     <p className="mt-2 text-sm text-zinc-400">Your time, alongside existing Quest occurrences. Timezone: {timezone}.</p>
     <nav aria-label="Calendar navigation" className="mt-6 flex flex-wrap gap-2">
       {previous && <Link prefetch={false} className={link} href={href(previous)}>Previous {view}</Link>}

@@ -4,7 +4,10 @@ import { requireE2ERuntime } from "../helpers/e2e-boundary.mjs";
 
 type Environment = Awaited<ReturnType<typeof startAuthEnvironment>> & { app: string };
 
-export const test = base.extend<{ networkBoundary: void }, { environment: Environment }>({
+export const test = base.extend<{ networkBoundary: void; localePreference: "en" | "vi" | null }, { environment: Environment }>({
+  // Existing feature journeys assert English copy explicitly. Foundation tests clear
+  // this preference to verify the real Vietnamese default independently.
+  localePreference: ["en", { option: true }],
   environment: [async ({}, provide, workerInfo) => {
     if (workerInfo.config.workers !== 1 || workerInfo.project.retries !== 0 ||
       workerInfo.project.use.baseURL || workerInfo.project.use.storageState) {
@@ -40,8 +43,9 @@ export const test = base.extend<{ networkBoundary: void }, { environment: Enviro
     await provide(environment.app);
   },
 
-  networkBoundary: [async ({ context, environment }, provide) => {
+  networkBoundary: [async ({ context, environment, localePreference }, provide) => {
     const allowed = new Set(requireE2ERuntime(environment));
+    if (localePreference) await context.addCookies([{ name: "system-locale", value: localePreference, url: environment.app }]);
     let blocked = false;
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppHeader } from "@/components/app-header";
 import { redirect } from "next/navigation";
 import { getProfileContext, isOnboardingComplete } from "@/features/profile/session";
 import { ProfileError } from "@/features/profile/profile-error";
@@ -29,9 +29,8 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
     detail ? getProgressionStatus() : null,
   ]);
   const today = todayInTimezone(profile.timezone!);
-  return <main className="mx-auto w-full max-w-2xl page-frame">
-    <Link prefetch={false} href="/dashboard" className="inline-flex min-h-11 items-center text-sm text-zinc-400 underline">SYSTEM / Dashboard</Link>
-    <h1 className="mt-4 text-3xl font-semibold">Goals / Main Quests</h1>
+  return <main lang="en" className="mx-auto w-full max-w-2xl page-frame">
+    <AppHeader current="goals" />
     <p className="mt-2 text-sm text-zinc-400">Group your one-off Quests. Progress follows their current completion state.</p>
     <GoalsPanel key={user.id} userId={user.id} page={page} detail={detail} selected={selected} scope={scope} candidates={candidates} candidateAfter={candidateAfter}>
       {detail && <QuestCompletionProvider userId={user.id}>

@@ -2,13 +2,100 @@
 
 :root {
   color-scheme: dark;
+  --app: #09090b;
+  --surface: #11171f;
+  --elevated: #19232e;
+  --border-subtle: #2c3c4c;
+  --border-strong: #71869a;
+  --accent: #70dcf2;
+  --accent-secondary: #9ab9ff;
+  --success: #79e2b0;
+  --warning: #f5cd7a;
+  --danger: #ff9fa9;
+  --text: #edf4fa;
+  --muted: #afbdcc;
+  --exp: #f5cd7a;
+  --level: #f5cd7a;
+  --quest: #b8a5f5;
+  --main-quest: #9ab9ff;
+  --calendar: #70dcf2;
+  --radius-control: 0.5rem;
+  --radius-panel: 1rem;
+  --space-panel: clamp(1rem, 3vw, 1.5rem);
+  --space-section: 1.5rem;
+  --shadow-panel: 0 8px 28px #00000026;
+  --glow-accent: 0 0 22px #70dcf212;
+  --duration-ui: 160ms;
+  --ease-ui: cubic-bezier(0.2, 0, 0, 1);
+  --focus-ring: 2px solid var(--accent);
+  --font-system: Arial, Helvetica, sans-serif;
+}
+
+@theme inline {
+  --color-app: var(--app);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-muted: var(--muted);
+  --color-primary: var(--text);
+  --color-exp: var(--exp);
+  --color-level: var(--level);
+  --color-quest: var(--quest);
+  --color-main-quest: var(--main-quest);
+  --color-calendar: var(--calendar);
 }
 
 body {
   margin: 0;
-  background: #09090b;
-  color: #fafafa;
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--app);
+  color: var(--text);
+  font-family: var(--font-system);
+  line-height: 1.6;
+}
+
+/* Compact presentation vocabulary. Feature-specific grids and legacy utilities stay local. */
+@layer components {
+  .type-display { font-size: clamp(2rem, 6vw, 3rem); font-weight: 700; line-height: 1.15; letter-spacing: 0.12em; }
+  .type-page { font-size: clamp(1.75rem, 5vw, 2.25rem); font-weight: 650; line-height: 1.25; letter-spacing: -0.02em; }
+  .type-section { font-size: 1.125rem; font-weight: 650; line-height: 1.4; }
+  .type-card { font-size: 1rem; font-weight: 600; line-height: 1.5; }
+  .type-body { font-size: 1rem; line-height: 1.6; }
+  .type-metadata { font-size: 0.8125rem; line-height: 1.5; }
+  .type-stat { font-size: 2rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .app-header { min-width: 0; padding-bottom: var(--space-section); margin-bottom: var(--space-section); border-bottom: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+  .ui-panel { min-width: 0; padding: var(--space-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-panel); background: var(--surface); box-shadow: var(--shadow-panel); overflow-wrap: anywhere; }
+  .ui-button { display: inline-flex; min-height: 2.75rem; max-width: 100%; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 0.5rem 0.875rem; background: var(--surface); color: var(--text); font-size: 0.875rem; font-weight: 600; line-height: 1.4; text-align: center; overflow-wrap: anywhere; cursor: pointer; transition: background-color var(--duration-ui) var(--ease-ui), border-color var(--duration-ui) var(--ease-ui); }
+  .ui-button:hover:not(:disabled) { background: var(--elevated); border-color: var(--accent); }
+  .ui-button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ui-button-primary { color: var(--app); background: var(--accent); border-color: var(--accent); }
+  .ui-button-primary:hover:not(:disabled) { color: var(--app); background: var(--accent-secondary); }
+  .ui-button-danger { color: var(--danger); border-color: var(--danger); }
+  .ui-nav-link { flex: 1 1 auto; }
+  .ui-nav-link[aria-current="page"] { color: var(--accent); border-color: var(--accent); background: var(--elevated); box-shadow: var(--glow-accent); }
+  .ui-field { display: block; min-width: 0; min-height: 2.75rem; width: 100%; max-width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--elevated); color: var(--text); padding: 0.5rem 0.75rem; font-size: 1rem; line-height: 1.5; }
+  .ui-field::placeholder { color: var(--muted); }
+  .ui-button:focus-visible, .ui-field:focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
+  .ui-badge { display: inline-flex; max-width: 100%; align-items: center; border: 1px solid currentColor; border-radius: var(--radius-control); padding: 0.125rem 0.5rem; font-size: 0.8125rem; line-height: 1.5; }
+  .ui-tone-accent { color: var(--accent); }
+  .ui-tone-success { color: var(--success); }
+  .ui-tone-warning { color: var(--warning); }
+  .ui-tone-danger { color: var(--danger); }
+  .ui-tone-muted { color: var(--muted); }
+  .ui-progress { height: 0.625rem; width: 100%; overflow: hidden; border-radius: var(--radius-control); background: var(--border-subtle); }
+  .ui-progress > div { height: 100%; border-radius: inherit; background: var(--exp); }
+  .ui-progress-main-quest > div { background: var(--main-quest); }
+  .ui-progress-success > div { background: var(--success); }
+  .ui-empty { padding: var(--space-panel); border: 1px dashed var(--border-strong); border-radius: var(--radius-control); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration-ui: 0ms; }
 }
 
 /* Page frame for edge-to-edge standalone installs. Each side keeps the existing page
@@ -27,11 +114,11 @@ body {
    row's kind is its `source`, never a stored color. Neutrals keep the grid quiet so
    Today (sky) and the selected day (white ring) stay the loudest things on screen. */
 @theme {
-  --color-cal-line: #27272a;      /* grid rule */
+  --color-cal-line: var(--border-subtle); /* grid rule */
   --color-cal-cell: #111113;      /* in-month cell */
   --color-cal-outside: #0b0b0d;   /* adjacent-month cell */
-  --color-cal-event: #38bdf8;     /* Schedule Event (sky, matches the existing accent) */
-  --color-cal-quest: #a78bfa;     /* Quest occurrence (violet, matches Quest accents) */
+  --color-cal-event: var(--calendar); /* Schedule Event */
+  --color-cal-quest: var(--quest);    /* Quest occurrence */
 }
 
 /* Hour rules for the Week timeline: one line every 2.75rem (the height of one hour),

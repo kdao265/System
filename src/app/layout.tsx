@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
+import { LOCALE_COOKIE, resolveLocale } from "@/lib/localization/dictionaries";
+import { LocaleProvider } from "@/lib/localization/provider";
 import { ServiceWorkerRegistration } from "@/features/pwa/service-worker-registration";
 import { NetworkStatus } from "@/features/network/network-status";
 import "./globals.css";
@@ -34,13 +37,18 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const locale = resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value);
   return (
-    <html lang="en">
-      <body>
-        <NetworkStatus />
-        {children}
-        <ServiceWorkerRegistration />
+    <html lang={locale}>
+      {/* Legacy feature copy stays English during the pilot; localized surfaces
+          declare their own language. This also covers onboarding and offline text. */}
+      <body lang="en">
+        <LocaleProvider locale={locale}>
+          <NetworkStatus />
+          {children}
+          <ServiceWorkerRegistration />
+        </LocaleProvider>
       </body>
     </html>
   );

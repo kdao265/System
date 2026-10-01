@@ -6,7 +6,8 @@ import { startAuthEnvironment } from "./helpers/auth-environment.mjs";
 const env = await startAuthEnvironment();
 let app;
 const { url, key, owner, other: outsider } = env;
-const jar = new Map();
+// Existing feature-copy assertions run in an explicit supported locale.
+const jar = new Map([["system-locale", "en"]]);
 const { email, password } = owner;
 const check = (condition, message) => assert(condition, message);
 

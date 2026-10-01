@@ -6,11 +6,14 @@ import { createSupabaseClient } from "@/lib/supabase/client";
 import { useOnline } from "@/features/network/network-status";
 import { changeRecurrencePause } from "./recurrence-action";
 import { PAUSE_PREFIX, RecurrencePauseLifecycle } from "./recurrence-pending";
-import { cadenceLabel } from "./recurring-model";
+import { getDictionary, type Locale } from "@/lib/localization/dictionaries";
 import type { RecurringQuest } from "./recurring-list";
 
 const buttonClass = "mt-3 min-h-11 rounded-md border border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
-function RecurringControl({ userId, quest }: { userId: string; quest: RecurringQuest }) {
+function RecurringControl({ userId, quest, locale }: { userId: string; quest: RecurringQuest; locale: Locale }) {
+  const { recurringControl: t, dashboard: d } = getDictionary(locale);
+  const weekdays = quest.weekdays?.map((day) => new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 4 + day)))).join(", ");
+  const cadence = d[quest.recurrence_mode] + (quest.recurrence_mode === "weekly" ? ` · ${weekdays}` : quest.recurrence_mode === "monthly" ? ` · ${t.monthDay} ${quest.month_day}` : "");
   const router = useRouter();
   const online = useOnline();
   const [controller] = useState(() => new RecurrencePauseLifecycle(userId, quest.quest_id, {
@@ -42,15 +45,15 @@ function RecurringControl({ userId, quest }: { userId: string; quest: RecurringQ
   }
   return <li className="rounded-md border border-zinc-800 p-4" aria-busy={state.phase === "sending"}>
     <h3 className="font-medium">{quest.title}</h3>
-    <p className="mt-1 text-sm text-zinc-300">Recurring · {cadenceLabel(quest)} · {quest.paused ? "Paused" : "Active"}</p>
-    <p className="mt-1 text-sm text-zinc-400">From {quest.anchor_date}{quest.end_date ? ` through ${quest.end_date}` : ""}</p>
-    {state.operation && <p className="mt-2 text-sm text-amber-200">Awaiting confirmation: {state.operation.paused ? "Pause" : "Resume"}</p>}
-    {state.phase === "uncertain" ? <button type="button" disabled={!online} onClick={() => { void execute(true); }} className={buttonClass}>Retry exact pause/resume request</button> :
-      <button type="button" disabled={!online || state.phase !== "ready"} onClick={() => { void execute(false); }} className={buttonClass}>{state.phase === "sending" ? "Confirming…" : quest.paused ? "Resume" : "Pause"}</button>}
-    {state.phase === "blocked" && <button type="button" onClick={() => { void controller.recover(); }} className={`${buttonClass} ml-2`}>Check recurrence recovery</button>}
-    <div aria-live="polite">{state.error && <p role="alert" className="mt-2 text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="mt-2 text-sm text-emerald-300">{state.message}</p>}</div>
+    <p className="mt-1 text-sm text-muted">{t.recurring} · {cadence} · {quest.paused ? d.paused : d.active}</p>
+    <p className="mt-1 type-metadata text-muted">{t.from} {quest.anchor_date}{quest.end_date ? ` ${t.through} ${quest.end_date}` : ""}</p>
+    {state.operation && <p className="mt-2 text-sm text-exp">{t.awaiting}: {state.operation.paused ? t.pause : t.resume}</p>}
+    {state.phase === "uncertain" ? <button type="button" disabled={!online} onClick={() => { void execute(true); }} className={buttonClass}>{t.retry}</button> :
+      <button type="button" disabled={!online || state.phase !== "ready"} onClick={() => { void execute(false); }} className={buttonClass}>{state.phase === "sending" ? t.confirming : quest.paused ? t.resume : t.pause}</button>}
+    {state.phase === "blocked" && <button type="button" onClick={() => { void controller.recover(); }} className={`${buttonClass} ml-2`}>{t.check}</button>}
+    <div lang="en" aria-live="polite">{state.error && <p role="alert" className="mt-2 text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="mt-2 text-sm text-emerald-300">{state.message}</p>}</div>
   </li>;
 }
-export function RecurringQuestControls({ userId, quests }: { userId: string; quests: RecurringQuest[] }) {
-  return <ul aria-label="Recurring definitions" className="mt-4 space-y-3">{quests.map((quest) => <RecurringControl key={quest.quest_id} userId={userId} quest={quest} />)}</ul>;
+export function RecurringQuestControls({ userId, quests, locale = "en" }: { userId: string; quests: RecurringQuest[]; locale?: Locale }) {
+  return <ul aria-label={getDictionary(locale).recurringControl.definitions} className="mt-4 space-y-3">{quests.map((quest) => <RecurringControl key={quest.quest_id} userId={userId} quest={quest} locale={locale} />)}</ul>;
 }

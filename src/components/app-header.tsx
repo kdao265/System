@@ -5,7 +5,7 @@ import { useLocale } from "@/lib/localization/provider";
 import { resolveLocale } from "@/lib/localization/dictionaries";
 import { Button } from "./ui/primitives";
 
-export function AppHeader({ current, selectedDate }: { current: "dashboard" | "calendar" | "goals"; selectedDate?: string }) {
+export function AppHeader({ current, selectedDate, compact = false }: { current: "dashboard" | "calendar" | "goals"; selectedDate?: string; compact?: boolean }) {
   const { locale, messages: t, pending, changeLocale } = useLocale();
   const [error, setError] = useState(false);
   const links = [
@@ -13,15 +13,18 @@ export function AppHeader({ current, selectedDate }: { current: "dashboard" | "c
     { key: "calendar", href: selectedDate ? `/calendar?date=${selectedDate}` : "/calendar" },
     { key: "goals", href: "/goals" },
   ] as const;
-  return <header lang={locale} className="app-header">
+  return <header lang={locale} className={`app-header ${compact ? "dashboard-header" : ""}`}>
+    <div className="app-header-identity">
     <p className="type-metadata text-accent">PERSONAL LIFE OS</p>
     <h1 className={current === "dashboard" ? "type-display mt-2" : "type-page mt-2"}>
       {current === "dashboard" ? "SYSTEM" : t.navigation[current]}
     </h1>
     <p className="mt-3 text-muted">{t.shell[current]}</p>
+    </div>
     <nav aria-label={t.navigation.label} className="mt-6 flex flex-wrap gap-2">
       {links.map(({ key, href }) => <a key={key} href={href} aria-current={current === key ? "page" : undefined}
         className="ui-button ui-nav-link">{t.navigation[key]}</a>)}
+      {compact && <a href="#daily-quests" className="ui-button ui-nav-link">{t.dashboard.quests}</a>}
     </nav>
     <form className="mt-5 flex flex-wrap items-end gap-2" aria-busy={pending} onSubmit={(event) => {
       event.preventDefault();

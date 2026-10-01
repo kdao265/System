@@ -35,6 +35,9 @@ const pageDependencies = {
 };
 const inertFormsUrl = `data:text/javascript,${encodeURIComponent(`
   export function AuthForm() { return "Login form"; }
+  export async function cookies() { return { get: () => ({ value: "en" }) }; }
+  export function DashboardMainQuest() { return null; }
+  export function DashboardCalendar() { return null; }
   export function LogoutForm() { return null; }
   export function ProfileError() { return "Profile error"; }
   export function RecurringQuestsPanel() { return null; }
@@ -63,7 +66,7 @@ const hooks = registerHooks({
       if (specifier === "next/navigation") return nextResolve("next/navigation.js", context);
       if (specifier === "@/lib/supabase/server") return { url: adapterMocksUrl, shortCircuit: true };
       if (pageDependencies[specifier]) return { url: pageDependencies[specifier], shortCircuit: true };
-      if (["@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error", "@/features/quests/recurring-panel", "@/features/quests/panel", "@/features/quests/components", "@/features/quests/create-form", "@/features/rewards/panel", "@/features/rewards/components"].includes(specifier)) {
+      if (["next/headers", "@/features/dashboard/panels", "@/features/auth/auth-form", "@/features/auth/logout-form", "@/features/profile/profile-error", "@/features/quests/recurring-panel", "@/features/quests/panel", "@/features/quests/components", "@/features/quests/create-form", "@/features/rewards/panel", "@/features/rewards/components"].includes(specifier)) {
         return { url: inertFormsUrl, shortCircuit: true };
       }
       if (specifier === "./timezones") return nextResolve("./timezones.ts", context);

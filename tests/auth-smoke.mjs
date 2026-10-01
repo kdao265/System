@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServerClient } from "@supabase/ssr";
 import { startAuthEnvironment } from "./helpers/auth-environment.mjs";
 
-const env = await startAuthEnvironment();
+const env = await startAuthEnvironment({ isolatedApp: true });
 let app;
 const { url, key, owner, other: outsider } = env;
 // Existing feature-copy assertions run in an explicit supported locale.

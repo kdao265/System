@@ -5,10 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import ts from "typescript";
 
 const root = new URL("../../src/", import.meta.url);
-const isShared = (url = "") => ["components/", "lib/localization/"].some((path) => url.startsWith(new URL(path, root).href));
+const isShared = (url = "") => url.startsWith(root.href);
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier.startsWith("@/components/") || specifier.startsWith("@/lib/localization/") ||
+    if ((isShared(context.parentURL) && specifier.startsWith("@/")) || specifier.startsWith("@/features/dashboard/components") || specifier.startsWith("@/components/") || specifier.startsWith("@/lib/localization/") ||
       (isShared(context.parentURL) && specifier.startsWith("./"))) {
       const base = specifier.startsWith("@/") ? new URL(specifier.slice(2), root) : new URL(specifier, context.parentURL);
       for (const ext of [".ts", ".tsx"]) {

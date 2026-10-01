@@ -1,10 +1,14 @@
 import { AppHeader } from "@/components/app-header";
+import { cookies } from "next/headers";
+import { getDictionary, LOCALE_COOKIE, resolveLocale } from "@/lib/localization/dictionaries";
+import { LevelSnapshot } from "@/features/dashboard/components";
+import { DashboardMainQuest, DashboardCalendar } from "@/features/dashboard/panels";
+import { Panel } from "@/components/ui/primitives";
 import { LogoutForm } from "@/features/auth/logout-form";
 import { redirect } from "next/navigation";
 import { getProfileContext, isOnboardingComplete } from "@/features/profile/session";
 import { ProfileError } from "@/features/profile/profile-error";
 import { getProgressionStatus } from "@/features/progression/data";
-import { ExpProgressCard, PlayerSummary } from "@/features/progression/components";
 import { Suspense } from "react";
 import { RecurringQuestsPanel } from "@/features/quests/recurring-panel";
 import { DailyQuestsPanel } from "@/features/quests/panel";
@@ -27,47 +31,50 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
   const params = await searchParams;
   const selectedDate = resolveSelectedDate(params.date, profile.timezone!);
   const progression = await getProgressionStatus();
+  const locale = resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value);
+  const t = getDictionary(locale).dashboard;
   return (
-    <main lang="en" className="mx-auto w-full max-w-2xl page-frame">
-      <AppHeader current="dashboard" selectedDate={selectedDate} />
-      <div className="mt-8 space-y-4">
-        <PlayerSummary email={user.email ?? "unknown account"} displayName={profile.display_name} />
-        {progression.status === "ok" ? (
-          <ExpProgressCard exp={progression.exp} />
-        ) : (
-          <section
-            aria-label="Progression"
-            className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-6"
-          >
-            <p className="text-xs font-medium tracking-[0.3em] text-zinc-400">PROGRESSION</p>
-            <p role="alert" className="mt-3 text-zinc-300">
-              Progression status is unavailable right now. Please try again.
-            </p>
-            <a
-              href={`/dashboard?date=${selectedDate}`}
-              className="mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3"
-            >
-              Retry
-            </a>
-          </section>
-        )}
-        <QuestCompletionProvider userId={user.id}>
-          <QuestCreationForm timezone={profile.timezone!} userId={user.id} />
-          <QuestCompletionRecovery selectedDate={selectedDate} />
-          <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} />}>
-            <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} userId={user.id} />
-          </Suspense>
-          <Suspense fallback={<p role="status">Loading recurring Quests...</p>}>
-            <RecurringQuestsPanel userId={user.id} />
-          </Suspense>
-          <Suspense fallback={<RewardsLoading />}>
-            <RewardsPanel />
-          </Suspense>
-        </QuestCompletionProvider>
-      </div>
-      <div className="mt-10">
-        <LogoutForm />
-      </div>
+    <main lang={locale} className="dashboard-page page-frame">
+      <AppHeader current="dashboard" selectedDate={selectedDate} compact />
+      <section aria-label={t.player} className="dashboard-player">
+        <div><p className="type-metadata text-accent">{t.overview}</p>
+          <h2 className="type-card">{profile.display_name || t.operator}</h2></div>
+        <p className="type-metadata text-muted break-all">{user.email}</p>
+      </section>
+      <QuestCompletionProvider userId={user.id}>
+        <div className="dashboard-grid">
+          <div className="dashboard-slot-level"><LevelSnapshot result={progression} locale={locale} selectedDate={selectedDate} /></div>
+          <div className="dashboard-slot-main">
+            <Suspense fallback={<Panel aria-busy="true"><p role="status">{t.loadingMain}</p></Panel>}>
+              <DashboardMainQuest locale={locale} />
+            </Suspense>
+          </div>
+          <div className="dashboard-slot-daily" id="daily-quests">
+            <div lang="en"><QuestCompletionRecovery selectedDate={selectedDate} /></div>
+            <Suspense fallback={<DailyQuestLoading timezone={profile.timezone!} selectedDate={selectedDate} locale={locale} />}>
+              <DailyQuestsPanel timezone={profile.timezone!} selectedDate={selectedDate} userId={user.id} locale={locale} />
+            </Suspense>
+          </div>
+          <div className="dashboard-slot-calendar">
+            <Suspense fallback={<Panel aria-busy="true"><p role="status">{t.loadingCalendar}</p></Panel>}>
+              <DashboardCalendar day={selectedDate} timezone={profile.timezone!} locale={locale} />
+            </Suspense>
+          </div>
+          <div className="dashboard-slot-recurring" id="recurring-quests">
+            <Suspense fallback={<Panel aria-busy="true"><p role="status">{t.loadingRecurring}</p></Panel>}>
+              <RecurringQuestsPanel userId={user.id} locale={locale} compact />
+            </Suspense>
+          </div>
+        </div>
+        <div className="dashboard-tools" id="quest-tools">
+          <div id="create-quest">
+            <p className="mb-3 type-metadata text-muted">{t.legacyHint}</p>
+            <div lang="en"><QuestCreationForm timezone={profile.timezone!} userId={user.id} /></div>
+          </div>
+          <div lang="en"><Suspense fallback={<RewardsLoading />}><RewardsPanel /></Suspense></div>
+        </div>
+      </QuestCompletionProvider>
+      <footer lang="en" className="mt-8"><LogoutForm /></footer>
     </main>
   );
 }

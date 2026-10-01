@@ -30,6 +30,9 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   }
   export const invalidations = [];
   export function revalidatePath(...args) { invalidations.push(args); }
+  export async function cookies() { return { get: () => ({ value: "en" }) }; }
+  export function DashboardMainQuest() { return null; }
+  export function DashboardCalendar() { return null; }
   export function LogoutForm() { return null; }
   export function RecurringQuestsPanel() { return null; }
   export function RewardsPanel() { return null; }
@@ -41,7 +44,7 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (context.parentURL?.startsWith(sourceRoot.href)) {
-      if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
+      if (["next/headers", "@/features/dashboard/panels", "@/features/auth/session", "@/lib/supabase/server", "next/cache",
         "@/features/auth/logout-form", "@/features/profile/onboarding-form",
         "@/features/quests/recurring-panel", "@/features/rewards/panel", "@/features/rewards/components", "@/features/quests/create-form",
         "@/features/quests/completion-recovery-ui"].includes(specifier)) {

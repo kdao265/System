@@ -28,6 +28,9 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
     createServerSupabaseClient = client;
   }
   export function revalidatePath() {}
+  export async function cookies() { return { get: () => ({ value: "en" }) }; }
+  export function DashboardMainQuest() { return null; }
+  export function DashboardCalendar() { return null; }
   export function LogoutForm() { return null; }
   export function RecurringQuestsPanel() { return null; }
   export function QuestCreationForm() { return null; }
@@ -36,7 +39,7 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (context.parentURL?.startsWith(sourceRoot.href)) {
-      if (["@/features/auth/session", "@/lib/supabase/server", "next/cache",
+      if (["next/headers", "@/features/dashboard/panels", "@/features/auth/session", "@/lib/supabase/server", "next/cache",
         "@/features/quests/recurring-panel", "@/features/auth/logout-form", "@/features/quests/create-form",
         "@/features/quests/completion-recovery-ui"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };

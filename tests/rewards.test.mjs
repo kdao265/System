@@ -8,6 +8,7 @@ import ts from "typescript";
 import { createElement } from "react";
 import { renderToStaticMarkup, renderToPipeableStream } from "react-dom/server";
 import { redirect } from "next/navigation.js";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime.js";
 import { AuthInvalidJwtError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { parseRewards, REWARD_PROJECTION } from "../src/features/rewards/model.ts";
 
@@ -98,7 +99,12 @@ function streamMarkup(element, onChunk = () => {}) {
       html += chunk.toString(); onChunk(html); callback();
     } });
     destination.on("finish", () => resolve(html)); destination.on("error", reject);
-    const stream = renderToPipeableStream(element, {
+    // Match the application's router context while rendering the real Dashboard
+    // and management provider, as in the Daily Quests streaming tests.
+    const tree = createElement(AppRouterContext.Provider, {
+      value: { refresh() { assert.fail("SSR must not request client refresh"); } },
+    }, element);
+    const stream = renderToPipeableStream(tree, {
       onShellReady() { stream.pipe(destination); }, onError: reject,
     });
   });
@@ -308,4 +314,3 @@ test("real Supabase request projects numeric text without owner, ordering overri
   assert.deepEqual([...requests[0].url.searchParams], [["select", REWARD_PROJECTION]]);
   assert.equal(requests[0].init.body, "{}");
 });
-

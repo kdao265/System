@@ -17,5 +17,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules", ".e2e", "test-results", "playwright-report", "blob-report"]
+  "exclude": ["node_modules", ".e2e", "test-results", "playwright-report", "blob-report", "backups"]
 }

@@ -33,26 +33,66 @@ export async function expectExp(page: Page, expected: bigint) {
 
 export async function loginOwner(page: Page, owner: { email: string; password: string }) {
   await page.goto("/login");
-  await page.getByLabel("Email", { exact: true }).fill(owner.email);
-  await page.getByLabel("Password", { exact: true }).fill(owner.password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  const email = page.getByLabel("Email", { exact: true });
   const setup = page.getByRole("heading", { name: "Profile Setup", exact: true });
-  // Wait for a rendered destination, not the intermediate /dashboard redirect.
-  await expect(setup.or(page.getByRole("heading", { name: "SYSTEM", exact: true }))).toBeVisible();
+  const system = page.getByRole("heading", { name: "SYSTEM", exact: true });
+
+  // Depending on the fixture/browser session, /login may either render the
+  // sign-in form or immediately redirect an already-authenticated owner.
+  await expect(email.or(setup).or(system)).toBeVisible();
+
+  if (await email.isVisible()) {
+    await email.fill(owner.email);
+    await page.getByLabel("Password", { exact: true }).fill(owner.password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+    // Wait for a rendered destination, not an intermediate redirect.
+    await expect(setup.or(system)).toBeVisible();
+  }
+
   if (await setup.isVisible()) {
     await page.getByLabel("Display name").fill("Quest E2E Owner");
     await page.getByLabel("Timezone", { exact: true }).selectOption("UTC");
     await page.getByRole("button", { name: "Save profile", exact: true }).click();
   }
-  await expect(page).toHaveURL(/\/dashboard$/);
+
+  await expect(page).toHaveURL(/\/dashboard(?:\?.*)?$/);
+
   const messages = getDictionary(await page.locator("html").getAttribute("lang"));
-  await expect(page.getByRole("region", { name: messages.dashboard.player, exact: true })).toContainText(owner.email);
+
+  // Also proves that an already-authenticated fixture belongs to the expected
+  // synthetic owner rather than silently accepting another account.
+  await expect(
+    page.getByRole("region", {
+      name: messages.dashboard.player,
+      exact: true,
+    }),
+  ).toContainText(owner.email);
+
   // The streamed loading card also contains a date form. Wait for the real card
   // before filling it, otherwise Suspense can replace the edited fallback input.
-  await expect(page.getByRole("region", { name: messages.daily.title, exact: true })).toHaveAttribute("aria-busy", "false");
-  await page.getByLabel(messages.daily.choose, { exact: true }).fill(questDay);
-  await page.getByRole("button", { name: messages.daily.view, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/dashboard\\?date=${questDay}$`));
+  await expect(
+    page.getByRole("region", {
+      name: messages.daily.title,
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-busy", "false");
+
+  await page
+    .getByLabel(messages.daily.choose, { exact: true })
+    .fill(questDay);
+
+  await page
+    .getByRole("button", {
+      name: messages.daily.view,
+      exact: true,
+    })
+    .click();
+
+  await expect(page).toHaveURL(
+    new RegExp(`/dashboard\\?date=${questDay}$`),
+  );
 }
 
 export async function createQuest(page: Page, scenario: string) {

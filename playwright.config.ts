@@ -8,8 +8,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  outputDir: "test-results",
-  reporter: [["list"], ["html", { open: "never" }]],
+  outputDir: process.env.SYSTEM_E2E_OUTPUT_DIR ?? "test-results",
+  reporter: [["list"], ["html", { open: "never", outputFolder: process.env.SYSTEM_E2E_REPORT_DIR ?? "playwright-report" }]],
   use: {
     // baseURL is supplied exclusively by the disposable environment fixture.
     trace: "retain-on-failure",

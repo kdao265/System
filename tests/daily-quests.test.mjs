@@ -8,6 +8,7 @@ import ts from "typescript";
 import { createElement } from "react";
 import { renderToStaticMarkup, renderToPipeableStream } from "react-dom/server";
 import { redirect } from "next/navigation.js";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime.js";
 import { AuthInvalidJwtError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { parseDayQuests } from "../src/features/quests/model.ts";
 import { addCalendarDays, isCalendarDate, resolveSelectedDate, todayInTimezone } from "../src/features/quests/dates.ts";
@@ -124,7 +125,12 @@ function streamMarkup(element, onChunk = () => {}) {
     } });
     destination.on("finish", () => resolve(html));
     destination.on("error", reject);
-    const stream = renderToPipeableStream(element, {
+    // Dashboard's real management provider reads the App Router context even
+    // during SSR. Supply it without replacing the provider or streamed panels.
+    const tree = createElement(AppRouterContext.Provider, {
+      value: { refresh() { assert.fail("SSR must not request client refresh"); } },
+    }, element);
+    const stream = renderToPipeableStream(tree, {
       onShellReady() { stream.pipe(destination); }, onError: reject,
     });
   });

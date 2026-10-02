@@ -8,6 +8,11 @@ const root = new URL("../../src/", import.meta.url);
 const isShared = (url = "") => url.startsWith(root.href);
 registerHooks({
   resolve(specifier, context, next) {
+    // These tests execute server modules outside Next's compiler. Use the same
+    // inert server-side marker; production client-boundary enforcement is intact.
+    if (isShared(context.parentURL) && specifier === "server-only") {
+      return next("next/dist/compiled/server-only/empty.js", context);
+    }
     if ((isShared(context.parentURL) && specifier.startsWith("@/")) || specifier.startsWith("@/features/dashboard/components") || specifier.startsWith("@/components/") || specifier.startsWith("@/lib/localization/") ||
       (isShared(context.parentURL) && specifier.startsWith("./"))) {
       const base = specifier.startsWith("@/") ? new URL(specifier.slice(2), root) : new URL(specifier, context.parentURL);
@@ -16,7 +21,11 @@ registerHooks({
         if (existsSync(url)) return { url: url.href, shortCircuit: true };
       }
     }
-    if (isShared(context.parentURL) && specifier === "next/navigation") return next("next/navigation.js", context);
+    // Next's bundler accepts extensionless framework imports; native Node ESM
+    // needs their actual file names. Feature-specific mocks get first refusal.
+    if (isShared(context.parentURL) && ["next/navigation", "next/cache", "next/headers"].includes(specifier)) {
+      return next(`${specifier}.js`, context);
+    }
     return next(specifier, context);
   },
   load(url, context, next) {

@@ -149,7 +149,7 @@ export function QuestManagementControl({
       <details className="group">
         <summary aria-label={`${t.actions}: ${title}`}
           className="cursor-pointer list-none rounded-md border border-zinc-700 px-2.5 py-1 text-sm text-zinc-300 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-          <span aria-hidden="true">ÃƒÂ¢Ã¢â‚¬Â¹Ã‚Â¯</span>
+          <span aria-hidden="true">...</span>
         </summary>
         <div className="absolute right-0 z-20 mt-2 w-52 rounded-lg border border-zinc-700 bg-zinc-950 p-2 shadow-xl">
           <button type="button" onClick={() => setConfirming("archive")} disabled={pending}

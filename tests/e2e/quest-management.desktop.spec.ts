@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { test, expect } from "./quest-fixtures";
 import {
   completeQuest,
@@ -39,7 +40,36 @@ async function openQuestActions(page: Page, title: string) {
   return row;
 }
 
-async function archiveQuest(page: Page, title: string) {
+async function expectCalendarProjection(owner: SupabaseClient, title: string, count: number) {
+  const calendar = await owner.rpc("get_calendar_events", { p_from: questDay, p_to: questDay });
+  expect(calendar.error, "Owner Calendar RPC must succeed").toBeNull();
+  expect(calendar.data.filter((entry: { source: string; title: string }) =>
+    entry.source === "quest_occurrence" && entry.title === title),
+  "Quest membership in the full Calendar projection").toHaveLength(count);
+}
+
+async function expectFullCalendar(page: Page, title: string, count: number) {
+  const preview = page.getByRole("region", { name: "Upcoming Calendar", exact: true });
+  await expect(preview.getByRole("link", { name: "Open Calendar", exact: true }))
+    .toHaveAttribute("href", `/calendar?date=${questDay}`);
+  expect(await preview.getByRole("listitem").count()).toBeLessThanOrEqual(3);
+
+  // The day agenda includes every entry; the Dashboard only previews three.
+  // Daily/Archived refresh assertions have already passed without navigation.
+  await page.goto(`/calendar?view=day&date=${questDay}`);
+  await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Create schedule event", exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: `Entries for ${questDay}`, exact: true })
+    .getByRole("heading", { name: title, exact: true })).toHaveCount(count);
+  await page.goto(`/dashboard?date=${questDay}`);
+}
+
+async function archiveQuest(page: Page, title: string, owner: SupabaseClient) {
+  // Absence from a bounded preview alone cannot prove archive worked.
+  await expectCalendarProjection(owner, title, 1);
+  const previewLink = page.getByRole("region", { name: "Upcoming Calendar", exact: true })
+    .getByRole("link", { name: title, exact: true });
+  const wasPreviewed = await previewLink.count() === 1;
   const row = await openQuestActions(page, title);
 
   await row
@@ -65,10 +95,11 @@ async function archiveQuest(page: Page, title: string) {
 
   await expect(questRow(page, title)).toHaveCount(0);
   await expect(archivedQuestRow(page, title)).toHaveCount(1);
-  await expect(page.getByRole("region", { name: "Upcoming Calendar", exact: true }).getByRole("link", { name: title, exact: true })).toHaveCount(0);
+  await expectCalendarProjection(owner, title, 0);
+  if (wasPreviewed) await expect(previewLink).toHaveCount(0);
 }
 
-async function restoreQuest(page: Page, title: string) {
+async function restoreQuest(page: Page, title: string, owner: SupabaseClient) {
   const row = archivedQuestRow(page, title);
 
   await row
@@ -93,7 +124,7 @@ async function restoreQuest(page: Page, title: string) {
 
   await expect(archivedQuestRow(page, title)).toHaveCount(0);
   await expect(questRow(page, title)).toHaveCount(1);
-  await expect(page.getByRole("region", { name: "Upcoming Calendar", exact: true }).getByRole("link", { name: title, exact: true })).toHaveCount(1);
+  await expectCalendarProjection(owner, title, 1);
 }
 
 async function deleteArchivedQuest(page: Page, title: string) {
@@ -216,61 +247,73 @@ test(
   async ({ page, environment }) => {
     await loginOwner(page, environment.owner);
 
-    await test.step("archive, restore, archive again and permanently delete", async () => {
-      const baseline = await readExp(page);
-      const title = await createQuest(page, "management archive restore");
-
-      await archiveQuest(page, title);
-      await expect(archivedQuestRow(page, title).locator("time")).toContainText("UTC");
-      await expectExp(page, baseline);
-
-      await restoreQuest(page, title);
-      await expectExp(page, baseline);
-
-      await archiveQuest(page, title);
-      await deleteArchivedQuest(page, title);
-
-      await expectExp(page, baseline);
-      await expectDeletedAudit(environment, title);
+    const owner = createClient(environment.url, environment.key, {
+      auth: { persistSession: false, autoRefreshToken: false },
     });
+    try {
+      const auth = await owner.auth.signInWithPassword(environment.owner);
+      if (auth.error) throw new Error("Disposable owner login failed");
 
-    await test.step("completed Quest must reopen before permanent deletion", async () => {
-      const baseline = await readExp(page);
-      const title = await createQuest(page, "management completed delete");
+      await test.step("archive, restore, archive again and permanently delete", async () => {
+        const baseline = await readExp(page);
+        const title = await createQuest(page, "management archive restore");
 
-      await completeQuest(page, title);
-      await expectExp(page, baseline + BigInt(rewardExp));
+        await archiveQuest(page, title, owner);
+        await expect(archivedQuestRow(page, title).locator("time")).toContainText("UTC");
+        await expectExp(page, baseline);
+        await expectFullCalendar(page, title, 0);
 
-      const completedRow = await openQuestActions(page, title);
+        await restoreQuest(page, title, owner);
+        await expectExp(page, baseline);
+        await expectFullCalendar(page, title, 1);
 
-      const deleteButton = completedRow.getByRole("button", {
-        name: "Delete permanently",
-        exact: true,
+        await archiveQuest(page, title, owner);
+        await deleteArchivedQuest(page, title);
+
+        await expectExp(page, baseline);
+        await expectDeletedAudit(environment, title);
       });
 
-      await expect(deleteButton).toBeDisabled();
-      await expect(
-        completedRow.getByText(
-          "Reopen this completed Quest before permanent deletion.",
-          { exact: true },
-        ),
-      ).toBeVisible();
+      await test.step("completed Quest must reopen before permanent deletion", async () => {
+        const baseline = await readExp(page);
+        const title = await createQuest(page, "management completed delete");
 
-      await archiveQuest(page, title);
-      const archivedCompleted = archivedQuestRow(page, title);
-      await expect(archivedCompleted.getByRole("button", { name: "Delete permanently", exact: true })).toBeDisabled();
-      await expect(archivedCompleted.getByText("Restore this Quest, then reopen it before permanent deletion.", { exact: true })).toBeVisible();
-      await expectExp(page, baseline + BigInt(rewardExp));
-      await restoreQuest(page, title);
+        await completeQuest(page, title);
+        await expectExp(page, baseline + BigInt(rewardExp));
 
-      await reopenQuest(page, title);
-      await expectExp(page, baseline);
+        const completedRow = await openQuestActions(page, title);
 
-      await deleteActiveQuest(page, title);
+        const deleteButton = completedRow.getByRole("button", {
+          name: "Delete permanently",
+          exact: true,
+        });
 
-      await expectExp(page, baseline);
-      await expectDeletedAudit(environment, title);
-    });
+        await expect(deleteButton).toBeDisabled();
+        await expect(
+          completedRow.getByText(
+            "Reopen this completed Quest before permanent deletion.",
+            { exact: true },
+          ),
+        ).toBeVisible();
+
+        await archiveQuest(page, title, owner);
+        const archivedCompleted = archivedQuestRow(page, title);
+        await expect(archivedCompleted.getByRole("button", { name: "Delete permanently", exact: true })).toBeDisabled();
+        await expect(archivedCompleted.getByText("Restore this Quest, then reopen it before permanent deletion.", { exact: true })).toBeVisible();
+        await expectExp(page, baseline + BigInt(rewardExp));
+        await restoreQuest(page, title, owner);
+
+        await reopenQuest(page, title);
+        await expectExp(page, baseline);
+
+        await deleteActiveQuest(page, title);
+
+        await expectExp(page, baseline);
+        await expectDeletedAudit(environment, title);
+      });
+    } finally {
+      await owner.auth.signOut({ scope: "local" });
+    }
   },
 );
 

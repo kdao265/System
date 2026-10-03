@@ -185,6 +185,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     // Activation verifies the historical read checksum before its later correction.
     const postActivationProjection = "20261002023000_quest_active_projections.sql";
     const recurringRetirement = "20261003120000_recurring_quest_archive_delete_v1.sql";
+    const occurrencePlanning = "20261003180000_calendar_quest_plan_v1.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -205,7 +206,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();
-      if (file === deferredActivation || file === postActivationProjection || file === recurringRetirement) continue;
+      if ([deferredActivation, postActivationProjection, recurringRetirement, occurrencePlanning].includes(file)) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -285,6 +286,10 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       assert.equal(await sql(retirementCatalog), beforeRetirement, "Retirement must preserve shared RPC identity, signature, ownership and ACLs");
       assert.equal(await sql(retirementPrivileges), beforeRetirementPrivileges, "Retirement must not leave borrowed role/schema privileges behind");
       assert.equal(await sql(projectionCatalog), beforeProjection, "Projection correction must preserve identity, signature and security boundary");
+      const legacyCalendar = await sql("SELECT pg_get_functiondef('public.get_calendar_events(date,date)'::regprocedure);");
+      await sql(readFileSync(new URL(occurrencePlanning, migrationDir), "utf8"));
+      assert.equal(await sql("SELECT pg_get_functiondef('public.get_calendar_events(date,date)'::regprocedure);"), legacyCalendar,
+        "Planning must not redefine legacy Calendar");
     }
     if (isolatedApp) {
       assert(buildApp && activateOwner, "Isolated E2E app requires a fresh build and activated owner");

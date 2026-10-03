@@ -6,6 +6,8 @@ import { unstable_rethrow } from "next/navigation";
 import { formatCalendarDate } from "@/features/quests/dates";
 import { formatProfileLocal } from "@/features/quests/time";
 import { useOnline } from "@/features/network/network-status";
+import { useLocale } from "@/lib/localization/provider";
+import { QuestDetailLink } from "./quest-detail";
 import { saveScheduleEvent } from "./actions";
 import { emptyDraft, entriesForDay, entryDraft, type CalendarEntry, type EventDraft, type EventRequest } from "./model";
 
@@ -16,6 +18,7 @@ export function CalendarPanel({ entries, days, selectedDate, today, timezone, us
   entries: CalendarEntry[]; days: string[]; selectedDate: string; today: string; timezone: string; userId: string; view: string;
 }) {
   const router = useRouter();
+  const { messages } = useLocale();
   const online = useOnline();
   const [draft, setDraft] = useState<EventDraft>(() => emptyDraft(selectedDate));
   const [editing, setEditing] = useState<string | null>(null);
@@ -89,6 +92,11 @@ export function CalendarPanel({ entries, days, selectedDate, today, timezone, us
               <p className="text-xs text-zinc-400">{entry.source === "quest_occurrence" ? entry.source_slot_date ? "Recurring Quest" : "Quest" : "Schedule event"}{entry.category ? ` · ${entry.category}` : ""}</p>
               <h3 className="mt-1 font-medium wrap-anywhere">{entry.title}</h3>
               <p className="mt-1 text-sm text-zinc-300">{entry.all_day ? "All day" : entry.start_at ? `${formatProfileLocal(entry.start_at, timezone)}${entry.end_at ? ` – ${formatProfileLocal(entry.end_at, timezone)}` : ""}` : "Untimed occurrence"}</p>
+              {entry.source === "quest_occurrence" && <>
+                {entry.start_at && !entry.end_at && <p className="text-sm text-zinc-400">{messages.questDetail.endNotSet}</p>}
+                {entry.deadline_at && <p className="text-sm text-zinc-400">{messages.questDetail.deadline}: {formatProfileLocal(entry.deadline_at, timezone)}</p>}
+                <QuestDetailLink id={entry.entry_id}/>
+              </>}
               {entry.notes && <p className="mt-2 whitespace-pre-wrap text-sm wrap-anywhere text-zinc-400">{entry.notes}</p>}
               {entry.source === "quest_occurrence" ? <p className="mt-2 text-sm text-violet-300">Status: {entry.status} · <a className="inline-flex min-h-11 items-center underline" href={`/dashboard?date=${day}`}>Open in Quests</a></p> : <div className="mt-3 flex flex-wrap gap-2">
                 <button className={button} disabled={locked} onClick={() => {

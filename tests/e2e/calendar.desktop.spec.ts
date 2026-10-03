@@ -19,7 +19,9 @@ test("Calendar projects Quests and supports timed create, edit and removal in Pr
   const recurring = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: recurringTitle, exact: true }) });
   await expect(recurring).toContainText("Recurring Quest");
   await expect(recurring).toContainText("Untimed occurrence");
-  await expect(recurring.getByRole("button")).toHaveCount(0);
+  // A Quest row uses its own detail trigger; Schedule Event editing controls stay off it.
+  await expect(recurring.getByRole("button", { name: "Quest detail", exact: true })).toHaveCount(1);
+  await expect(recurring.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: new Date(`${today}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }), exact: true })).toContainText("Today");
 
   await page.goto("/onboarding?repair=timezone");

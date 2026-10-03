@@ -21,6 +21,8 @@ import { QuestCompletionRecovery } from "@/features/quests/completion-recovery-u
 import { QuestCompletionProvider } from "@/features/quests/completion-provider";
 import { ArchivedQuestsPanel } from "@/features/quests/archived-panel";
 import { QuestManagementProvider } from "@/features/quests/management-provider";
+import { RecurringRetirementProvider } from "@/features/quests/recurring-retirement-provider";
+import { ArchivedRecurringQuestsPanel } from "@/features/quests/archived-recurring-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
       </section>
       <QuestCompletionProvider userId={user.id}>
         <QuestManagementProvider userId={user.id} locale={locale}>
+        <RecurringRetirementProvider userId={user.id} locale={locale}>
         <div className="dashboard-grid">
           <div className="dashboard-slot-level"><LevelSnapshot result={progression} locale={locale} selectedDate={selectedDate} /></div>
           <div className="dashboard-slot-main">
@@ -78,7 +81,11 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             <ArchivedQuestsPanel userId={user.id} locale={locale} timezone={profile.timezone!} />
           </Suspense>
           <div lang="en"><Suspense fallback={<RewardsLoading />}><RewardsPanel /></Suspense></div>
+          <Suspense fallback={<Panel aria-busy="true"><p role="status">{t.loadingRecurring}</p></Panel>}>
+            <ArchivedRecurringQuestsPanel locale={locale} timezone={profile.timezone!} />
+          </Suspense>
         </div>
+        </RecurringRetirementProvider>
         </QuestManagementProvider>
       </QuestCompletionProvider>
       <footer lang="en" className="mt-8"><LogoutForm /></footer>

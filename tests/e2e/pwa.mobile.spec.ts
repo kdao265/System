@@ -136,6 +136,9 @@ test("the dashboard keeps Quest controls reachable and overflow-free at phone wi
     await page.goto(`/dashboard?date=${questDay}`);
     await expect(page.getByRole("region", { name: "Player status", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "SYSTEM", exact: true })).toBeVisible();
+    // Streamed panels above creation can replace short fallbacks with tall content
+    // after navigation. Check reachability against the settled Dashboard layout.
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
     await expectNoHorizontalOverflow(page, `/dashboard at ${width}px`);
 
     // Quest creation controls stay reachable, not merely present in the document.

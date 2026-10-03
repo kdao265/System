@@ -36,6 +36,7 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   export function DashboardCalendar() { return null; }
   export function LogoutForm() { return null; }
   export function RecurringQuestsPanel() { return null; }
+  export function ArchivedRecurringQuestsPanel() { return null; }
   export function RewardsPanel() { return null; }
   export function RewardsLoading() { return null; }
   export function QuestCreationForm() { return null; }
@@ -47,7 +48,7 @@ const hooks = registerHooks({
     if (context.parentURL?.startsWith(sourceRoot.href)) {
       if (["next/headers", "@/features/dashboard/panels", "@/features/auth/session", "@/lib/supabase/server", "next/cache",
         "@/features/auth/logout-form", "@/features/profile/onboarding-form",
-        "@/features/quests/recurring-panel", "@/features/rewards/panel", "@/features/rewards/components", "@/features/quests/create-form",
+        "@/features/quests/recurring-panel", "@/features/quests/archived-recurring-panel", "@/features/rewards/panel", "@/features/rewards/components", "@/features/quests/create-form",
         "@/features/quests/completion-recovery-ui"].includes(specifier)) {
         return { url: mocksUrl, shortCircuit: true };
       }

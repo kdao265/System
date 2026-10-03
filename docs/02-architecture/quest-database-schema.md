@@ -117,7 +117,7 @@ Recurring origin fields are all present together, or all null for one-off work. 
 | end_date | date | Yes | NULL | Not before anchor_date | Inclusive local calendar upper bound |
 | occurrence_limit | integer | Yes | NULL | Positive when supplied | Bound on actual materialized instances across the logical Quest; skipped slots do not count and edits do not reset the count |
 | revision | integer | No | 1 | Positive; increment on meaningful rule edits | Audit/materialization provenance |
-| stopped_at | timestamptz | Yes | NULL | Controlled stop/archive action | No new generation while stopped |
+| stopped_at | timestamptz | Yes | NULL | Controlled Pause/Resume action | No new generation while stopped |
 | created_at | timestamptz | No | server clock | Immutable | Rule creation |
 | updated_at | timestamptz | No | server clock | Server-maintained | Last rule change |
 
@@ -210,11 +210,11 @@ reported_completed_at is a user assertion; recorded_completed_at and event occur
 
 **Cross-row enforcement:** FKs and unique indexes enforce identity, owner consistency and deduplication structures in sections 13–14. Controlled transactional operations verify event target kinds, state transitions, current cycle, definition/rule coherence, snapshot initialization/immutability and meaningful-history retention. A CHECK cannot prove a ledger credit has been reversed or inspect every child before archival.
 
-Archive locks the definition before checking/locking children and reads one authoritative decision instant T. The automatic-cancellation candidate must be draft/scheduled, have never entered active/execution, and have scheduled_at null or strictly greater than T. Overdue obligations and other meaningful execution history disqualify it even if those basic checks pass. A scheduled_at at/before T is not future; a past deadline is an overdue blocker even with a null start. Check all unfinished instances, not just active ones.
+Recurring retirement (ADR-021) acquires the shared owner advisory lock, then locks the definition. It retains every child row exactly. Archive/restore update only the definition archive marker/update time and append a definition event; stopped_at and every occurrence remain unchanged.
 
-Any active, overdue, previously started/deferred or otherwise meaningfully executed unfinished instance blocks archive until explicit user resolution. Complete/fail/cancel it, or reschedule otherwise clean work where appropriate and re-evaluate; rescheduling cannot erase prior execution. Determine never-started/history across ALL occurrence cycles via quest_events, including activated events and execution/correction outcomes; current draft/scheduled status or cleared projection fields alone are insufficient. Events such as initial creation/scheduling do not by themselves imply execution.
+No unfinished-work classifier or auto-cancellation applies to Recurring Archive/Delete V1. Active, overdue, completed and reopened slots are preserved as-is; archived occurrences are hidden and non-actionable until restore.
 
-Only after the full guard passes, set archived_at, stop recurrence and append retained cancelled events for eligible instances in one atomic operation. Never delete events or reverse earned EXP. Activation, materialization, rescheduling and corrections acquire the same definition lock first so eligibility cannot race. Stopping alone keeps existing work unchanged. The audit-history classifier belongs to the controlled business operation, not a row CHECK or a client assertion.
+Delete requires archived_at, appends the final deleted event, then sets deleted_at in the same transaction. Existing tombstone triggers freeze the definition/rule/occurrences and browser RLS hides the retained graph. No EXP mutation occurs. Accepted replay resolves before lifecycle rejection; fresh recurring completion aliases are also rejected. All competing engine commands take the same owner lock, preventing partial retirement.
 
 No direct client table writes may bypass these operations. Completion and snapshots are validated server-side; UI controls are not enforcement.
 
@@ -236,7 +236,7 @@ PostgreSQL unique constraints normally treat nulls as distinct, hence two explic
 
 The service requires an expected execution_cycle for completion. Lock the definition then occurrence, resolve a known command/event first, and compare expected cycle before accepting a transition. Different retry command IDs with the same cycle resolve to the same completed event. Reopen increments the cycle only after successful reversal/recorded correction; an old cycle request returns its recorded result or a stale conflict, never completes the new cycle. Failed/cancelled reopen also increments the cycle. Unique cycle rows are a backstop, not permission for clients to arbitrarily increment cycles.
 
-Each multi-effect command may produce one event of a given type per subject. Archive uses one command_id but distinct occurrence subjects, plus its definition archived/recurrence_stopped events. Reusing an ID with conflicting intent is rejected, not treated as success. A request UUID alone cannot protect different-ID retries, which is why cycle/state checks are required.
+Each multi-effect command may produce one event of a given type per subject. Recurring retirement records one definition archived/deleted event per accepted command, including archive/restore no-ops, with an exact operation/origin receipt. Conflicting reuse rejects. It emits no occurrence cancellation or recurrence_stopped event.
 
 Future Player/EXP must enforce credit uniqueness for `(source_type, source_id, reason)` with values `(quest_completion, completion_event_id, completion_reward)`, and idempotent compensation referencing the original credit. Quest indexes cannot enforce another domain's ledger. At most one unreversed entitlement is a coordinated cross-domain invariant, not a lifetime occurrence reward key.
 
@@ -256,9 +256,9 @@ The nullable composite references intentionally skip the optional edge when its 
 
 Use no CASCADE or SET NULL for historical associations. Deleting a parent cannot destroy occurrences/events or erase attribution. Cross-domain FK additions follow section 8 instead of guessing targets.
 
-Hard deletion is allowed only through a narrowly authorized draft-purge operation that proves no meaningful execution/history or external dependencies exist. It explicitly removes only trivial creation/edit records, unused rule and never-executed draft occurrence before the definition; RESTRICT forces deliberate ordering. Any activated, completed, failed, cancelled, corrected, rewarded, penalized or consequentially rescheduled history disallows purge. Ordinary event mutation remains prohibited; the purge exception cannot delete meaningful events. Archive is the normal removal behavior. Account-erasure policy is outside this Quest design and must not be implemented as an Auth cascade.
+The earlier draft-purge proposal is not implemented by current V1. Quest DELETE is prohibited by the shared definition trigger. Both shipped one-off deletion and recurring deletion retain non-restorable tombstones; one-off deletion retains its Reopen/fully-reversed-credit guards, while recurring deletion requires archive first and preserves earned credits. Account erasure remains outside this design.
 
-Archived records and their events are never deleted by archive. The archive operation must use the history-aware unfinished-work predicate in section 12. A permitted trivial-draft purge is not a recurrence-count reset: while a logical Quest remains, its cumulative materialized_occurrence_count is retained. Completing, cancelling, failing or reopening an instance never decrements it.
+Archive never deletes records/events. Recurring restore preserves all prior state and cumulative materialized_occurrence_count; recurring delete permanently freezes it. Completion, cancellation, failure and Reopen never reclaim materialization capacity.
 
 ## 15. Indexes
 
@@ -283,11 +283,11 @@ Queries must include the matching partial-index filters. Use half-open absolute 
 
 The Player/EXP migration carries the approved portable identity update: existing policies used by `quest_command_owner` use private `system_internal.request_user_id()` to read the request JWT sub, preserving nonnull identity and `user_id` equality. It does not alter their roles or operations, require managed-auth schema access, or rewrite historical migrations.
 
-Enable RLS for all four public tables. `anon` receives no access. Authenticated SELECT is owner-scoped to nonnull authenticated identity matching row.user_id, including archived history. Composite FKs prevent child rows from claiming a different owner's definition. Supabase documents both owner policies and the need to keep service-role credentials away from clients. [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
+Enable RLS for all four public tables. `anon` receives no access. Authenticated SELECT is owner-scoped to nonnull authenticated identity matching row.user_id, including archived history; deleted Quest graphs are browser-hidden by restrictive RLS. Composite FKs prevent child rows from claiming a different owner's definition. Supabase documents both owner policies and the need to keep service-role credentials away from clients. [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 
 | Table | Read policy | Proposed mutation boundary |
 | --- | --- | --- |
-| quests | Authenticated owner only | Controlled create/default-edit/archive/eligible-purge operations; owner immutable |
+| quests | Authenticated owner only; tombstones browser-hidden | Controlled create/default-edit/archive/tombstone operations; owner immutable; no physical DELETE |
 | quest_occurrences | Authenticated owner only | Controlled materialize/edit/transition operations validate parent owner and cycle |
 | quest_recurrence_rules | Authenticated owner only | Controlled rule edit/stop, checking owner and Quest lock |
 | quest_events | Authenticated owner only | Domain operations append validated events; no normal UPDATE/DELETE; restricted trivial purge only |
@@ -357,7 +357,7 @@ C1/C2 have distinct command UUIDs. X1/R1 share a command UUID and different even
 
 **Monthly rule and materialized slot:** rule id `50000000-0000-4000-8000-000000000001` belongs to another owned Quest, recurrence_type=monthly, month_day=31, anchor_date=2026-09-01, local_start_time=09:00, interval_count/weekdays=null, revision=1, stopped_at=null. The September occurrence has source_slot_date=2026-09-30, source_timezone=Asia/Ho_Chi_Minh, recurrence_revision=1 and scheduled_at=2026-09-30T02:00:00Z. October uses October 31. A profile timezone edit does not move September's stored instant.
 
-**Retention outcomes:** stopping fills stopped_at and leaves definition/instances intact. Archive rejects active, overdue, previously active/deferred or otherwise meaningfully executed unfinished work. A clean never-started draft with scheduled_at null qualifies; so does clean never-started scheduled work strictly after T with no overdue deadline. After all blockers are explicitly resolved, archive stops generation and records eligible cancellations without deleting events or reversing EXP.
+**Retention outcomes:** Pause changes stopped_at only. Recurring archive preserves stopped_at and every occurrence; restore clears archived_at without backfill or duplicate slots. Archive-first deletion freezes all retained state permanently without undoing EXP. This supersedes clean-auto-cancellation and unfinished-work blockers (ADR-021).
 
 **Count example:** weekly occurrence_limit=10 and materialized_occurrence_count=0 remain unchanged after three skipped unmaterialized weeks. Three actual inserts raise the count to 3; duplicate materialization retries leave it at 3. Changing Monday to Saturday keeps 3 and permits at most seven more instances before the limit, unless end_date/stop/archive ends generation first.
 
@@ -376,7 +376,7 @@ C1/C2 have distinct command UUIDs. X1/R1 share a command UUID and different even
 | Completion retry | Find completed event for occurrence_id plus supplied execution_cycle, after ownership checks; return accepted result or reject stale conflict |
 | Materialization | Under Quest lock, read validated profile.timezone, count/limit and end_date, evaluate future slots and unique origin; insert plus increment once; no calendar service owns this query |
 | Goal contribution | Read fixed parent snapshot and Completion Event; send to owning engine only if that parent can receive new progress |
-| Archive eligibility | Under owner RLS and Quest lock, inspect all unfinished rows plus lifetime occurrence events; apply full section 12 predicate using one T, rather than filtering status=active alone |
+| Recurring retirement eligibility | Under owner RLS and owner/Quest locks, require recurring definition/rule; delete additionally requires archive; retain all children exactly, irrespective of status/history |
 
 ## 21. Migration Ordering
 
@@ -386,7 +386,7 @@ C1/C2 have distinct command UUIDs. X1/R1 share a command UUID and different even
 4. Establish roles, RLS and privileges before granting any client access. Initially permit only safe reads/approved operations; do not expose unrestricted writes while domain routines are absent. Empty tables can be deployed without enabling incomplete external integrations.
 5. Add supported command routines in their separately reviewed implementation step, including consistent lock ordering, cycle validation, snapshot capture, archive guards and draft-purge protections. This document does not implement them.
 6. Add Goal/Project FKs in later migrations once their tables exist, validating UUID associations and ownership. Quest tables may precede Profile/Penalty/Player implementations; enable recurrence only with valid profile.timezone and production atomic completion/reversal only with the implemented Player Ledger contract. Do not create placeholder external schemas.
-7. Validate later on a local/disposable database: existing range/RLS/idempotency checks, invalid/missing profile rejection, optional-source Penalty snapshots, concurrent materialization counter/limit races, skipped slots and rule edits without count reset, and archive cases for clean undated/future work versus overdue, active and previously started/deferred work. Verify archive cannot delete events or reverse EXP. This is a future test plan, not executed database tests.
+7. Validate in disposable environments: recurrence limits/deduplication, archive/restore exact-state retention, paused/running restoration, tombstone freeze, replay, RLS and retirement races. See the recurring-retirement test boundary; historical checkpoint tests remain unchanged.
 
 Keep requirements/domain model unchanged by migration mechanics. There are no repository check commands or runnable migrations yet; validation above is a future verification plan, not reported test execution.
 

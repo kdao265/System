@@ -82,7 +82,7 @@ In user stories and lifecycle examples, “create/complete a Quest” is shortha
 | FR-15 | Restrict access and actions to authorized application users; do not bypass Supabase RLS or trust client claims of earned rewards |
 | FR-16 | Allow explicit audited corrections/reopening; reverse undone completion EXP with an idempotent compensating record, and archive Quests with meaningful history instead of hard-deleting them |
 | FR-17 | Fix execution-critical values at occurrence materialization; definition edits affect only not-yet-materialized occurrences, with explicit audited occurrence-specific changes permitted |
-| FR-18 | Separate stop from archive: stop preserves instances; archive stops generation and cancels only clean eligible draft/scheduled work, blocking on all other unfinished work until explicit resolution under section 18 |
+| FR-18 | Separate Pause from recurring archive: Pause preserves usable instances; archive stops generation and hides/freezes instances without changing their state, Pause state or earned EXP. Restore preserves prior state; permanent delete requires archive first (section 18, ADR-021) |
 
 ## 6. Quest Types
 
@@ -152,7 +152,7 @@ Six persistent occurrence states keep the model small; the Quest Definition has 
 | completed | Repeat completion request | completed | Return existing outcome; no new reward or contribution |
 | completed, failed, cancelled | Explicit reopen/correction to unfinished work | draft, scheduled or active | Audit prior/new outcome; satisfy target-state guards; reverse completed EXP if undoing completion |
 
-Archiving a definition requires the full eligibility check in section 18, not just absence of active work. Unfinished active, overdue, previously started or otherwise meaningfully executed occurrences require explicit user resolution. A permitted archive stops recurrence and cancels only qualifying clean draft/scheduled work with retained history; it never reverses earned EXP automatically.
+Recurring archival follows section 18 and ADR-021: retain exact state and freeze, with no automatic cancellation or unfinished-work rejection. Archive/restore preserve Pause state and earned EXP. Correct any occurrence requiring Reopen before permanent deletion.
 
 Rescheduled is an event resulting in `scheduled`, not a persistent state. Deferring with a new date uses the reschedule transition; deferring without a date uses `draft`. No pause state is introduced. Reaching a start time does not itself assert that the user began work.
 
@@ -204,7 +204,7 @@ occurrence_limit counts actual materialized instances of the logical Quest, not 
 
 **RR-06:** Rule/definition changes record the old/new configuration and effective boundary and affect future occurrences not yet materialized. Existing occurrences retain fixed execution values and absolute schedules, even when unfinished. Changing an existing occurrence requires an explicit occurrence-specific edit/reschedule/cancellation with meaningful audit history; it is not automatic propagation of a template edit. Historical completed values remain immutable and original slot identity is preserved.
 
-**RR-07:** Stopping recurrence prevents generation of new future occurrences but keeps the definition available and does not archive it, remove existing materialized occurrences or change completed history. A separate explicit action may cancel pending work. Archiving instead follows section 18, including automatic stopping and cancellation only under the clean-work predicate. For an absent monthly date, use the month's last valid day, retain the intended day for subsequent months and never duplicate slots. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time.
+**RR-07:** Stopping recurrence prevents generation of new future occurrences but keeps the definition available and does not archive it, remove existing materialized occurrences or change completed history. A separate explicit action may cancel pending work. Recurring archival instead follows section 18: retain exact occurrence state, freeze active access, preserve Pause state, and stop generation through the archive marker. For an absent monthly date, use the month's last valid day, retain the intended day for subsequent months and never duplicate slots. Advanced travel, per-series timezone and DST policies are outside V1; the baseline is local profile time.
 
 ## 12. Reward Rules
 
@@ -276,9 +276,9 @@ Completed, failed and cancelled lifecycle history must be preserved. Explicit co
 
 Journal and Achievement reference Quest outcomes from their own domains as needed; this does not automatically create journal entries or grant achievements. They own their behavior and consume stable references rather than recompleting the Quest.
 
-Archive retires the definition and automatically stops recurrence. Automatic cancellation is allowed only for an occurrence in draft/scheduled that has NEVER entered active/execution state and has scheduled_at null or strictly later than the archive decision instant. It must also be free of overdue obligations and other meaningful execution history: these exclusions override the time/status test. Preserve every cancellation record, terminal outcome and Quest Event; never automatically reverse earned EXP.
+Recurring Archive/Delete V1 (ADR-021) supersedes the former clean-auto-cancellation design. Archive sets archived_at and stops generation without changing stopped_at, rule revision, materialized_occurrence_count, occurrence statuses/cycles/provenance, accepted history, EXP, milestones or unlocks. Existing occurrences are hidden from active Daily/Calendar projections and non-actionable while archived. No occurrence is automatically cancelled.
 
-Before archive succeeds, every other unfinished occurrence requires explicit user resolution: active work, overdue scheduled work, previously active work later deferred/rescheduled, and any other unfinished work with meaningful execution history. Complete, fail or cancel it, or explicitly reschedule where appropriate and re-evaluate eligibility. Rescheduling never erases previous execution; it cannot make previously started work clean. Current status alone cannot prove never-started; consult lifecycle/audit history. Stop alone leaves existing occurrences unchanged. Archival is not deletion.
+Restore clears archived_at and preserves the prior running/paused state. Later eligible reads may materialize today/future slots for a running series; they never backfill missed past slots or regenerate retained slots. Permanent recurring deletion requires archive first and sets a non-restorable deleted_at tombstone. All rows and earned EXP remain, including completed and reopened occurrences. There is no template-level Reopen or all-credits-reversed prerequisite. Correct any occurrence before permanent deletion; all existing occurrences become permanently frozen. Accepted historical command replay remains valid. Fresh Pause/Resume is rejected while archived/deleted. One-off deletion keeps its existing Reopen and fully-reversed-credit guards.
 
 ## 19. Edge Cases
 
@@ -305,8 +305,8 @@ Before archive succeeds, every other unfinished occurrence requires explicit use
 | Reward amount changed before undo | Reverse the original granted amount, not the current configuration |
 | Long period of missed recurrence | Preserve existing occurrences without generating a bulk catch-up backlog or cascading penalties |
 | Definition configuration changes before execution | Already-materialized reward, workload, parent and penalty values remain fixed; only unmaterialized occurrences inherit new defaults |
-| Archive requested with active, overdue or previously started unfinished work | Reject until explicit resolution; deferred draft/scheduled status does not erase prior execution. Rescheduling only helps if the occurrence then satisfies the full eligibility predicate |
-| Archive passes the full unfinished-work check | Stop generation; cancel only clean never-started draft/scheduled work with null/future scheduled_at and no overdue/execution blocker; preserve audit/history and earned EXP |
+| Recurring archive with active, overdue or previously started work | Preserve exact state and history; hide and freeze until restore; no automatic cancellation or reversal |
+| Recurring archive succeeds | Stop generation through archived_at, preserve stopped_at, counters, every occurrence and earned EXP |
 | Stop recurrence only | Definition remains available, unarchived; materialized occurrences remain unchanged |
 
 ## 20. Acceptance Criteria
@@ -350,8 +350,8 @@ These criteria test the resolved V1 product behavior without prescribing impleme
 | AC-33 | Given an extended absence with missed recurrence slots, when the app resumes, then existing history remains and no bulk historical catch-up backlog or cascading penalties are created solely from those missed slots | FR-06–08, FR-11; RR-05 |
 | AC-34 | Given failure reason input, when the user confirms procrastinated, forgotten, overloaded, recovery_needed, emergency, no_longer_relevant or other, then that reason is retained; missing Health metadata supplies neither a reason nor an automatic penalty decision | FR-07, FR-10–11 |
 | AC-35 | Given a newly materialized occurrence, when definition reward, difficulty, duration, energy, focus, direct parent or penalty configuration changes, then all seven occurrence values remain fixed (including nulls); a newly materialized instance inherits the new defaults. An explicit occurrence-specific edit records meaningful history, and completed historical values remain immutable | FR-17 |
-| AC-36 | Given only clean never-started draft/scheduled unfinished work whose scheduled_at is null or strictly future, and no overdue/meaningful-execution blocker, when archive succeeds, then generation stops and qualifying instances are cancelled with records retained; terminal history/events remain and EXP is not reversed | FR-16, FR-18 |
-| AC-37 | Given active work, overdue scheduled work, formerly active work deferred to draft/scheduled or other unfinished meaningful execution history, when archive is attempted, then it fails without silent cancellation. After explicit completion/failure/cancellation, or appropriate rescheduling of otherwise clean work, the full guard is re-evaluated; prior activation never disappears | FR-18 |
+| AC-36 | Given any existing recurring occurrences, when archive succeeds, then generation stops, active projections hide them, their exact status/cycle/provenance and all history/EXP remain unchanged, and fresh actions are blocked until restore | FR-16, FR-18; ADR-021 |
+| AC-37 | Given an archived recurring definition, restore preserves its prior Pause state and retained slots; permanent delete requires archive first, permanently freezes every occurrence without Reopen or EXP reversal, and preserves accepted historical replay | FR-18; ADR-021 |
 | AC-38 | Given an eligible occurrence, when Complete is retried five times including concurrent requests with different IDs, then one stable Completion Event and one credit for its event ID plus reward reason exist; only a legitimate new transition after audited reopen may create a new Completion Event | FR-05; CR-02–03 |
 | AC-39 | Given missing/invalid profile.timezone, when recurrence is created/enabled or new slots materialized, then the operation is rejected without guessing a zone; one-off creation remains possible without recurrence configuration | FR-08; RR-03 |
 | AC-40 | Given a weekly series with limit 10 and three skipped unmaterialized weeks, when future work materializes, then skipped weeks consume zero capacity and create no catch-up backlog; with 3 actual instances then a Monday-to-Saturday edit, at most 7 additional instances can materialize, subject also to end_date/stop/archive | FR-08; RR-02 |

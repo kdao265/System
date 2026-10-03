@@ -49,7 +49,8 @@ export class QuestManagementLifecycle {
   private active = true;
   private userId: string;
   private deps: Dependencies;
-  constructor(userId: string, deps: Dependencies) { this.userId = userId; this.deps = deps; }
+  private readonly prefix: string;
+  constructor(userId: string, deps: Dependencies, prefix = MANAGEMENT_PREFIX) { this.userId = userId; this.deps = deps; this.prefix = prefix; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private set(state: View) { this.state = state; for (const listener of this.listeners) listener(); }
@@ -60,7 +61,7 @@ export class QuestManagementLifecycle {
     this.busy = false;
     this.set({ ...this.state, phase: "blocked" });
   }
-  private key() { return MANAGEMENT_PREFIX + this.userId; }
+  private key() { return this.prefix + this.userId; }
   private read(): PendingManagement | undefined {
     const raw = this.deps.storage().getItem(this.key());
     if (raw === null) return;

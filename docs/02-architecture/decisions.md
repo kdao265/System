@@ -505,3 +505,17 @@ must include Goals after existing Quest actions; historical migrations and Calen
 **Related:** [Finalized requirements](../01-requirements/goals-main-quest-v1.md),
 [audited schema/RPC/security/test/rollout architecture](goals-main-quest-v1.md), ADR-012, ADR-013,
 ADR-015, ADR-018 and ADR-019. No implementation, migration or database action is authorized here.
+
+## ADR-021 - Recurring retirement retains exact occurrence state
+
+**Date:** 2026-10-03. **Status:** Accepted by Product Owner for Recurring Quest Archive/Delete V1; implementation on `feat/recurring-quest-archive-delete-v1`, not deployed.
+
+**Decision:** Archive is reversible retirement via `quests.archived_at`. Preserve the recurrence rule, stopped_at, revision, materialized count and every existing occurrence/status/cycle/provenance. Existing active projections and guards hide/freeze archived occurrences. Restore clears archived_at and retains prior Pause/running state. Running series can materialize eligible today/future slots again, without past backfill, duplicate slots or reclaimed capacity.
+
+Permanent delete requires an already archived definition and sets deleted_at. It preserves all rows, event/command history, completion aliases, credits/reversals, milestones and unlocks. Completed recurring occurrences do not require Reopen: the definition has no reward entitlement. Any desired correction must happen before permanent deletion. Fresh Pause/Resume and occurrence commands reject retirement; accepted historical receipts remain recoverable before lifecycle checks. One-off deletion prerequisites are unchanged.
+
+**Alternatives:** Clean-auto-cancellation would alter retained occurrence status, complicate restore, and misclassify reopened drafts and completed future slots without a larger audit classifier. Keeping archived occurrences actionable would require changing shared projection and guard semantics. Both are rejected for this V1. This decision supersedes the older recurring archive cancellation/unfinished-work design in Quest requirements and schema/domain notes.
+
+**Impact:** One additive migration; recurring-specific RPCs and archived read; no new dependencies, table columns, RLS policies or EXP source. Existing RLS-bound command role and shared owner/Quest lock order serialize retirement with generation, completion, Reopen and Pause. The new migration retains explicit owner guards on replaced commands and applies after the historical owner-activation checksum boundary. Browser tombstone history remains hidden. Account-level retirement recovery uses a separate versioned namespace so old one-off pending contracts remain exact.
+
+**Validation and rollout:** See [Recurring retirement handoff](../04-development/recurring-quest-archive-delete-v1.md). Apply the new migration before deploying its UI; do not rewrite prior migrations. No Cloud operation is authorized by this ADR.

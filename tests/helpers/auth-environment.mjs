@@ -184,6 +184,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     const deferredActivation = "20260928100000_activate_private_owner.sql";
     // Activation verifies the historical read checksum before its later correction.
     const postActivationProjection = "20261002023000_quest_active_projections.sql";
+    const recurringRetirement = "20261003120000_recurring_quest_archive_delete_v1.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -204,7 +205,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();
-      if (file === deferredActivation || file === postActivationProjection) continue;
+      if (file === deferredActivation || file === postActivationProjection || file === recurringRetirement) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -269,6 +270,20 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       ) p;`;
       const beforeProjection = await sql(projectionCatalog);
       await sql(readFileSync(new URL(postActivationProjection, migrationDir), "utf8"));
+      const retirementCatalog = `SELECT json_agg(row_to_json(p) ORDER BY p.oid) FROM (
+        SELECT oid, proowner, proacl, prosecdef, provolatile, proconfig, prorettype, proargtypes
+        FROM pg_proc WHERE oid IN ('public.set_quest_recurrence_pause(uuid,uuid,boolean,text)'::regprocedure,
+          'public.complete_quest_occurrence(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+          'public.reopen_quest_occurrence_v2(uuid,uuid,integer,text)'::regprocedure)
+      ) p;`;
+      const beforeRetirement = await sql(retirementCatalog);
+      const retirementPrivileges = `SELECT jsonb_build_object(
+        'schema_create',has_schema_privilege('quest_command_owner','public','CREATE'),
+        'migration_role_member',pg_has_role(current_user,'quest_command_owner','MEMBER'));`;
+      const beforeRetirementPrivileges = await sql(retirementPrivileges);
+      await sql(readFileSync(new URL(recurringRetirement, migrationDir), "utf8"));
+      assert.equal(await sql(retirementCatalog), beforeRetirement, "Retirement must preserve shared RPC identity, signature, ownership and ACLs");
+      assert.equal(await sql(retirementPrivileges), beforeRetirementPrivileges, "Retirement must not leave borrowed role/schema privileges behind");
       assert.equal(await sql(projectionCatalog), beforeProjection, "Projection correction must preserve identity, signature and security boundary");
     }
     if (isolatedApp) {

@@ -117,7 +117,7 @@ Supported patterns are daily, selected weekdays, monthly, every N days and every
 
 Rule changes record the old/new rule and effective boundary and affect future occurrences not yet materialized. Existing schedules and fixed values remain unchanged; adjusting or cancelling a materialized occurrence requires an explicit occurrence-specific action and meaningful audit history. Never implicitly revise historical schedules or regenerate an existing slot.
 
-Stopping recurrence prevents new future generation, keeps the definition available and does not archive it or remove/change existing materialized occurrences. A separate explicit cancellation remains possible. Archiving has additional guarded effects in section 19: it stops generation and cancels only clean eligible work under the full history-aware predicate while preserving history.
+Stopping recurrence prevents new generation while retaining the available definition and existing occurrences. Recurring archival instead hides/freezes all existing occurrences through archived_at while preserving stopped_at, snapshots, cycles, cumulative count and EXP. Restore resumes the prior Pause/running state (ADR-021).
 
 Repeated generation attempts must identify the same slot rather than duplicate it. Editing a rule must not create another entitlement for retained work merely because a rule version changed. The materialization horizon, scheduler/cron and exact slot-key representation are deliberately not selected. Missed slots alone must not generate cascading penalties or an excessive historical catch-up backlog.
 
@@ -135,7 +135,7 @@ QuestEvent is an append-only record of a meaningful business action. Conceptuall
 | penalty_waived | Reference to explicit Penalty disposition, not a Core waiver calculation |
 | rescheduled | Same occurrence; previous/new schedule preserved |
 | cancelled, reopened | Explicit lifecycle resolution or correction with prior/new state |
-| archived | Definition retired only after full unfinished-work guard; recurrence stopped and qualifying clean draft/scheduled cancellations recorded with history retained |
+| archived | Definition retired from active use; recurring occurrences are retained exactly and frozen until restore, with Pause state preserved |
 | recurrence_changed | Definition rule change and effective boundary |
 
 Other meaningful actions such as deferral or series stopping must be explainable in history; naming them does not prescribe an exhaustive event enum. Do not require a business event for every minor text edit. An update timestamp is not a substitute for lifecycle history.
@@ -160,7 +160,7 @@ Completed/failed/cancelled end ordinary execution, but explicit audited reopenin
 
 `rescheduled`, `overdue`, `waived` and `archived` are not extra execution states. Overdue is a time condition; waiver is a Penalty disposition; archival is retention. No deadline automatically turns work into punishable failure.
 
-Definition archival uses the full history-aware eligibility predicate in section 19. Active, overdue, previously started and other meaningfully executed unfinished work requires explicit user resolution before archive; merely deferring it back to draft/scheduled does not make it clean. Stop alone never changes existing occurrence states.
+Recurring definition archival uses retain-exact-state-and-freeze semantics (ADR-021), without unfinished-work blockers or automatic cancellation. Pause alone never freezes existing occurrences.
 
 ## 10. Relationships
 
@@ -252,6 +252,8 @@ User-reported completion time can be backdated; authoritative recording time can
 
 ## 19. Deletion / Archival Rules
 
+Current retirement authority is ADR-021 for recurring Quests and the deployed one-off Archive/Delete V1 contract. Older draft-purge and history-classifier proposals below are not current retirement behavior. Physical Quest deletion is disabled; tombstoned Quest history is retained but browser-hidden. One-off deletion guards remain unchanged.
+
 Meaningful history includes actual activation/execution, completed/failed/cancelled outcomes, explicit corrections/reopening, consequential scheduling changes, reward/reversal records, penalty assessments/obligations and external contribution references that must remain attributable. Creation of a never-executed draft and minor edits alone need not make it permanently undeletable.
 
 A Quest with meaningful execution/history must be archived rather than hard-deleted. Its occurrences, events and external source references remain valid and accessible to the owner. Do not cascade-delete historical children when a definition, rule or parent is removed. Archival alone does not undo completion or reverse rewards.
@@ -261,7 +263,7 @@ A never-executed Quest with no meaningful history or durable dependent reference
 Stopping and archiving are distinct actions:
 
 - **Stop recurrence:** prevent new future generation, retain the available definition without automatically archiving it, and leave existing materialized occurrences and completed history unchanged.
-- **Archive Quest:** retire from active use and automatically stop recurrence only after all blocking unfinished work has been explicitly resolved. Automatically cancel only clean draft/scheduled instances that have never entered active/execution and have scheduled_at null or strictly in the future. Overdue work and any other meaningful unfinished execution history are excluded even if the simple status/time test passes. Preserve cancellations, all terminal history, Quest Events, credits and reversals; never reverse earned EXP automatically.
+- **Archive recurring Quest:** reversibly retire the definition, stop generation through archived_at, hide/freeze all existing occurrences, and preserve their exact state and earned EXP. Keep stopped_at and rule revision unchanged. Restore preserves the previous Pause state; permanent delete requires archive first and never requires completed occurrences to be reopened.
 
 The guard blocks active occurrences, overdue scheduled occurrences, previously activated/deferred draft/scheduled work and any other unfinished meaningful execution history. Explicit completion/failure/cancellation or appropriate rescheduling can resolve blockers, followed by full re-evaluation; rescheduling never removes prior execution. Use lifecycle/audit information, not current status alone, to prove never-started. Apply one archive decision instant consistently. Guard/effects must be atomic with concurrent activation/materialization so archive cannot bypass a blocker or permit generation afterward.
 
@@ -286,7 +288,7 @@ The guard blocks active occurrences, overdue scheduled occurrences, previously a
 | INV-15 | Profile timezone changes do not silently alter materialized absolute timestamps |
 | INV-16 | At any moment an occurrence has at most one unreversed completion entitlement; a new completion after reversal uses a new event |
 | INV-17 | Supplied duration is a positive integer; null means unknown and zero is invalid |
-| INV-18 | Stop preserves existing instances; archive stops generation and auto-cancels only clean eligible work, blocks all other unfinished work pending explicit resolution, preserves audit/history and never reverses EXP automatically |
+| INV-18 | Pause preserves usable existing instances; recurring archive freezes them reversibly, and archive-first deletion freezes them permanently, preserving exact history/status/cycles/counters/EXP without auto-cancellation |
 | INV-19 | Recurrence requires valid Profile-owned profile.timezone; no guessed timezone and no universal Asia/Ho_Chi_Minh default |
 | INV-20 | occurrence_limit counts actual materializations across the logical Quest; skipped slots, retries and rule edits neither consume nor reset capacity |
 
@@ -312,7 +314,7 @@ These are candidates for later PostgreSQL schema enforcement, not SQL or a schem
 
 Service/business-layer invariants include valid transitions, deduplicating retries before minting Completion Events, at most one unreversed entitlement per occurrence, materialization-time snapshots, historical-value immutability, explicit occurrence edits, archived-parent contribution suppression, definition edits affecting unmaterialized work only, and guarded archive/stop behavior. Also enforce identity preservation on rescheduling, cross-domain reversal consistency, explicit waiver decisions, permission-aware deletion and no recursive penalties. Reinforce these with database protections where practical; row checks or ordinary RLS alone cannot enforce the whole cross-record/domain workflow.
 
-Additional cross-record invariants: maintain the materialization count exactly once with each new occurrence under the Quest lock; preserve it across recurrence edits; validate profile.timezone before recurrence operations; and evaluate archive eligibility against immutable execution/audit history plus current schedule/deadline, not merely current status. These are not standalone row CHECK rules.
+Additional cross-record invariants: maintain the materialization count exactly once under the Quest lock; preserve it across recurrence edits and retirement; validate profile.timezone before materialization; preserve every occurrence field during recurring retirement. These are not standalone row CHECK rules.
 
 ## 22. Suggested Indexing Considerations
 
@@ -335,7 +337,7 @@ All user-owned Quest data must be isolated by authenticated owner in Supabase/Po
 
 Authorize child inserts/updates against the owning definition; validate all referenced parents and domain sources to prevent cross-owner links. If owner is denormalized, it cannot be freely reassigned independently of the parent. Protect retained rule snapshots, archived history and external mappings as user data too.
 
-Profile timezone access and external Goal/Project resolution must use the same authenticated owner context. Materialization counts and history-derived archive eligibility are server-owned facts; clients cannot reset counters or hide prior execution through direct writes.
+Profile timezone access and external Goal/Project resolution must use the same authenticated owner context. Materialization counts and retirement eligibility are server-owned facts; clients cannot reset counters or hide prior execution through direct writes. Recurring deletion requires archive first, independently of occurrence completion state.
 
 Normal client code must never bypass RLS or receive service-role credentials. Do not allow arbitrary client writes to completion events, reward amounts already accepted, audit history or EXP transactions. Use an authenticated, authorized domain operation that enforces transitions and effect consistency; transport/security-definer details are not chosen here. Player/EXP independently validates source ownership and deduplicates authorized operations.
 
@@ -354,8 +356,8 @@ Read permission is not permission to mutate audit records. Restrict update/delet
 | 7. Parent Project archived | Quest parent link and occurrence history remain; completion may still proceed | Project archives in its domain; receives no new progress, including late delivery; independently valid EXP is not undone |
 | 8. External Google Calendar event deleted | Already-created Quest, occurrence and audit remain; no lifecycle transition follows from deletion | Calendar/integration updates its external mapping/import state; no two-way sync or Quest cascade deletion |
 | 9. Defaults edited after materialization | Definition reward changes 50 to 80 and parent/workload/penalty defaults change; existing occurrence retains all seven fixed execution values, while a new occurrence inherits new defaults | Historical analysis, contributions and obligations do not change retroactively |
-| 10. Stop versus archive | Stop leaves definition/instances unchanged; archive first blocks all unresolved active, overdue or previously executed work, then cancels only clean never-started draft/scheduled instances with null/future start | All cancellation/history/events retained; no automatic reversal |
-| 11. Archive with execution/overdue blockers | Active, previously active but deferred, overdue or otherwise meaningfully executed unfinished instances block archive until explicit resolution and re-evaluation | A new future date never erases activation history |
+| 10. Stop versus archive | Pause leaves occurrences usable; recurring archive hides/freezes them until restore | Preserve Pause state, all occurrences, history and earned EXP |
+| 11. Recurring archive with execution/overdue history | Retain and freeze exact state, without silent cancellation | Restore allows correction; permanently deleted occurrences cannot be newly reopened |
 | 12. Duration validation | Null is unknown; 1 and 7 minutes accepted, zero/negative/fractional values rejected in default and occurrence values | UI 5-minute steps impose no multiple-of-five storage restriction |
 | 13. Limit 10 with skipped weeks and schedule edit | Three skipped unmaterialized weeks consume nothing; after 3 actual materializations, changing Monday to Saturday leaves capacity for at most 7 more | No catch-up backlog and no count reset |
 | 14. Missing profile timezone | One-off work can exist; recurrence creation/enablement/materialization rejects missing/invalid profile.timezone | Profile remains a separate domain; no fallback zone guessed |

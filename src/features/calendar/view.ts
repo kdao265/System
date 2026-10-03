@@ -1,6 +1,6 @@
 // Pure Calendar view-model: which window each view shows and how the Month grid is laid
 // out. It reads nothing and stores nothing; every value is derived from the single
-// get_calendar_events range read, so switching views changes the window only (CS-10).
+// get_calendar_events_v2 range read, so switching views changes the window only (CS-10).
 import { addCalendarDays, formatCalendarMonth, isCalendarDate } from "@/features/quests/dates";
 import { utcToLocalInput } from "@/features/quests/time";
 import { calendarWeek, entriesForDay, type CalendarEntry } from "./model";
@@ -99,8 +99,8 @@ export function profileDayMinutes(value: string, timezone: string) {
   return { day, minutes: hour * 60 + minute };
 }
 
-/** Timeline window: 06:00 to midnight of the Profile-local day, 44px per hour. */
-export const TIMELINE_START = 6 * 60;
+/** Full Profile-local day, 44 design pixels per hour. */
+export const TIMELINE_START = 0;
 export const TIMELINE_END = 24 * 60;
 export const TIMELINE_HOUR = 44;
 export const TIMELINE_HEIGHT = (TIMELINE_END - TIMELINE_START) / 60 * TIMELINE_HOUR;
@@ -108,11 +108,9 @@ export const TIMELINE_HEIGHT = (TIMELINE_END - TIMELINE_START) / 60 * TIMELINE_H
 export type TimelineSpan = { column: number; top: number; height: number; starts: boolean };
 
 /**
- * First visible day slice of a timed entry. Date-only, untimed and wholly off-hours
- * entries return null and remain in the day's band/agenda. Membership comes from the
- * existing projection rules: Schedule Events can continue onto subsequent days,
- * while Quest occurrences belong only to their scheduled day. Geometry is clipped
- * to the working window; a minimum display height never invents a stored end time.
+ * First visible day slice of a timed entry. Both source kinds use half-open interval
+ * membership. Untimed/date-only entries remain in the band; an unknown end is a point,
+ * never an invented duration. Explicit geometry has no minimum height.
  */
 export function timelineSpan(entry: CalendarEntry, days: string[], timezone: string): TimelineSpan | null {
   if (!entry.start_at || entry.all_day) return null;
@@ -121,11 +119,12 @@ export function timelineSpan(entry: CalendarEntry, days: string[], timezone: str
   for (const [column, day] of days.entries()) {
     if (!entriesForDay([entry], day, timezone).length) continue;
     const from = start.day === day ? start.minutes : 0;
-    const to = end ? end.day > day ? TIMELINE_END : end.minutes : from + 45;
+    const to = end ? end.day > day ? TIMELINE_END : end.minutes : from;
+    if (!end) return { column, top: from / 60 * TIMELINE_HOUR, height: 0, starts: true };
     if (to <= TIMELINE_START || from >= TIMELINE_END) continue;
     const top = (Math.max(from, TIMELINE_START) - TIMELINE_START) / 60 * TIMELINE_HOUR;
-    const bottom = (Math.min(Math.max(to, from + 30), TIMELINE_END) - TIMELINE_START) / 60 * TIMELINE_HOUR;
-    const height = Math.min(Math.max(bottom - top, TIMELINE_HOUR / 3), TIMELINE_HEIGHT - top);
+    const bottom = (Math.min(to, TIMELINE_END) - TIMELINE_START) / 60 * TIMELINE_HOUR;
+    const height = Math.max(0, bottom - top);
     return { column, top, height, starts: start.day === day && from >= TIMELINE_START };
   }
   return null;

@@ -31,7 +31,7 @@ const { calendarMonth, calendarView, weekdayLabel, shiftPeriod, viewWindow, dayS
 const mocks = await import(mockUrl);
 const id = "11111111-1111-4111-8111-111111111111";
 const draft = { title: " Appointment ", start: "2026-09-20T00:30", end: "2026-09-20T01:30", allDay: false, category: " class ", notes: "note" };
-const entry = { source: "schedule_event", entry_id: id, quest_id: null, title: "Appointment", status: null, start_at: "2026-09-19T15:30:00Z", end_at: "2026-09-19T16:30:00Z", all_day: false, start_date: null, end_date: null, category: null, notes: null, source_slot_date: null };
+const entry = { source: "schedule_event", entry_id: id, quest_id: null, title: "Appointment", status: null, start_at: "2026-09-19T15:30:00Z", end_at: "2026-09-19T16:30:00Z", all_day: false, start_date: null, end_date: null, category: null, notes: null, source_slot_date: null, occurrence_id: null, execution_cycle: null, reward_exp_snapshot: null, deadline_at: null };
 
 test("Month navigation uses adjacent months, clamps dates and respects calendar limits", () => {
   for (const [day, amount, expected] of [
@@ -135,23 +135,23 @@ test("Month cells budget busy rows without losing order, identities or overflow 
 test("timeline spans place timed events and Quests in Profile-local columns", () => {
   const days = ["2026-09-19", "2026-09-20"];
   const timed = { ...entry, start_at: "2026-09-20T02:00:00Z", end_at: "2026-09-20T03:30:00Z" };
-  assert.deepEqual(timelineSpan(timed, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 132, height: 66, starts: true });
-  assert.deepEqual(timelineSpan({ ...timed, source: "quest_occurrence" }, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 132, height: 66, starts: true });
+  assert.deepEqual(timelineSpan(timed, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 396, height: 66, starts: true });
+  assert.deepEqual(timelineSpan({ ...timed, source: "quest_occurrence" }, days, "Asia/Ho_Chi_Minh"), { column: 1, top: 396, height: 66, starts: true });
   assert.equal(timelineSpan({ ...timed, all_day: true }, days, "UTC"), null);
   assert.equal(timelineSpan({ ...timed, start_at: null, source_slot_date: days[0] }, days, "UTC"), null);
   assert.equal(timelineSpan(timed, ["2026-09-21"], "UTC"), null);
-  assert.deepEqual(timelineSpan({ ...timed, start_at: "2026-09-20T09:00:00Z", end_at: null }, days, "UTC"), { column: 1, top: 132, height: 33, starts: true });
+  assert.deepEqual(timelineSpan({ ...timed, start_at: "2026-09-20T09:00:00Z", end_at: null }, days, "UTC"), { column: 1, top: 396, height: 0, starts: true });
 });
 
 test("timeline spans clip at working hours and midnight and retain timed continuations", () => {
   const span = (start, end, day = "2026-09-20") => timelineSpan({ ...entry, start_at: start, end_at: end }, [day], "UTC");
-  assert.equal(span("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"), null);
-  assert.deepEqual(span("2026-09-20T05:30:00Z", "2026-09-20T07:00:00Z"), { column: 0, top: 0, height: 44, starts: false });
+  assert.deepEqual(span("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"), { column: 0, top: 44, height: 44, starts: true });
+  assert.deepEqual(span("2026-09-20T05:30:00Z", "2026-09-20T07:00:00Z"), { column: 0, top: 242, height: 66, starts: true });
   const late = span("2026-09-20T23:55:00Z", "2026-09-21T01:00:00Z");
   assert.equal(late.top + late.height, TIMELINE_HEIGHT);
-  assert.deepEqual(span("2026-09-19T23:30:00Z", "2026-09-20T09:00:00Z"), { column: 0, top: 0, height: 132, starts: false });
+  assert.deepEqual(span("2026-09-19T23:30:00Z", "2026-09-20T09:00:00Z"), { column: 0, top: 0, height: 396, starts: false });
   assert.equal(span("2026-09-19T23:30:00Z", "2026-09-20T00:00:00Z"), null);
-  assert.equal(timelineSpan({ ...entry, source: "quest_occurrence", start_at: "2026-09-19T23:30:00Z", end_at: "2026-09-20T09:00:00Z" }, ["2026-09-20"], "UTC"), null);
+  assert.deepEqual(timelineSpan({ ...entry, source: "quest_occurrence", start_at: "2026-09-19T23:30:00Z", end_at: "2026-09-20T09:00:00Z" }, ["2026-09-20"], "UTC"), { column: 0, top: 0, height: 396, starts: false });
 });
 
 test("timeline lanes reuse touching intervals and separate overlapping clusters", () => {
@@ -208,7 +208,7 @@ test("day slicing respects exclusive ends, no-end events and untimed recurring s
 test("read adapter calls only the projection and fails closed on malformed data", async () => {
   mocks.configure({ data: [entry], error: null });
   assert.deepEqual(await getCalendar("2026-09-20", "2026-09-20"), [entry]);
-  assert.deepEqual(mocks.calls.map(([name]) => name), ["get_calendar_events"]);
+  assert.deepEqual(mocks.calls.map(([name]) => name), ["get_calendar_events_v2"]);
   mocks.configure({ data: [{}], error: null }); assert.equal(await getCalendar("2026-09-20", "2026-09-20"), null);
   mocks.configure(new Error("private database diagnostic")); assert.equal(await getCalendar("2026-09-20", "2026-09-20"), null);
 });

@@ -1,5 +1,23 @@
 // UI copy only. Never translate route segments, persisted values or command identifiers.
 export const en = {
+  questDetail: {
+    title: "Quest detail", plannedStart: "Planned start", plannedEnd: "Planned end", endNotSet: "End not set", deadline: "Deadline",
+    plan: "Plan / Edit plan", save: "Save plan", saving: "Saving…", saved: "Plan saved. Current details refreshed separately.",
+    loading: "Loading Quest detail…", error: "Quest detail is unavailable. It may have been retired or your access changed.", retry: "Retry",
+    close: "Close", unset: "Not set", untimed: "Untimed", description: "Description (current definition)", notes: "Notes (current definition)",
+    reward: "Reward EXP snapshot", status: "Status", date: "Date", recurrence: "Recurrence", mainQuest: "Main Quest", openQuest: "Open in Quests",
+    provenance: "Original occurrence", revision: "Rule revision", currentRule: "Current rule", paused: "Paused", running: "Running",
+    daily: "Daily", selected_weekdays: "Selected weekdays", monthly: "Monthly", every_n_days: "Every N days", every_n_weeks: "Every N weeks",
+    anchor: "Series start", seriesEnd: "Series end", monthDay: "Day of month", weekdays: "Weekdays (Monday = 1)", interval: "Interval", limit: "Occurrence limit",
+    timezone: "Timezone", duration: "Estimated workload (minutes)", intervalHint: "Leave end empty if unknown. Clearing start also requires an empty end. Only this occurrence changes.",
+    invalid: "Choose valid, unambiguous Profile-local times; end must follow start. Daylight-saving gaps and repeated times cannot be used.",
+    stale: "This plan or execution cycle changed. Reload the detail before editing again.", retired: "This occurrence cannot be planned. Reload its details.",
+    deadlineError: "Planned start cannot be after the existing deadline. Deadline is unchanged.", conflict: "This command conflicts with recorded history. Reload before editing.",
+    unknown: "Plan outcome is unknown. The exact request is saved; retry it before making another plan.", recovery: "Pending Quest plan", retrySaved: "Retry saved plan",
+    blocked: "Planning recovery is unavailable or your account changed. Your saved request is retained. Refresh before continuing.",
+    pendingHint: "A saved plan must be resolved before another plan can be submitted.", readOnly: "This occurrence is read-only.", archived: "Archived",
+    continuation: "Continues across midnight", reload: "Reload detail",
+  },
   dashboard: {
     levelUnconfigured: "Progression status: not configured", levelInvalid: "Progression status: data error",
     loadingMain: "Loading Main Quest...", loadingCalendar: "Loading Calendar...", loadingRecurring: "Loading recurring Quests...",
@@ -63,6 +81,24 @@ type DictionaryShape<T> = { readonly [K in keyof T]: T[K] extends string ? strin
 export type Dictionary = DictionaryShape<typeof en>;
 
 export const vi = {
+  questDetail: {
+    title: "Chi tiết Quest", plannedStart: "Bắt đầu dự kiến", plannedEnd: "Kết thúc dự kiến", endNotSet: "Chưa đặt giờ kết thúc", deadline: "Hạn chót",
+    plan: "Lập / Sửa kế hoạch", save: "Lưu kế hoạch", saving: "Đang lưu…", saved: "Đã lưu kế hoạch. Chi tiết hiện tại được tải lại riêng.",
+    loading: "Đang tải chi tiết Quest…", error: "Không tải được chi tiết Quest. Quest có thể đã được lưu trữ hoặc quyền truy cập đã thay đổi.", retry: "Thử lại",
+    close: "Đóng", unset: "Chưa đặt", untimed: "Chưa đặt giờ", description: "Mô tả (định nghĩa hiện tại)", notes: "Ghi chú (định nghĩa hiện tại)",
+    reward: "EXP thưởng đã chốt", status: "Trạng thái", date: "Ngày", recurrence: "Lặp lại", mainQuest: "Main Quest", openQuest: "Mở trong Quest",
+    provenance: "Lần thực hiện gốc", revision: "Phiên bản quy tắc", currentRule: "Quy tắc hiện tại", paused: "Đã tạm dừng", running: "Đang chạy",
+    daily: "Hằng ngày", selected_weekdays: "Các ngày đã chọn", monthly: "Hằng tháng", every_n_days: "Mỗi N ngày", every_n_weeks: "Mỗi N tuần",
+    anchor: "Ngày bắt đầu chuỗi", seriesEnd: "Ngày kết thúc chuỗi", monthDay: "Ngày trong tháng", weekdays: "Ngày trong tuần (Thứ Hai = 1)", interval: "Khoảng lặp", limit: "Giới hạn số lần",
+    timezone: "Múi giờ", duration: "Khối lượng ước tính (phút)", intervalHint: "Để trống giờ kết thúc nếu chưa biết. Khi xóa giờ bắt đầu, hãy để trống cả giờ kết thúc. Chỉ lần thực hiện này thay đổi.",
+    invalid: "Chọn thời gian hợp lệ, không mơ hồ theo múi giờ hồ sơ; giờ kết thúc phải sau giờ bắt đầu. Không dùng giờ bị bỏ qua hoặc lặp lại khi đổi giờ mùa hè.",
+    stale: "Kế hoạch hoặc chu kỳ thực hiện đã thay đổi. Tải lại chi tiết trước khi sửa.", retired: "Không thể lập kế hoạch cho lần thực hiện này. Hãy tải lại chi tiết.",
+    deadlineError: "Giờ bắt đầu dự kiến không được sau hạn chót hiện tại. Hạn chót không thay đổi.", conflict: "Lệnh này xung đột với lịch sử đã ghi. Hãy tải lại trước khi sửa.",
+    unknown: "Chưa rõ kết quả lưu kế hoạch. Yêu cầu chính xác đã được lưu; hãy thử lại trước khi lập kế hoạch khác.", recovery: "Kế hoạch Quest đang chờ", retrySaved: "Thử lại kế hoạch đã lưu",
+    blocked: "Không thể khôi phục kế hoạch hoặc tài khoản đã thay đổi. Yêu cầu đã lưu vẫn được giữ. Hãy tải lại trang trước khi tiếp tục.",
+    pendingHint: "Cần xác nhận kế hoạch đã lưu trước khi gửi kế hoạch khác.", readOnly: "Lần thực hiện này chỉ được xem.", archived: "Đã lưu trữ",
+    continuation: "Tiếp tục qua nửa đêm", reload: "Tải lại chi tiết",
+  },
   dashboard: {
     levelUnconfigured: "Trạng thái tiến trình: chưa thiết lập", levelInvalid: "Trạng thái tiến trình: lỗi dữ liệu",
     loadingMain: "Đang tải Main Quest...", loadingCalendar: "Đang tải lịch...", loadingRecurring: "Đang tải Quest định kỳ...",

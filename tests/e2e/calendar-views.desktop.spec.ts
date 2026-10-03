@@ -69,7 +69,7 @@ test("Calendar places Schedule Events and one Quest projection with truthful Mon
         top: element.getBoundingClientRect().top - element.parentElement!.getBoundingClientRect().top,
         hour: parseFloat(getComputedStyle(document.documentElement).fontSize) * 2.75,
       }));
-      expect(geometry.top).toBeCloseTo((hour - 6) * geometry.hour, 1);
+      expect(geometry.top).toBeCloseTo(hour * geometry.hour, 1);
     }
     await expectNoCalendarOverflow(page);
   }

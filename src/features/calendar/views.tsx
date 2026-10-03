@@ -7,6 +7,7 @@ import Link from "next/link";
 import { formatCalendarDate } from "@/features/quests/dates";
 import { formatProfileClock } from "@/features/quests/time";
 import { entriesForDay, type CalendarEntry } from "./model";
+import { TimelineItem, QuestBandChip } from "./timeline-item";
 import { weekdayLabel, TIMELINE_END, TIMELINE_HEIGHT, TIMELINE_HOUR, TIMELINE_START, timelineLanes, timelineNow, timelineSpan, type MonthCell, type MonthGrid, type TimelineSpan } from "./view";
 
 // The gutter and every day column repeat the same two heights (h-8 heading, h-12 band)
@@ -129,7 +130,7 @@ function WeekColumn({ day, entries, timezone, today, nowTop, href, selected }: {
   const timed = entries.map((entry) => ({ entry, span: timelineSpan(entry, [day], timezone) }))
     .filter((item): item is { entry: CalendarEntry; span: TimelineSpan } => !!item.span)
     .sort((a, b) => a.span.top - b.span.top);
-  const lanes = timelineLanes(timed.map((item) => item.span));
+  const lanes = timelineLanes(timed.map((item) => ({...item.span,height:Math.max(item.span.height,18)})));
   const banded = entries.filter((entry) => !timelineSpan(entry, [day], timezone));
   return <div className={`flex min-w-0 flex-1 flex-col ${isToday ? "bg-sky-400/[0.05]" : "bg-cal-cell"}`}>
     <Link prefetch={false} href={href(day)} aria-current={selected ? "date" : undefined}
@@ -141,15 +142,17 @@ function WeekColumn({ day, entries, timezone, today, nowTop, href, selected }: {
     </Link>
     <ul aria-label={`All-day, untimed and off-hours entries on ${formatCalendarDate(day)}`}
       className="h-12 min-w-0 space-y-[2px] overflow-hidden border-b border-cal-line px-px py-px">
-      {banded.slice(0, 3).map((entry) => <EntryChip key={`${entry.source}:${entry.entry_id}`} entry={entry} timezone={timezone} timeClassName="hidden min-[420px]:inline" />)}
+      {banded.slice(0, 3).map((entry) => entry.source === "quest_occurrence"
+        ? <QuestBandChip key={entry.entry_id} entry={entry}/>
+        : <EntryChip key={`${entry.source}:${entry.entry_id}`} entry={entry} timezone={timezone} timeClassName="hidden min-[420px]:inline" />)}
       {banded.length > 3 && <li className="px-1 text-[10px] leading-[13px] text-zinc-400">+{banded.length - 3} more</li>}
     </ul>
     <div className="cal-timeline relative" style={{ height: rem(TIMELINE_HEIGHT) }}>
-      {timed.map(({ entry, span }, index) => <ul key={`${entry.source}:${entry.entry_id}`} data-cal-timed=""
-        style={{ top: rem(span.top), height: rem(span.height), left: `${(lanes.lanes[index] / lanes.count) * 55}%` }}
-        className="absolute right-0 min-w-0 overflow-hidden">
-        <EntryChip entry={entry} timezone={timezone} />
-      </ul>)}
+      {timed.map(({ entry, span }, index) => <div key={`${entry.source}:${entry.entry_id}`} data-cal-timed=""
+        style={{ top: rem(span.top), height: rem(span.height), left: `${(lanes.lanes[index] / lanes.count) * 100}%`, width: `${100/lanes.count}%` }}
+        className="absolute min-w-0 pr-px">
+        <TimelineItem entry={entry} timezone={timezone}/>
+      </div>)}
       {nowTop !== null && <div aria-hidden="true" className="absolute inset-x-0 border-t border-dashed border-amber-400/70" style={{ top: rem(nowTop) }} />}
     </div>
   </div>;
@@ -166,7 +169,7 @@ export function WeekView({ days, entries, today, now, timezone, href, selected }
   href: (day: string) => string; selected: string;
 }) {
   const hours = Array.from({ length: (TIMELINE_END - TIMELINE_START) / 60 }, (_, index) => TIMELINE_START / 60 + index);
-  return <div role="group" aria-label={`Week of ${formatCalendarDate(days[0])}`}
+  return <div role="group" aria-label={`${days.length === 1 ? "Day" : "Week of"} ${formatCalendarDate(days[0])}`}
     className="mt-1 flex gap-px overflow-hidden rounded-lg border border-cal-line bg-cal-line">
     <div aria-hidden="true" className="w-9 shrink-0 bg-cal-cell min-[420px]:w-12">
       <div className="h-8 border-b border-cal-line" />

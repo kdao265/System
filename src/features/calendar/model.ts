@@ -1,6 +1,7 @@
 import { addCalendarDays, isCalendarDate, todayInTimezone } from "@/features/quests/dates";
 import { localTimeToUtc, utcToLocalInput } from "@/features/quests/time";
 import { UUID } from "@/features/quests/create-pending";
+import { exactKeys, integer, nullableTime, questStatuses, record, validInterval, type QuestStatus } from "@/features/quests/plan-model";
 
 export type CalendarEntry = {
   source: "schedule_event" | "quest_occurrence";
@@ -8,6 +9,7 @@ export type CalendarEntry = {
   start_at: string | null; end_at: string | null; all_day: boolean;
   start_date: string | null; end_date: string | null;
   category: string | null; notes: string | null; source_slot_date: string | null;
+  occurrence_id: string | null; execution_cycle: number | null; reward_exp_snapshot: number | null; deadline_at: string | null;
 };
 export type EventDraft = { title: string; start: string; end: string; allDay: boolean; category: string; notes: string };
 export type EventRequest = { userId: string; eventId: string; mode: "create" | "update" | "remove"; timezone: string; draft: EventDraft };
@@ -29,6 +31,28 @@ export function parseCalendar(data: unknown): CalendarEntry[] | null {
   return data;
 }
 
+/** V2 is a closed boundary: no legacy deadline-as-end fallback. */
+export function parseCalendarV2(data: unknown): CalendarEntry[] | null {
+  if (!Array.isArray(data)) return null;
+  const ids=new Set<string>();
+  for(const e of data) {
+    if(!record(e) || !exactKeys(e,["source","entry_id","quest_id","title","status","start_at","end_at","all_day","start_date","end_date","category","notes","source_slot_date","execution_cycle","reward_exp_snapshot","occurrence_id","deadline_at"]) ||
+      typeof e.entry_id!=="string" || !UUID.test(e.entry_id) || typeof e.title!=="string" || !e.title.trim() ||
+      !nullableTime(e.deadline_at) || !validInterval(e.start_at,e.end_at)) return null;
+    if(e.source==="quest_occurrence") {
+      if(e.occurrence_id!==e.entry_id || typeof e.quest_id!=="string" || !UUID.test(e.quest_id) ||
+        !questStatuses.includes(e.status as QuestStatus) || !integer(e.execution_cycle,1) ||
+        !(e.reward_exp_snapshot===null||integer(e.reward_exp_snapshot)) || e.all_day!==false ||
+        e.start_date!==null || e.end_date!==null || e.category!==null || e.notes!==null) return null;
+    } else if(e.source==="schedule_event") {
+      if([e.quest_id,e.occurrence_id,e.execution_cycle,e.reward_exp_snapshot,e.status,e.deadline_at,e.source_slot_date].some(v=>v!==null) ||
+        (e.all_day && (e.start_at!==null||e.end_at!==null)) || (!e.all_day&&(e.start_date!==null||e.end_date!==null))) return null;
+    } else return null;
+    const key=`${e.source}:${e.entry_id}`;if(ids.has(key))return null;ids.add(key);
+  }
+  return parseCalendar(data);
+}
+
 export function calendarWeek(day: string) {
   const offset = (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
   // At the supported date limits use the remaining valid dates instead of throwing.
@@ -44,7 +68,7 @@ export function entriesForDay(entries: CalendarEntry[], day: string, timezone: s
     if (entry.all_day) return entry.start_date! <= day && entry.end_date! > day;
     if (!entry.start_at) return entry.source_slot_date === day;
     const first = todayInTimezone(timezone, new Date(entry.start_at));
-    if (entry.source === "quest_occurrence" || !entry.end_at) return first === day;
+    if (!entry.end_at) return first === day;
     // Exclusive end: subtract one millisecond before grouping, including DST boundaries.
     const last = todayInTimezone(timezone, new Date(Date.parse(entry.end_at) - 1));
     return first <= day && last >= day;

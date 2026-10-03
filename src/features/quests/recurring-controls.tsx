@@ -1,47 +1,27 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseClient } from "@/lib/supabase/client";
 import { useOnline } from "@/features/network/network-status";
-import { changeRecurrencePause } from "./recurrence-action";
-import { PAUSE_PREFIX, RecurrencePauseLifecycle } from "./recurrence-pending";
 import { getDictionary, type Locale } from "@/lib/localization/dictionaries";
 import type { RecurringQuest } from "./recurring-list";
 import { RecurringRetirementControl } from "./recurring-retirement-control";
 import { useRecurringRetirement } from "./recurring-retirement-provider";
+import { usePauseController } from "./recurrence-pause-provider";
+import { getPauseServerSnapshot } from "./recurrence-pending";
 
 const buttonClass = "mt-3 min-h-11 rounded-md border border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
-function RecurringControl({ userId, quest, locale }: { userId: string; quest: RecurringQuest; locale: Locale }) {
+function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Locale }) {
   const { recurringControl: t, dashboard: d } = getDictionary(locale);
   const weekdays = quest.weekdays?.map((day) => new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 4 + day)))).join(", ");
   const cadence = d[quest.recurrence_mode] + (quest.recurrence_mode === "weekly" ? ` · ${weekdays}` : quest.recurrence_mode === "monthly" ? ` · ${t.monthDay} ${quest.month_day}` : "");
   const router = useRouter();
   const online = useOnline();
   const retirement = useRecurringRetirement();
-  const [controller] = useState(() => new RecurrencePauseLifecycle(userId, quest.quest_id, {
-    storage: () => window.localStorage,
-    lock: async (work) => {
-      if (!navigator.locks) throw new Error("Tab coordination unavailable");
-      return navigator.locks.request("system.quest-recurrence", work);
-    }, uuid: () => crypto.randomUUID(), send: changeRecurrencePause,
-  }));
-  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  useEffect(() => {
-    controller.activate();
-    void controller.recover();
-    const recover = () => { void controller.recover(); };
-    const onStorage = (event: StorageEvent) => { if (event.key === null || event.key.startsWith(`${PAUSE_PREFIX}${userId}:`)) recover(); };
-    window.addEventListener("storage", onStorage); window.addEventListener("focus", recover);
-    let unsubscribe = () => {};
-    try {
-      const { data } = createSupabaseClient().auth.onAuthStateChange((_event, session) => {
-        if (session?.user.id !== userId) { controller.deactivate(); router.refresh(); }
-      });
-      unsubscribe = () => data.subscription.unsubscribe();
-    } catch { controller.deactivate(); }
-    return () => { controller.deactivate(); unsubscribe(); window.removeEventListener("storage", onStorage); window.removeEventListener("focus", recover); };
-  }, [controller, router, userId]);
+  // One shared controller per questId (dashboard-level registry); the series modal consumes the same instance.
+  const controller = usePauseController(quest.quest_id);
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, getPauseServerSnapshot);
+  useEffect(() => { void controller.recover(); }, [controller]);
   async function execute(retry: boolean) {
     if (!navigator.onLine) return;
     if (await (retry ? controller.retry() : controller.submit(!quest.paused))) router.refresh();
@@ -59,5 +39,5 @@ function RecurringControl({ userId, quest, locale }: { userId: string; quest: Re
   </li>;
 }
 export function RecurringQuestControls({ userId, quests, locale = "en" }: { userId: string; quests: RecurringQuest[]; locale?: Locale }) {
-  return <ul aria-label={getDictionary(locale).recurringControl.definitions} className="mt-4 space-y-3">{quests.map((quest) => <RecurringControl key={quest.quest_id} userId={userId} quest={quest} locale={locale} />)}</ul>;
+  return <ul aria-label={getDictionary(locale).recurringControl.definitions} className="mt-4 space-y-3">{quests.map((quest) => <RecurringControl key={`${userId}:${quest.quest_id}`} quest={quest} locale={locale} />)}</ul>;
 }

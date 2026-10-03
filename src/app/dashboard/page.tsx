@@ -22,6 +22,8 @@ import { QuestCompletionProvider } from "@/features/quests/completion-provider";
 import { ArchivedQuestsPanel } from "@/features/quests/archived-panel";
 import { QuestManagementProvider } from "@/features/quests/management-provider";
 import { RecurringRetirementProvider } from "@/features/quests/recurring-retirement-provider";
+import { RecurrencePauseProvider } from "@/features/quests/recurrence-pause-provider";
+import { RecurringSeriesManager } from "@/features/quests/recurring-series-manager";
 import { ArchivedRecurringQuestsPanel } from "@/features/quests/archived-recurring-panel";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +50,8 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
       <QuestCompletionProvider userId={user.id}>
         <QuestManagementProvider userId={user.id} locale={locale}>
         <RecurringRetirementProvider userId={user.id} locale={locale}>
+        <RecurrencePauseProvider userId={user.id}>
+        <RecurringSeriesManager userId={user.id} locale={locale}>
         <div className="dashboard-grid">
           <div className="dashboard-slot-level"><LevelSnapshot result={progression} locale={locale} selectedDate={selectedDate} /></div>
           <div className="dashboard-slot-main">
@@ -72,7 +76,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             </Suspense>
           </div>
         </div>
-        <div className="dashboard-tools" id="quest-tools">
+        <div className="dashboard-tools" id="quest-tools" tabIndex={-1}>
           <div id="create-quest">
             <p className="mb-3 type-metadata text-muted">{t.legacyHint}</p>
             <div lang="en"><QuestCreationForm timezone={profile.timezone!} userId={user.id} /></div>
@@ -85,6 +89,8 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
             <ArchivedRecurringQuestsPanel locale={locale} timezone={profile.timezone!} />
           </Suspense>
         </div>
+        </RecurringSeriesManager>
+        </RecurrencePauseProvider>
         </RecurringRetirementProvider>
         </QuestManagementProvider>
       </QuestCompletionProvider>

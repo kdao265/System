@@ -41,6 +41,16 @@ export const en = {
     complete: "Complete", reopen: "Reopen", cancel: "Cancel", confirmReopen: "Confirm reopen", retryReopen: "Retry exact reopen", reopening: "Reopening...", checkingReopen: "Checking reopen...", confirmPrompt: "Reopen this completed Quest and reverse its EXP?", reopened: "Reopen confirmed. Refresh this page to read the current Quest state.", earlier: "An earlier completion request is confirmed. Check Quest recovery for refresh or cleanup.", disposition: "This request needs no further completion retry. Review the retained evidence in Quest recovery and refresh this page.", confirming: "Confirming completion...", checking: "Checking completion...", resolution: "Check completion resolution",
   },
   recurringControl: { recurring: "Recurring", definitions: "Recurring definitions", pause: "Pause", resume: "Resume", confirming: "Confirming…", awaiting: "Awaiting confirmation", retry: "Retry exact pause/resume request", check: "Check recurrence recovery", from: "From", through: "through", monthDay: "day", hint: "Pause stops new occurrences. Existing occurrences and EXP history stay unchanged." },
+  seriesManage: {
+    manage: "Manage series", title: "Series management",
+    affects: "This affects the entire recurring series.",
+    running: "Running", paused: "Paused",
+    pause: "Pause series", resume: "Resume series", archive: "Archive series",
+    cadence: "Cadence", state: "State",
+    loading: "Loading series management…",
+    error: "Series management data could not be loaded. Retry, or use the recurring definitions panel.",
+    retry: "Retry", close: "Close series management",
+  },
   questManage: {
     actions: "Quest actions", archive: "Archive", restore: "Restore", delete: "Delete permanently", cancel: "Cancel",
     confirmArchive: "Confirm archive", confirmRestore: "Confirm restore", confirmDelete: "Delete permanently", working: "Working…",
@@ -122,6 +132,16 @@ export const vi = {
     complete: "Hoàn thành", reopen: "Mở lại", cancel: "Hủy", confirmReopen: "Xác nhận mở lại", retryReopen: "Thử lại yêu cầu mở lại", reopening: "Đang mở lại...", checkingReopen: "Đang kiểm tra mở lại...", confirmPrompt: "Mở lại Quest đã hoàn thành và hoàn tác EXP?", reopened: "Đã xác nhận mở lại. Tải lại trang để đọc trạng thái Quest hiện tại.", earlier: "Yêu cầu hoàn thành trước đã được xác nhận. Kiểm tra công cụ khôi phục Quest để tải lại hoặc dọn dẹp.", disposition: "Không cần thử hoàn thành lại yêu cầu này. Xem thông tin trong công cụ khôi phục Quest và tải lại trang.", confirming: "Đang xác nhận hoàn thành...", checking: "Đang kiểm tra hoàn thành...", resolution: "Kiểm tra kết quả hoàn thành",
   },
   recurringControl: { recurring: "Định kỳ", definitions: "Các Quest định kỳ", pause: "Tạm dừng", resume: "Tiếp tục", confirming: "Đang xác nhận…", awaiting: "Đang chờ xác nhận", retry: "Thử lại yêu cầu tạm dừng/tiếp tục", check: "Kiểm tra khôi phục định kỳ", from: "Từ", through: "đến", monthDay: "ngày", hint: "Tạm dừng ngăn tạo lượt mới. Các lượt đã có và lịch sử EXP được giữ nguyên." },
+  seriesManage: {
+    manage: "Quản lý chuỗi", title: "Quản lý chuỗi lặp lại",
+    affects: "Thao tác này ảnh hưởng đến toàn bộ chuỗi lặp lại.",
+    running: "Đang chạy", paused: "Đã tạm dừng",
+    pause: "Tạm dừng chuỗi", resume: "Tiếp tục chuỗi", archive: "Lưu trữ chuỗi",
+    cadence: "Tần suất", state: "Trạng thái",
+    loading: "Đang tải quản lý chuỗi…",
+    error: "Không tải được dữ liệu quản lý chuỗi. Hãy thử lại hoặc dùng bảng các Quest định kỳ.",
+    retry: "Thử lại", close: "Đóng quản lý chuỗi",
+  },
   questManage: {
     actions: "Thao tác Quest", archive: "Lưu trữ", restore: "Khôi phục", delete: "Xóa vĩnh viễn", cancel: "Hủy",
     confirmArchive: "Xác nhận lưu trữ", confirmRestore: "Xác nhận khôi phục", confirmDelete: "Xóa vĩnh viễn", working: "Đang xử lý…",

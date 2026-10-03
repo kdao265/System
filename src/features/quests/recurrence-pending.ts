@@ -2,9 +2,14 @@ import { UUID, type StorageAccess } from "./create-pending";
 import type { PauseResult } from "./recurrence-action";
 
 export const PAUSE_PREFIX = "system.quest-recurrence.pending.v1:";
+// The Web Lock name is part of the recovery contract; it never changes with this UI.
+export const PAUSE_LOCK = "system.quest-recurrence";
 type PauseOperation = { version: 1; userId: string; questId: string; commandId: string; paused: boolean };
-type View = { phase: "recovering" | "ready" | "sending" | "uncertain" | "blocked"; operation?: PauseOperation; error?: string; message?: string };
-type Dependencies = {
+type View = { phase: "recovering" | "ready" | "sending" | "uncertain" | "blocked"; version: number; operation?: PauseOperation; error?: string; message?: string };
+// Shared consumers can hydrate after another consumer has already recovered.
+const SERVER_SNAPSHOT: View = { phase: "recovering", version: 0 };
+export const getPauseServerSnapshot = () => SERVER_SNAPSHOT;
+export type Dependencies = {
   storage: StorageAccess;
   lock: <T>(work: () => Promise<T>) => Promise<T>;
   uuid: () => string;
@@ -21,7 +26,7 @@ export function isPauseOperation(value: unknown, userId: string, questId: string
 
 /** Persist before dispatch; serialize cooperating tabs and retain every uncertain command. */
 export class RecurrencePauseLifecycle {
-  private state: View = { phase: "recovering" };
+  private state: View = SERVER_SNAPSHOT;
   private listeners = new Set<() => void>();
   private busy = false;
   private generation = 0;
@@ -34,7 +39,11 @@ export class RecurrencePauseLifecycle {
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private set(state: View) { this.state = state; for (const listener of this.listeners) listener(); }
+  private set(state: Omit<View, "version">) {
+    // Client-only invalidation version, never persisted or inferred from receipts.
+    this.state = { ...state, version: this.state.version + 1 };
+    for (const listener of this.listeners) listener();
+  }
   activate() { this.active = true; }
   deactivate() {
     this.active = false; this.generation++; this.busy = false;
@@ -72,6 +81,9 @@ export class RecurrencePauseLifecycle {
     if (this.busy || !this.active) return;
     this.busy = true;
     const generation = this.generation;
+    // Invalidate authoritative detail immediately, including while waiting for
+    // another tab's lock. Completion below publishes the reconciled snapshot.
+    this.set({ ...this.state, phase: "recovering" });
     try {
       await this.deps.lock(async () => {
         if (generation !== this.generation) return;

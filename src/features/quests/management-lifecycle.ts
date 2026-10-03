@@ -15,6 +15,9 @@ type View = {
   phase: "recovering" | "ready" | "sending" | "uncertain" | "blocked";
   pending?: PendingManagement;
   result?: QuestManagementState;
+  // Retain client command identity when pending is cleared. Consumers can
+  // distinguish a new result without depending on result object identity.
+  resultCommandId?: string;
   questId?: string;
 };
 // Streamed rows may hydrate after browser recovery has already finished. Their
@@ -135,9 +138,9 @@ export class QuestManagementLifecycle {
           const storage = this.deps.storage();
           storage.removeItem(this.key());
           if (storage.getItem(this.key()) !== null) throw new Error("Unverified removal");
-          this.set({ phase: "ready", result, questId: pending.questId });
+          this.set({ phase: "ready", result, resultCommandId: pending.commandId, questId: pending.questId });
         } else {
-          this.set({ phase: "uncertain", pending, result, questId: pending.questId });
+          this.set({ phase: "uncertain", pending, result, resultCommandId: pending.commandId, questId: pending.questId });
         }
         if (result.outcome === "rejected" && result.reason === "account") this.deactivate();
       });

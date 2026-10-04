@@ -6,8 +6,9 @@ import { recurringRetirementCopy } from "./recurring-retirement-copy";
 export async function ArchivedRecurringQuestsPanel({ timezone, locale = "en" }: { timezone: string; locale?: Locale }) {
   const quests = await getArchivedRecurringQuests();
   const t = recurringRetirementCopy(locale), d = getDictionary(locale).dashboard;
-  return <section aria-label={t.title} className="min-w-0 [overflow-wrap:anywhere] rounded-lg border border-zinc-800 p-4 sm:p-6">
-    <h2 className="type-card">{t.title}</h2><p className="mt-2 text-sm text-muted">{t.hint}</p>
+  return <section id="archived-recurring-quests" tabIndex={-1} aria-label={t.title}
+    className="min-w-0 [overflow-wrap:anywhere] rounded-lg border border-zinc-800 p-4 sm:p-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+    <h2 id="archived-recurring-quests-title" className="type-card">{t.title}</h2><p className="mt-2 text-sm text-muted">{t.hint}</p>
     {quests === null ? <p role="alert">{t.unavailable}</p> : quests.length === 0 ? <p className="mt-4">{t.empty}</p> :
       <ul className="mt-4 space-y-3">{quests.map((quest) => <li key={quest.quest_id} className="rounded-lg border border-zinc-800 p-3">
         <h3 className="font-medium">{quest.title}</h3>

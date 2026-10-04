@@ -7,8 +7,8 @@ import type { QuestManagementOperation } from "./management-action";
 import { useRecurringRetirement } from "./recurring-retirement-provider";
 import { recurringRetirementCopy } from "./recurring-retirement-copy";
 
-export function RecurringRetirementControl({ questId, title, archived = false, disabled = false, locale = "en" }: {
-  questId: string; title: string; archived?: boolean; disabled?: boolean; locale?: Locale;
+export function RecurringRetirementControl({ questId, title, archived = false, disabled = false, locale = "en", archiveLabel }: {
+  questId: string; title: string; archived?: boolean; disabled?: boolean; locale?: Locale; archiveLabel?: string;
 }) {
   const { controller, state } = useRecurringRetirement();
   const t = recurringRetirementCopy(locale), online = useOnline();
@@ -31,7 +31,7 @@ export function RecurringRetirementControl({ questId, title, archived = false, d
         <button type="button" disabled={state.phase === "sending"} onClick={() => setConfirming(null)} className={button}>{t.cancel}</button>
       </div>
     </div> : <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={locked} onClick={() => setConfirming(archived ? "restore" : "archive")} className={button}>{archived ? t.restore : t.archive}</button>
+      <button type="button" disabled={locked} onClick={() => setConfirming(archived ? "restore" : "archive")} className={button}>{archived ? t.restore : archiveLabel ?? t.archive}</button>
       {archived && <button type="button" disabled={locked} onClick={() => setConfirming("delete")} className={`${button} text-red-300`}>{t.delete}</button>}
     </div>}
     {result && result.outcome !== "idle" && <p role={result.outcome === "success" ? "status" : "alert"} className="mt-2 text-sm">

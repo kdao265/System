@@ -4,6 +4,7 @@ import type { DayQuestResult } from "./model";
 import { addCalendarDays, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
 import { QuestCompletionControl, QuestReopenControl } from "./completion-control";
 import { QuestManagementControl } from "./management-control";
+import { RecurringSeriesTrigger } from "./recurring-series-trigger";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
 const navLinkClass = "rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
@@ -90,6 +91,9 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, locale 
               <h3 className="min-w-0 flex-1 basis-40 font-medium text-zinc-100">{quest.quest_title}</h3>
               <div className="flex items-center gap-2">
                 <Badge tone={quest.status === "completed" ? "success" : "muted"}>{t.status}: {t.states[quest.status]}</Badge>
+                {quest.source_slot_date !== null && userId &&
+                  <RecurringSeriesTrigger occurrenceId={quest.occurrence_id} questId={quest.quest_id}
+                    title={quest.quest_title} locale={locale} />}
                 {quest.source_slot_date === null && userId &&
                   <QuestManagementControl userId={userId} questId={quest.quest_id}
                     title={quest.quest_title} status={quest.status} locale={locale} />}

@@ -52,8 +52,8 @@ function jwt(role, secret) {
   return `${head}.${body}.${createHmac("sha256", secret).update(`${head}.${body}`).digest("base64url")}`;
 }
 
-/** @param {{ buildApp?: boolean, activateOwner?: boolean, testMigrationHistory?: boolean, isolatedApp?: boolean, signal?: AbortSignal }} [options] */
-export async function startAuthEnvironment({ buildApp = true, activateOwner = true, testMigrationHistory = false, isolatedApp = false, signal } = {}) {
+/** @param {{ buildApp?: boolean, activateOwner?: boolean, testMigrationHistory?: boolean, isolatedApp?: boolean, signal?: AbortSignal, beforeRecurringSchedule?: Function }} [options] */
+export async function startAuthEnvironment({ buildApp = true, activateOwner = true, testMigrationHistory = false, isolatedApp = false, signal, beforeRecurringSchedule } = {}) {
   assert(!process.env.DOCKER_CONTEXT && (!process.env.DOCKER_HOST || process.env.DOCKER_HOST === socket), "External Docker routing prohibited");
   const runId = randomUUID();
   const networkName = `system-private-auth-${runId}`;
@@ -186,6 +186,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     const postActivationProjection = "20261002023000_quest_active_projections.sql";
     const recurringRetirement = "20261003120000_recurring_quest_archive_delete_v1.sql";
     const occurrencePlanning = "20261003180000_calendar_quest_plan_v1.sql";
+    const recurringSchedule = "20261004120000_recurring_schedule_defaults_v1.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -206,7 +207,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();
-      if ([deferredActivation, postActivationProjection, recurringRetirement, occurrencePlanning].includes(file)) continue;
+      if ([deferredActivation, postActivationProjection, recurringRetirement, occurrencePlanning, recurringSchedule].includes(file)) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -290,6 +291,17 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       await sql(readFileSync(new URL(occurrencePlanning, migrationDir), "utf8"));
       assert.equal(await sql("SELECT pg_get_functiondef('public.get_calendar_events(date,date)'::regprocedure);"), legacyCalendar,
         "Planning must not redefine legacy Calendar");
+      const recurringCatalog = "SELECT jsonb_agg(to_jsonb(p) ORDER BY oid) FROM (SELECT oid,proowner,proacl,prosecdef,provolatile,proconfig,prorettype,proargtypes,proargnames,proargmodes,proallargtypes,proargdefaults,pronargdefaults,proisstrict,proleakproof,proparallel FROM pg_proc WHERE pronamespace='public'::regnamespace) p;";
+      const beforeRecurring = JSON.parse(await sql(recurringCatalog));
+      if (beforeRecurringSchedule) await beforeRecurringSchedule({ sql, owner });
+      const recurringStarted = performance.now();
+      await sql(readFileSync(new URL(recurringSchedule, migrationDir), "utf8"));
+      console.log(`Timezone feature migration applied in ${Math.round(performance.now()-recurringStarted)} ms`);
+      const existingRecurringOids = new Set(beforeRecurring.map(row => row.oid));
+      const afterRecurring = JSON.parse(await sql(recurringCatalog)).filter(row => existingRecurringOids.has(row.oid));
+      assert.deepEqual(afterRecurring, beforeRecurring, "Recurring defaults preserve every legacy public RPC identity, signature, defaults and security/ACLs");
+      console.log('PASS: every legacy public RPC identity/signature/default/security/ACL preserved');
+      assert.match(await sql("SELECT system_internal.tzdb_active_release_v1();"), /^system-tz-v1\/[a-f0-9]{64}$/);
     }
     if (isolatedApp) {
       assert(buildApp && activateOwner, "Isolated E2E app requires a fresh build and activated owner");

@@ -88,6 +88,13 @@ function deferred() { let resolve; const promise = new Promise((r) => { resolve 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const recurring = { title: "Daily reading", description: null, importance: "side", priority: null, default_reward_exp: 37,
   recurrence_mode: "daily", start_date: "2026-09-29", end_date: null };
+/** create_recurring_quest_v2 receipt: the frozen v1 fields plus the closed v2 additions. */
+function recurringScheduleReceipt(args, replay = false) {
+  const r = args.request;
+  return { version: 2, ...recurringReceipt(args, replay), revision: 1,
+    local_start_time: r.local_start_time, local_end_time: r.local_end_time,
+    planned_end_day_offset: r.planned_end_day_offset };
+}
 function recurringReceipt(args, replay = false) {
   const r = args.request;
   return { command_id: args.command_id, quest_id: A, recurrence_rule_id: B, definition_created_event_id: A,
@@ -98,7 +105,9 @@ function recurringReceipt(args, replay = false) {
 }
 function form({ account = A, timezone = "UTC", mode = "new", request = base, id = uuid() } = {}) {
   const data = new FormData();
-  for (const [key, value] of Object.entries({ expected_account: account, timezone, mode, request_json: JSON.stringify(request), command_id: id })) data.set(key, value);
+  // Mirrors the lifecycle: each record declares the exact contract version it was created under.
+  const version = "local_start_time" in request ? 4 : "recurrence_mode" in request ? 3 : 2;
+  for (const [key, value] of Object.entries({ expected_account: account, timezone, mode, request_json: JSON.stringify(request), command_id: id, pending_version: String(version) })) data.set(key, value);
   return data;
 }
 
@@ -370,18 +379,18 @@ test("v2 and v3 recovery coexist unchanged; version/request/key substitutions an
 test("recurring commit then lost response recovers v3 dates and exact command after refresh/timezone change", async () => {
   const effects = new Map();
   const respond = (_name, args) => {
-    assert.equal(_name, "create_recurring_quest");
+    assert.equal(_name, "create_recurring_quest_v2");
     assert.equal(args.origin, "web_ui"); assert.equal(Object.hasOwn(args, "userId"), false);
     if (!effects.has(args.command_id)) { effects.set(args.command_id, JSON.stringify(args.request)); throw Error("lost response after commit"); }
     assert.equal(effects.get(args.command_id), JSON.stringify(args.request));
-    return { data: recurringReceipt(args, true), error: null };
+    return { data: recurringScheduleReceipt(args, true), error: null };
   };
   configure(respond);
   const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
   c.updateDraft("recurrence_mode", "weekly"); c.updateDraft("start_date", recurring.start_date);
   c.updateDraft("end_date", "2026-12-31"); c.updateDraft("weekdays", [7, 1]);
   await c.submit();
-  const saved = c.getSnapshot().operations[0]; assert.equal(saved.version, 3); assert.deepEqual(saved.request.weekdays, [1, 7]);
+  const saved = c.getSnapshot().operations[0]; assert.equal(saved.version, 4); assert.deepEqual(saved.request.weekdays, [1, 7]);
   configure(respond, "Asia/Ho_Chi_Minh");
   const restored = h.make(A, "Asia/Ho_Chi_Minh"); await restored.recover();
   assert.equal(restored.getSnapshot().draft.recurrence_mode, "weekly");
@@ -394,10 +403,10 @@ test("recurring commit then lost response recovers v3 dates and exact command af
 
 test("daily and monthly drafts create through recurring RPC; one-off drafts still use v2", async () => {
   for (const cadence of ["daily", "monthly"]) {
-    configure((_name, args) => ({ data: recurringReceipt(args), error: null }));
+    configure((_name, args) => ({ data: recurringScheduleReceipt(args), error: null }));
     const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
     c.updateDraft("recurrence_mode", cadence); c.updateDraft("start_date", recurring.start_date); c.updateDraft("month_day", "31");
-    await c.submit(); assert.equal(c.getSnapshot().phase, "ready"); assert.equal(calls[0].name, "create_recurring_quest");
+    await c.submit(); assert.equal(c.getSnapshot().phase, "ready"); assert.equal(calls[0].name, "create_recurring_quest_v2");
     const request = JSON.parse(h.sent[0].request_json); assert.equal(Object.hasOwn(request, "scheduled_at"), false);
     assert.equal(request.month_day, cadence === "monthly" ? 31 : undefined);
   }
@@ -405,7 +414,7 @@ test("daily and monthly drafts create through recurring RPC; one-off drafts stil
 });
 
 test("recurring receipt mismatch and RPC errors preserve exact pending data", async () => {
-  for (const response of [(args) => ({ data: { ...recurringReceipt(args), anchor_date: "2026-01-01" }, error: null }), () => ({ data: null, error: { code: "42501" } })]) {
+  for (const response of [(args) => ({ data: { ...recurringScheduleReceipt(args), anchor_date: "2026-01-01" }, error: null }), () => ({ data: null, error: { code: "42501" } })]) {
     configure((_name, args) => response(args));
     const h = setup({ send: createQuest }); const c = h.make(); await fill(c);
     c.updateDraft("recurrence_mode", "daily"); c.updateDraft("start_date", recurring.start_date);

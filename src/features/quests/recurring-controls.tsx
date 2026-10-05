@@ -6,6 +6,7 @@ import { useOnline } from "@/features/network/network-status";
 import { getDictionary, type Locale } from "@/lib/localization/dictionaries";
 import type { RecurringQuest } from "./recurring-list";
 import { RecurringRetirementControl } from "./recurring-retirement-control";
+import { RecurringSeriesManageButton } from "./recurring-series-trigger";
 import { useRecurringRetirement } from "./recurring-retirement-provider";
 import { usePauseController } from "./recurrence-pause-provider";
 import { getPauseServerSnapshot } from "./recurrence-pending";
@@ -35,6 +36,10 @@ function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Lo
       <button type="button" disabled={!online || state.phase !== "ready" || retirement.state.phase !== "ready"} onClick={() => { void execute(false); }} className={buttonClass}>{state.phase === "sending" ? t.confirming : quest.paused ? t.resume : t.pause}</button>}
     {state.phase === "blocked" && <button type="button" onClick={() => { void controller.recover(); }} className={`${buttonClass} ml-2`}>{t.check}</button>}
     <div lang="en" aria-live="polite">{state.error && <p role="alert" className="mt-2 text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="mt-2 text-sm text-emerald-300">{state.message}</p>}</div>
+    {/* A recurring definition is reachable even with zero materialized occurrences,
+        so its schedule defaults can still be read, set, cleared or corrected. This
+        opens the SAME shared Quest-ID manager the occurrence card uses. */}
+    <RecurringSeriesManageButton questId={quest.quest_id} title={quest.title} locale={locale} className={buttonClass} />
     <RecurringRetirementControl questId={quest.quest_id} title={quest.title} locale={locale} disabled={state.phase !== "ready"} />
   </li>;
 }

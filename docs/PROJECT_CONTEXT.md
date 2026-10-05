@@ -3,6 +3,7 @@
 SYSTEM V1 is a personal Life OS: planning, productivity, growth, and recovery supported by gamification. Game/anime System interfaces are inspiration; the product must develop its own visual identity.
 
 ## Current state and conceptual modules
+Recurring Schedule Defaults V1 is implemented end to end on `feat/recurring-schedule-defaults-v1` (ADR-022): a self-contained timezone backend, recurring creation schedule defaults with pending V4 recovery, Quest-ID-keyed series management reachable from every active recurring definition row as well as from occurrence cards, base-revision schedule edit recovery with explicit conflict/reload behavior, and a materialization warning surface that renders independently of occurrence-list emptiness. Calendar stays write-free; an unmaterialized Calendar projection remains a separate future milestone. Nothing is deployed, committed or pushed. See the [handoff](04-development/recurring-schedule-resolver-v2.md).
 
 Recurring Quest Archive/Delete V1 is implemented on `feat/recurring-quest-archive-delete-v1` under the Product Owner's locked retain-exact-state-and-freeze contract (ADR-021). Archive/restore preserve Pause and all occurrence/EXP state; recurring deletion requires archive and retains a permanent tombstone without Reopen. This supersedes older auto-cancellation design text. No migration deployment, commit or push has occurred. See [the implementation/validation handoff](04-development/recurring-quest-archive-delete-v1.md) for current checks and environment limitations.
 

@@ -519,3 +519,14 @@ Permanent delete requires an already archived definition and sets deleted_at. It
 **Impact:** One additive migration; recurring-specific RPCs and archived read; no new dependencies, table columns, RLS policies or EXP source. Existing RLS-bound command role and shared owner/Quest lock order serialize retirement with generation, completion, Reopen and Pause. The new migration retains explicit owner guards on replaced commands and applies after the historical owner-activation checksum boundary. Browser tombstone history remains hidden. Account-level retirement recovery uses a separate versioned namespace so old one-off pending contracts remain exact.
 
 **Validation and rollout:** See [Recurring retirement handoff](../04-development/recurring-quest-archive-delete-v1.md). Apply the new migration before deploying its UI; do not rewrite prior migrations. No Cloud operation is authorized by this ADR.
+
+## ADR-022 - SYSTEM-owned versioned timezone rules
+
+**Status:** Accepted by Product Owner on 2026-10-04; backend and frontend implementation
+complete on `feat/recurring-schedule-defaults-v1`.
+Supersedes the uncommitted live-provider/attestation design. See [ADR-022](adr-022-transition-derived-timezone-catalog.md)
+for immutable side-by-side releases, pinned recurring authority, fail-closed integrity,
+source provenance and independent acceptance gates. The frontend adds recurring creation
+schedule defaults, Quest-ID series management, base-revision schedule edit recovery and the
+materialization warning surface; Calendar stays write-free. See the
+[resolver handoff](../04-development/recurring-schedule-resolver-v2.md). Deployment remains unauthorized.

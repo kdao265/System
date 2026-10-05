@@ -31,7 +31,11 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
     }, from: () => { throw new Error("Protected data reached"); } };
   }
   export function createRecurringQuest() { throw new Error("Protected RPC reached"); }
+  export function createRecurringQuestV2() { throw new Error("Protected RPC reached"); }
   export function setRecurrencePause() { throw new Error("Protected RPC reached"); }
+  export function getRecurringSeriesDetail() { throw new Error("Protected RPC reached"); }
+  export function setRecurringScheduleDefaults() { throw new Error("Protected RPC reached"); }
+  export class ScheduleCommandError extends Error {}
   export function createOneOffQuest() { throw new Error("Protected RPC reached"); }
   export function completeQuestOccurrence() { throw new Error("Protected RPC reached"); }
   export function reopenQuestOccurrence() { throw new Error("Protected RPC reached"); }

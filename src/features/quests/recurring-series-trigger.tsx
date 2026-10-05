@@ -33,3 +33,26 @@ export function RecurringSeriesTrigger({ occurrenceId, questId, title, locale = 
     </div>
   </details>;
 }
+
+/**
+ * A direct Manage series entry for surfaces that have no occurrence card to hang
+ * a disclosure on: recurring definition rows and materialization notices. It opens
+ * the SAME shared Quest-ID manager/modal as the occurrence trigger. It deliberately
+ * creates no second dialog, no second pause controller and no second retirement
+ * controller, and it never materializes an occurrence just to reach management.
+ */
+export function RecurringSeriesManageButton({ questId, title, label, locale = "en", className }: {
+  questId: string; title: string; label?: string; locale?: Locale; className?: string;
+}) {
+  const t = getDictionary(locale).seriesManage;
+  const open = useSeriesSelection();
+  // The visible label IS the accessible name (no aria-label override), so this reads
+  // exactly like the existing Pause/Resume/Archive row controls.
+  return <button type="button" title={title}
+    className={className ?? "mt-2 inline-flex min-h-11 cursor-pointer items-center rounded-md border border-zinc-600 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3"}
+    onClick={(event) => {
+      if (open) open({ occurrenceId: null, questId, title }, event.currentTarget);
+    }}>
+    {label ?? t.manage}
+  </button>;
+}

@@ -1,5 +1,33 @@
 // UI copy only. Never translate route segments, persisted values or command identifiers.
 export const en = {
+  scheduleDefaults: {
+    heading: "Schedule defaults",
+    hint: "Optional default times for each day of this series, in the series timezone. Leave both empty for untimed occurrences.",
+    start: "Default start", end: "Default end", nextDay: "Ends the next day",
+    nextDayHint: "An end at or before the start continues past midnight; equal times mean exactly 24 hours.",
+    sameDayHint: "A same-day end must be later than the start.",
+    none: "No schedule defaults", timezone: "Timezone",
+    edit: "Edit schedule", save: "Save schedule", saving: "Saving…", cancel: "Cancel", clear: "Clear schedule defaults",
+    awaiting: "A saved schedule request must be resolved before another can be submitted.",
+    retry: "Retry saved request",
+    partial: "Enter both default times, or leave both empty.",
+    ordering: "Default end must follow start on the same day, or be at or before start when ending the next day.",
+    conflict: "This series changed elsewhere. Reload the latest defaults before saving.",
+    reload: "Reload latest",
+  },
+  materialization: {
+    heading: "Recurring timing notices",
+    hint: "Some recurring Quests could not be given times for this day. The rest of the day is unaffected.",
+    endpoint: "Endpoint", reason: "Reason", slot: "Slot", quest: "Series",
+    endpoints: { start: "Start", end: "End", interval: "Interval" },
+    reasons: {
+      nonexistent_local_time: "A default time does not exist that day (clocks moved forward).",
+      ambiguous_local_time: "A default time occurs twice that day (clocks moved back).",
+      unsupported_timezone_semantics: "The Profile timezone has no definite offset for that day.",
+      unsupported_instant_range: "The resolved time falls outside the supported range.",
+      invalid_interval: "Start and end resolve to an invalid interval.",
+    },
+  },
   questDetail: {
     title: "Quest detail", plannedStart: "Planned start", plannedEnd: "Planned end", endNotSet: "End not set", deadline: "Deadline",
     plan: "Plan / Edit plan", save: "Save plan", saving: "Saving…", saved: "Plan saved. Current details refreshed separately.",
@@ -91,6 +119,34 @@ type DictionaryShape<T> = { readonly [K in keyof T]: T[K] extends string ? strin
 export type Dictionary = DictionaryShape<typeof en>;
 
 export const vi = {
+  scheduleDefaults: {
+    heading: "Mặc định lịch",
+    hint: "Giờ mặc định tùy chọn cho mỗi ngày của chuỗi này, theo múi giờ của chuỗi. Để trống cả hai nếu không cần giờ.",
+    start: "Giờ bắt đầu mặc định", end: "Giờ kết thúc mặc định", nextDay: "Kết thúc vào ngày hôm sau",
+    nextDayHint: "Giờ kết thúc bằng hoặc trước giờ bắt đầu thì chuỗi tiếp tục sau nửa đêm; bằng nhau nghĩa là đúng 24 giờ.",
+    sameDayHint: "Trong cùng một ngày, giờ kết thúc phải muộn hơn giờ bắt đầu.",
+    none: "Chưa có giờ mặc định", timezone: "Múi giờ",
+    edit: "Chỉnh sửa giờ mặc định", save: "Lưu giờ mặc định", saving: "Đang lưu…", cancel: "Hủy", clear: "Xóa giờ mặc định",
+    awaiting: "Yêu cầu lịch đã lưu phải được xử lý trước khi gửi yêu cầu khác.",
+    retry: "Thử lại đúng yêu cầu đã lưu",
+    partial: "Nhập cả hai giờ, hoặc để trống cả hai.",
+    ordering: "Giờ kết thúc phải sau giờ bắt đầu trong cùng ngày, hoặc bằng/trước giờ bắt đầu nếu kết thúc ngày hôm sau.",
+    conflict: "Chuỗi này đã thay đổi ở nơi khác. Hãy tải lại giờ mặc định mới nhất trước khi lưu.",
+    reload: "Tải lại bản mới nhất",
+  },
+  materialization: {
+    heading: "Thông báo thời gian định kỳ",
+    hint: "Một số Quest định kỳ không thể lên lịch cho ngày này. Các phần còn lại của ngày không bị ảnh hưởng.",
+    endpoint: "Điểm cuối", reason: "Lý do", slot: "Ngày nguồn", quest: "Chuỗi",
+    endpoints: { start: "Bắt đầu", end: "Kết thúc", interval: "Khoảng" },
+    reasons: {
+      nonexistent_local_time: "Giờ mặc định không tồn tại vào ngày đó (đồng hồ chuyển tới trước).",
+      ambiguous_local_time: "Giờ mặc định xuất hiện hai lần vào ngày đó (đồng hồ lùi lại).",
+      unsupported_timezone_semantics: "Múi giờ hồ sơ không có độ lệch xác định cho ngày đó.",
+      unsupported_instant_range: "Thời điểm đã phân giải nằm ngoài phạm vi được hỗ trợ.",
+      invalid_interval: "Đầu bắt đầu và đầu kết thúc tạo thành khoảng thời gian không hợp lệ.",
+    },
+  },
   questDetail: {
     title: "Chi tiết Quest", plannedStart: "Bắt đầu dự kiến", plannedEnd: "Kết thúc dự kiến", endNotSet: "Chưa đặt giờ kết thúc", deadline: "Hạn chót",
     plan: "Lập / Sửa kế hoạch", save: "Lưu kế hoạch", saving: "Đang lưu…", saved: "Đã lưu kế hoạch. Chi tiết hiện tại được tải lại riêng.",

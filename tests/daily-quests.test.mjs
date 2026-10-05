@@ -101,14 +101,16 @@ const base = {
 };
 const render = (result, timezone = "Asia/Ho_Chi_Minh", selectedDate = "2026-09-23") =>
   renderToStaticMarkup(createElement(DailyQuestList, { result, timezone, selectedDate }));
+const renderOwned = (result, timezone = "Asia/Ho_Chi_Minh", selectedDate = "2026-09-23") =>
+  renderToStaticMarkup(createElement(DailyQuestList, { result, timezone, selectedDate, userId: owner.id }));
 
 function mockRead(read, getUser = async () => assert.fail("unexpected fresh Auth check"), selectedDate = "2026-09-23") {
   configure(async () => owner, async (readOnly) => {
     assert.equal(readOnly, true);
     return { auth: { getUser }, rpc: async (...args) => {
-      if (args[0] === "materialize_quest_day") {
-        assert.deepEqual(args, ["materialize_quest_day", { p_day: selectedDate }]);
-        return { data: 0, error: null };
+      if (args[0] === "materialize_quest_day_v2") {
+        assert.deepEqual(args, ["materialize_quest_day_v2", { p_day: selectedDate }]);
+        return { data: { version: 2, day: selectedDate, timezone: "UTC", created_count: 0, issues: [] }, error: null };
       }
       assert.deepEqual(args, ["list_day_quest_occurrences", { p_day: selectedDate }]);
       return read();
@@ -206,7 +208,8 @@ test("server membership, order, status and readiness are never recomputed", () =
 test("read adapter distinguishes empty, malformed, timezone and generic RPC errors", async () => {
   for (const data of [[], [base], null, {}, [base, {}]]) {
     mockRead(() => ({ data, error: null }));
-    assert.deepEqual(await getDayQuests("2026-09-23"), parseDayQuests(data));
+    const expected = parseDayQuests(data);
+    assert.deepEqual(await getDayQuests("2026-09-23"), expected.status === "ok" ? { ...expected, issues: [] } : expected);
   }
   for (const [error, status] of [[{ code: "PZ001" }, "timezone-required"],
     [{ code: "XX000", message: "private diagnostic" }, "unavailable"], [new Error("fetch failed"), "unavailable"]]) {
@@ -220,7 +223,7 @@ test("read adapter distinguishes empty, malformed, timezone and generic RPC erro
 test("read adapter sends the selected calendar date to the SQL contract", async () => {
   const selectedDate = "2027-02-28";
   mockRead(() => ({ data: [], error: null }), async () => owner, selectedDate);
-  assert.deepEqual(await getDayQuests(selectedDate), { status: "ok", quests: [] });
+  assert.deepEqual(await getDayQuests(selectedDate), { status: "ok", quests: [], issues: [] });
 });
 
 test("valid session plus returned or thrown 42501/token errors stays a panel error without redirect", async () => {
@@ -268,6 +271,55 @@ test("inconclusive Auth checks and transport failures remain generic and preserv
   }
 });
 
+// Release blocker 2: a materialization warning must survive an EMPTY day. Warnings are
+// independent of occurrence-list emptiness; both the warning and the empty state may show.
+const warning = {
+  quest_id: "00000000-0000-0000-0000-000000000003",
+  recurrence_rule_id: "00000000-0000-0000-0000-000000000005",
+  rule_revision: 1,
+  source_slot_date: "2026-09-23",
+  local_start_time: "02:30", local_end_time: "03:30", planned_end_day_offset: 0,
+  endpoint: "start", reason: "nonexistent_local_time",
+};
+
+test("zero occurrences with one issue still renders the warning, its reason and Manage series", () => {
+  const html = renderOwned({ status: "ok", quests: [], issues: [warning] });
+  assert.match(html, /Recurring timing notices/, "the warning surface is independent of emptiness");
+  assert.match(html, /A default time does not exist that day \(clocks moved forward\)/, "issue reason text is visible");
+  assert.match(html, /Endpoint: Start/, "the affected endpoint is named");
+  assert.match(html, /Manage series/, "a Manage series entry is reachable from the notice");
+  assert.match(html, /No Quests for this day/, "the normal empty-day state may also be visible");
+  // Nonfatal: still an "ok" day, never the unavailable/fatal surface.
+  assert.doesNotMatch(html, /Daily Quests are unavailable|could not be read safely/);
+  assert.doesNotMatch(html, /Retry Daily Quests/);
+});
+
+test("warnings render with or without occurrences, and fatal states stay unchanged", () => {
+  // A one-off day needs no owner-scoped controls; only the notice surface does.
+  const withQuests = render({ status: "ok", quests: [base], issues: [warning] });
+  assert.match(withQuests, /Recurring timing notices/);
+  assert.match(withQuests, /Read the next chapter/, "the Quest list is still rendered alongside the warning");
+  assert.doesNotMatch(withQuests, /No Quests for this day/, "a populated day is not labelled empty");
+
+  // A normal day with no issues is completely unchanged.
+  const normal = render({ status: "ok", quests: [base] });
+  assert.doesNotMatch(normal, /Recurring timing notices/);
+  assert.match(normal, /Read the next chapter/);
+  assert.doesNotMatch(normal, /No Quests for this day/);
+
+  // An empty day with no issues still shows only the empty state.
+  const empty = render({ status: "ok", quests: [] });
+  assert.match(empty, /No Quests for this day/);
+  assert.doesNotMatch(empty, /Recurring timing notices/);
+
+  // Fatal PZ/backend failures retain existing unavailable behavior and never show notices.
+  for (const status of ["invalid", "unavailable", "timezone-required", "session-expired"]) {
+    const html = render({ status });
+    assert.match(html, /role="alert"/);
+    assert.doesNotMatch(html, /Recurring timing notices/);
+  }
+});
+
 test("accessible distinct loading, empty, invalid, retry, timezone and time displays", () => {
   const loading = renderToStaticMarkup(createElement(DailyQuestLoading, { timezone: "UTC", selectedDate: "2026-09-23" }));
   assert.match(loading, /aria-busy="true"/);
@@ -302,7 +354,9 @@ function pageClient(rpc, profile = { display_name: "Operator", timezone: "UTC" }
   return {
     auth: { getUser: async () => ({ data: { user: owner }, error: null }) },
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: profile, error: null }) }) }) }),
-    rpc: (name, args) => name === "materialize_quest_day" ? Promise.resolve({ data: 0, error: null }) : rpc(name, args),
+    rpc: (name, args) => name === "materialize_quest_day_v2"
+      ? Promise.resolve({ data: { version: 2, day: args.p_day, timezone: "UTC", created_count: 0, issues: [] }, error: null })
+      : rpc(name, args),
   };
 }
 
@@ -480,19 +534,29 @@ test("non-today read failure and both retry links preserve the selected date", a
 
 test("day read materializes on the server before listing and fails closed when generation fails", async () => {
   const selectedDate = "2026-09-29";
-  for (const materialization of [{ data: 1, error: null }, { data: null, error: { code: "PZ001" } }, { data: null, error: { code: "XX000" } }, { data: "1", error: null }]) {
+  const ok = { version: 2, day: selectedDate, timezone: "UTC", created_count: 1, issues: [] };
+  const cases = [
+    { data: ok, error: null },
+    { data: null, error: { code: "PZ001" } },
+    { data: null, error: { code: "XX000" } },
+    // Non-v2 contract, wrong day and a malformed issue entry all fail closed.
+    { data: { ...ok, version: 1 }, error: null },
+    { data: { ...ok, day: "2026-09-30" }, error: null },
+    { data: { ...ok, issues: [{ quest_id: "not-a-uuid" }] }, error: null },
+  ];
+  for (const materialization of cases) {
     const calls = [];
     configure(async () => owner, async () => ({ rpc: async (name, args) => {
       calls.push(name); assert.deepEqual(args, { p_day: selectedDate });
-      if (name === "materialize_quest_day") return materialization;
+      if (name === "materialize_quest_day_v2") return materialization;
       assert.equal(name, "list_day_quest_occurrences"); return { data: [base], error: null };
     } }));
     const result = await getDayQuests(selectedDate);
-    if (materialization.data === 1) {
-      assert.equal(result.status, "ok"); assert.deepEqual(calls, ["materialize_quest_day", "list_day_quest_occurrences"]);
+    if (materialization.data === ok) {
+      assert.equal(result.status, "ok"); assert.deepEqual(calls, ["materialize_quest_day_v2", "list_day_quest_occurrences"]);
     } else {
       assert.equal(result.status, materialization.error?.code === "PZ001" ? "timezone-required" : materialization.error ? "unavailable" : "invalid");
-      assert.deepEqual(calls, ["materialize_quest_day"]);
+      assert.deepEqual(calls, ["materialize_quest_day_v2"]);
     }
   }
 });

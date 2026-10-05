@@ -40,6 +40,7 @@ const getRegistryServerSnapshot = () => REGISTRY_SERVER_SNAPSHOT;
 export class ScheduleDefaultsRegistry {
   private readonly controllers = new Map<string, ScheduleDefaultsLifecycle>();
   private readonly controllerUnsubscribers = new Map<string, () => void>();
+  private readonly hydratedQuestIds = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private active = true;
   private version = 0;
@@ -102,6 +103,21 @@ export class ScheduleDefaultsRegistry {
     }
 
     return controller;
+  }
+
+  async ensureRecovered(questId: string) {
+    if (
+      !this.active ||
+      !UUID.test(questId) ||
+      this.hydratedQuestIds.has(questId)
+    ) {
+      return;
+    }
+
+    // Claim hydration before awaiting so multiple consumers cannot
+    // start duplicate initial recovery cycles for the same Quest.
+    this.hydratedQuestIds.add(questId);
+    await this.get(questId).recover();
   }
 
   activate() {
@@ -171,7 +187,9 @@ export class ScheduleDefaultsRegistry {
     if (!this.active) return;
     if (questId !== undefined) {
       if (!UUID.test(questId)) return;
-      await this.get(questId).recover();
+      const controller = this.get(questId);
+      this.hydratedQuestIds.add(questId);
+      await controller.recover();
       return;
     }
 
@@ -179,8 +197,14 @@ export class ScheduleDefaultsRegistry {
       this.get(storedQuestId);
     }
 
+    const controllers = [...this.controllers.entries()];
+
+    for (const [id] of controllers) {
+      this.hydratedQuestIds.add(id);
+    }
+
     await Promise.all(
-      [...this.controllers.values()].map((controller) => controller.recover()),
+      controllers.map(([, controller]) => controller.recover()),
     );
   }
 }
@@ -194,7 +218,13 @@ export function useScheduleController(questId: string) {
     throw new Error("Recurring schedule defaults require a Dashboard owner");
   }
 
-  return registry.get(questId);
+  const controller = registry.get(questId);
+
+  useEffect(() => {
+    void registry.ensureRecovered(questId);
+  }, [registry, questId]);
+
+  return controller;
 }
 
 export function ScheduleDefaultsProvider({

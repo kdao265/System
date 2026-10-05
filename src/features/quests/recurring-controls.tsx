@@ -34,8 +34,7 @@ function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Lo
 
   useEffect(() => {
     void controller.recover();
-    void scheduleController.recover();
-  }, [controller, scheduleController]);
+  }, [controller]);
   async function execute(retry: boolean) {
     if (!navigator.onLine) return;
     if (!retry && schedule.phase !== "ready") return;

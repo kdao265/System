@@ -748,10 +748,61 @@ test("archive restore and delete are gated centrally by schedule recovery", () =
     "fresh Archive, Restore and Delete stay locked until schedule recovery settles",
   );
 
-  assert.match(
+  assert.doesNotMatch(
     control,
     /scheduleController\.recover\(\)/,
-    "archived rows can hydrate schedule state even without opening the series modal",
+    "retirement consumers observe provider-owned schedule recovery without restarting it",
+  );
+
+  const provider = readFileSync(
+    new URL("../src/features/quests/schedule-provider.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    provider,
+    /void registry\.recover\(\);/,
+    "the account-scoped provider owns initial schedule recovery",
+  );
+
+  assert.match(
+    provider,
+    /async ensureRecovered\(questId: string\)/,
+    "late-created controllers hydrate once through the provider registry",
+  );
+
+  assert.match(
+    provider,
+    /hydratedQuestIds\.has\(questId\)/,
+    "already hydrated controllers do not restart initial recovery on consumer remount",
+  );
+
+  assert.match(
+    provider,
+    /void registry\.ensureRecovered\(questId\);/,
+    "the shared schedule hook requests one-time hydration for late controllers",
+  );
+
+  const rows = readFileSync(
+    new URL("../src/features/quests/recurring-controls.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    rows,
+    /scheduleController\.recover\(\)/,
+    "recurring rows must not restart provider-owned schedule recovery",
+  );
+
+  const manager = readFileSync(
+    new URL("../src/features/quests/recurring-series-manager.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    manager,
+    /schedule\.recover\(\)/,
+    "the series modal must not restart provider-owned schedule recovery",
   );
 });
 

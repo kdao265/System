@@ -109,9 +109,6 @@ function RecurringSeriesModal({ userId, locale, selection, onClose, onArchived }
   const commandAtOpen = useRef(retirementState.resultCommandId);
   const reconciling = pause.phase === "recovering" || pause.phase === "sending" ||
     scheduleState.phase === "recovering" || scheduleState.phase === "sending";
-  useEffect(() => {
-    void schedule.recover();
-  }, [schedule]);
   useEffect(() => { void pauseController.recover(); }, [pauseController]);
   useEffect(() => {
     const element = dialog.current!;

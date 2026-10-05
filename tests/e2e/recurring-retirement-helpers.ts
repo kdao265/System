@@ -15,9 +15,9 @@ export async function createRecurring(page: Page,schedule?:{start:string;end:str
   await form.getByLabel("Title",{exact:true}).fill(title);
   await form.getByLabel("Reward EXP",{exact:true}).fill(String(rewardExp));
 if(schedule){
-    await form.getByLabel("Default start time",{exact:true}).fill(schedule.start);
-    await form.getByLabel("Default end time",{exact:true}).fill(schedule.end);
-    if(schedule.nextDay) await form.getByLabel("Ends the next day",{exact:true}).check();
+    await form.getByLabel("Default planned start",{exact:true}).fill(schedule.start);
+    await form.getByLabel("Default planned end",{exact:true}).fill(schedule.end);
+    if(schedule.nextDay) await form.getByLabel("Ends on the following day",{exact:true}).check();
   }
   await form.getByLabel("Start date",{exact:true}).fill(day);
   await form.getByRole("button",{name:"Create recurring Quest",exact:true}).click();

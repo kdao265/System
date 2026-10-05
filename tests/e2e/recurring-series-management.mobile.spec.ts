@@ -94,20 +94,20 @@ test("a zero-occurrence definition manages its schedule at 360, 390 and 412 px",
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAccessibleName("Series management");
-    const section = dialog.locator("> div").filter({ hasText: /^Schedule defaults/ }).last();
-    await expect(section.getByText("No schedule defaults", { exact: true })).toBeVisible();
+    const section = dialog.locator("> div").filter({ hasText: /^Default planned interval/ }).last();
+    await expect(section.getByText("No default planned interval", { exact: true })).toBeVisible();
 
     // Set and clear the defaults from the definition row alone.
     await section.getByRole("button", { name: "Edit schedule", exact: true }).click();
-    await section.getByLabel("Default start", { exact: true }).fill("06:30");
-    await section.getByLabel("Default end", { exact: true }).fill("07:15");
+    await section.getByLabel("Default planned start", { exact: true }).fill("06:30");
+    await section.getByLabel("Default planned end", { exact: true }).fill("07:15");
     await section.getByRole("button", { name: "Save schedule", exact: true }).click();
     await expect(section.getByText("06:30", { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await dialog.screenshot({ path: testInfo.outputPath(`definition-series-${width}.png`) });
 
     await section.getByRole("button", { name: "Clear schedule defaults", exact: true }).click();
-    await expect(section.getByText("No schedule defaults", { exact: true })).toBeVisible();
+    await expect(section.getByText("No default planned interval", { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     // Escape closes and returns focus to the definition-row trigger.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useOnline } from "@/features/network/network-status";
 import type { Locale } from "@/lib/localization/dictionaries";
 import type { QuestManagementOperation } from "./management-action";
@@ -22,9 +22,6 @@ export function RecurringRetirementControl({ questId, title, archived = false, d
     getScheduleServerSnapshot,
   );
 
-  useEffect(() => {
-    void scheduleController.recover();
-  }, [scheduleController]);
   const [confirming, setConfirming] = useState<QuestManagementOperation | null>(null);
   const locked = disabled || !online || state.phase !== "ready" || schedule.phase !== "ready";
   const result = state.questId === questId ? state.result : undefined;

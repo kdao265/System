@@ -14,7 +14,7 @@ export async function createCalendarViewScenario(page: Page) {
   await quest.getByLabel("Planned start (optional)", { exact: true }).fill(`${calendarDay}T12:00`);
   await quest.getByLabel("Reward EXP", { exact: true }).fill("0");
   await quest.getByRole("button", { name: "Schedule Quest", exact: true }).click();
-  await expect(quest.getByRole("status")).toContainText("Quest created:");
+  await expect(quest.getByRole("status")).toContainText("Quest created");
 
   const eventTitle = `Calendar view event ${suffix}`;
   const overflowTitles = Array.from({ length: 6 }, (_, index) => `Overflow ${index} ${suffix} ${"X".repeat(45)}`);

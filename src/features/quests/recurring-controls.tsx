@@ -10,6 +10,8 @@ import { RecurringSeriesManageButton } from "./recurring-series-trigger";
 import { useRecurringRetirement } from "./recurring-retirement-provider";
 import { usePauseController } from "./recurrence-pause-provider";
 import { getPauseServerSnapshot } from "./recurrence-pending";
+import { useScheduleController } from "./schedule-provider";
+import { getScheduleServerSnapshot } from "./schedule-pending";
 
 const buttonClass = "mt-3 min-h-11 rounded-md border border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Locale }) {
@@ -22,9 +24,20 @@ function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Lo
   // One shared controller per questId (dashboard-level registry); the series modal consumes the same instance.
   const controller = usePauseController(quest.quest_id);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, getPauseServerSnapshot);
-  useEffect(() => { void controller.recover(); }, [controller]);
+
+  const scheduleController = useScheduleController(quest.quest_id);
+  const schedule = useSyncExternalStore(
+    scheduleController.subscribe,
+    scheduleController.getSnapshot,
+    getScheduleServerSnapshot,
+  );
+
+  useEffect(() => {
+    void controller.recover();
+  }, [controller]);
   async function execute(retry: boolean) {
     if (!navigator.onLine) return;
+    if (!retry && schedule.phase !== "ready") return;
     if (await (retry ? controller.retry() : controller.submit(!quest.paused))) router.refresh();
   }
   return <li className="rounded-md border border-zinc-800 p-4" aria-busy={state.phase === "sending"}>
@@ -33,7 +46,7 @@ function RecurringControl({ quest, locale }: { quest: RecurringQuest; locale: Lo
     <p className="mt-1 type-metadata text-muted">{t.from} {quest.anchor_date}{quest.end_date ? ` ${t.through} ${quest.end_date}` : ""}</p>
     {state.operation && <p className="mt-2 text-sm text-exp">{t.awaiting}: {state.operation.paused ? t.pause : t.resume}</p>}
     {state.phase === "uncertain" ? <button type="button" disabled={!online} onClick={() => { void execute(true); }} className={buttonClass}>{t.retry}</button> :
-      <button type="button" disabled={!online || state.phase !== "ready" || retirement.state.phase !== "ready"} onClick={() => { void execute(false); }} className={buttonClass}>{state.phase === "sending" ? t.confirming : quest.paused ? t.resume : t.pause}</button>}
+      <button type="button" disabled={!online || state.phase !== "ready" || retirement.state.phase !== "ready" || schedule.phase !== "ready"} onClick={() => { void execute(false); }} className={buttonClass}>{state.phase === "sending" ? t.confirming : quest.paused ? t.resume : t.pause}</button>}
     {state.phase === "blocked" && <button type="button" onClick={() => { void controller.recover(); }} className={`${buttonClass} ml-2`}>{t.check}</button>}
     <div lang="en" aria-live="polite">{state.error && <p role="alert" className="mt-2 text-sm text-red-300">{state.error}</p>}{state.message && <p role="status" className="mt-2 text-sm text-emerald-300">{state.message}</p>}</div>
     {/* A recurring definition is reachable even with zero materialized occurrences,

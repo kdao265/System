@@ -102,7 +102,7 @@ export async function createQuest(page: Page, scenario: string) {
   await form.getByLabel("Planned start (optional)", { exact: true }).fill(`${questDay}T12:00`);
   await form.getByLabel("Reward EXP", { exact: true }).fill(String(rewardExp));
   await form.getByRole("button", { name: "Schedule Quest", exact: true }).click();
-  await expect(form.getByRole("status")).toContainText("Quest created:");
+  await expect(form.getByRole("status")).toContainText("Quest created");
   // Creation confirms its receipt; a fresh selected-day read displays the row.
   await page.reload();
   const row = questRow(page, title);

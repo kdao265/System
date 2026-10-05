@@ -40,7 +40,7 @@ test("creation sends once while pending and safely retries the saved request aft
   const retryRequest = page.waitForRequest((request) => !!request.headers()["next-action"]);
   await form.getByRole("button", { name: "Retry exact request", exact: true }).click();
   expect((await retryRequest).postData()).toContain(saved.commandId);
-  await expect(form.getByRole("status")).toContainText("Quest created:");
+  await expect(form.getByRole("status")).toContainText("Quest created");
   await expect(form.getByRole("button", { name: "Schedule Quest", exact: true })).toBeEnabled();
   await expectQuestHistory(environment, title, 0, 0);
 });

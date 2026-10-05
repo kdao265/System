@@ -14,7 +14,7 @@ export async function visualFoundationJourney(page: Page, context: BrowserContex
   await expect(page.getByRole("navigation", { name: "Điều hướng SYSTEM", exact: true })).toBeVisible();
 
   // Refreshing locale must retain an unsent feature draft and selected-date URL.
-  const title = page.getByRole("region", { name: "Create Quest", exact: true }).getByLabel("Title", { exact: true });
+  const title = page.getByRole("region", { name: /^(Create Quest|T\u1ea1o Quest)$/ }).getByLabel(/^(Title|Ti\u00eau \u0111\u1ec1)$/);
   await title.fill("Unsent locale draft");
   await page.getByLabel("Ngôn ngữ", { exact: true }).selectOption("en");
   await page.getByRole("button", { name: "Áp dụng ngôn ngữ", exact: true }).click();

@@ -1,7 +1,17 @@
 import { isRecurring, isScheduledRecurringRequest } from "./recurring-model";
-import type { QuestCreationState } from "./create-action";
-import { draftFromPending, emptyDraft, requestFromDraft, type QuestDraft } from "./create-draft";
+import type { QuestCreationErrorCode, QuestCreationState, QuestCreationSuccess } from "./create-action";
+import { draftFromPending, emptyDraft, requestFromDraft, type CreationDraftErrorCode, type QuestDraft } from "./create-draft";
 import { persistPending, readPendingCreations, removePending, type PendingCreation, type StorageAccess, type PendingRead } from "./create-pending";
+
+export type CreationErrorCode =
+  | CreationDraftErrorCode
+  | QuestCreationErrorCode
+  | "storage_unavailable"
+  | "storage_corrupt"
+  | "session_changed"
+  | "schedule_incomplete"
+  | "pending_elsewhere"
+  | "pending_changed";
 
 export type CreationView = {
   phase: "recovering" | "ready" | "sending" | "uncertain" | "blocked";
@@ -11,8 +21,8 @@ export type CreationView = {
   draftTimezone: string;
   profileTimezone: string;
   operations: PendingCreation[];
-  error?: string;
-  message?: string;
+  error?: CreationErrorCode;
+  message?: QuestCreationSuccess;
 };
 export type CreationDependencies = {
   storage: StorageAccess;
@@ -20,8 +30,8 @@ export type CreationDependencies = {
   send: (previous: unknown, data: FormData) => Promise<QuestCreationState>;
   uuid: () => string;
 };
-const storageError = "Browser recovery storage or tab coordination is unavailable or could not be verified. No new request will be sent. Use a supported secure browser with storage enabled, then check recovery again.";
-const corruptError = "Saved Quest recovery data is corrupt or from an older version. Creation is blocked; preserve the data and resolve the original command before continuing.";
+const storageError: CreationErrorCode = "storage_unavailable";
+const corruptError: CreationErrorCode = "storage_corrupt";
 
 /** The form and Node tests use this same lifecycle. All tab mutations share a browser lock. */
 export class QuestCreationLifecycle {
@@ -56,7 +66,7 @@ export class QuestCreationLifecycle {
     this.generation++;
     this.busy = false;
     this.state = this.initial(this.state.profileTimezone);
-    this.set({ phase: "blocked", accountChanged: true, error: "Your account changed or your session ended. Refresh to continue with the signed-in account." });
+    this.set({ phase: "blocked", accountChanged: true, error: "session_changed" });
   };
   profileChanged(timezone: string) { if (timezone !== this.state.profileTimezone) this.set({ profileTimezone: timezone }); }
   reviewTimezone() {
@@ -112,7 +122,7 @@ export class QuestCreationLifecycle {
     // Recurring creation always uses the schedule-capable contract; the frozen
     // v3 shape stays readable and replayable for recovery but is never produced.
     if (isRecurring(request)) {
-      if (!isScheduledRecurringRequest(request)) { this.set({ error: "Recurring schedule defaults are incomplete." }); return; }
+      if (!isScheduledRecurringRequest(request)) { this.set({ error: "schedule_incomplete" }); return; }
       const operation: PendingCreation = { ...identity(), version: 4, request };
       await this.execute("new", () => operation);
       return;
@@ -137,7 +147,7 @@ export class QuestCreationLifecycle {
         const read = readPendingCreations(this.deps.storage, userId);
         if (!this.applyRead(read)) return;
         if (mode === "new" && read.operations.length) {
-          this.set({ error: "Another tab has a pending request. Resolve the saved request before starting another." });
+          this.set({ error: "pending_elsewhere" });
           return;
         }
         const operation = snapshot();
@@ -145,7 +155,7 @@ export class QuestCreationLifecycle {
           const stored = read.operations.find((item) => item.commandId === operation.commandId);
           if (!stored) persistPending(this.deps.storage, operation);
           else if (JSON.stringify(stored) !== JSON.stringify(operation)) {
-            this.set({ phase: "blocked", error: "This pending request was changed or resolved in another tab. Check recovery before continuing.", operations: [operation, ...read.operations.filter((item) => item.commandId !== operation.commandId)] });
+            this.set({ phase: "blocked", error: "pending_changed", operations: [operation, ...read.operations.filter((item) => item.commandId !== operation.commandId)] });
             return;
           }
         } else {
@@ -161,7 +171,7 @@ export class QuestCreationLifecycle {
         form.set("request_json", JSON.stringify(operation.request));
         let result: QuestCreationState;
         try { result = await this.deps.send({}, form); }
-        catch { result = { outcome: "unknown", error: "Connection lost. The creation outcome is unknown; retry the exact saved request." }; }
+        catch { result = { outcome: "unknown", error: "transport_unknown" }; }
         // A response for the old account must not mutate either account's current UI or records.
         if (generation !== this.generation) return;
         if (result.outcome === "success" || (mode === "new" && result.outcome === "rejected")) {
@@ -169,12 +179,12 @@ export class QuestCreationLifecycle {
           const remaining = readPendingCreations(this.deps.storage, userId);
           if (!this.applyRead(remaining)) return;
           if (result.outcome === "success") {
-            this.set({ draft: { ...emptyDraft }, draftTimezone: this.state.profileTimezone, message: result.success?.message });
+            this.set({ draft: { ...emptyDraft }, draftTimezone: this.state.profileTimezone, message: result.success });
           } else {
             this.set({ error: result.error, ...(result.currentTimezone ? { profileTimezone: result.currentTimezone } : {}) });
           }
         } else {
-          this.set({ phase: "uncertain", error: result.error ?? "The outcome is unknown. Retry the exact saved request." });
+          this.set({ phase: "uncertain", error: result.error ?? "outcome_unknown" });
         }
         if (result.reason === "account") this.deactivate();
       });

@@ -1,6 +1,7 @@
 import "./helpers/ui-loader.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 
 // Recurring Schedule Defaults V1 frontend: closed request/receipt parsers, the
@@ -53,7 +54,7 @@ const { beginScheduleDraft, editScheduleDraft, markScheduleDraftConflicted, reco
 const { validateRecurringRequest, validateRecurringRequestV3, validateRecurringRequestV4, isScheduledRecurringRequest } =
   await import("../src/features/quests/recurring-model.ts");
 const { validateRecurringScheduleReceipt } = await import("../src/features/quests/recurring-receipt.ts");
-const { parseSeriesDetail, parseScheduleDefaultsReceipt } = await import("../src/features/quests/series-detail-model.ts");
+const { parseSeriesDetail, parseScheduleDefaultsReceipt: parseRawScheduleDefaultsReceipt } = await import("../src/features/quests/series-detail-model.ts");
 const { parseMaterializeDay, issueClock, MATERIALIZATION_ISSUE_REASONS } = await import("../src/features/quests/materialization-model.ts");
 const { pendingStorageKey, persistPending, readPendingCreations } = await import("../src/features/quests/create-pending.ts");
 const { ScheduleDefaultsLifecycle, SCHEDULE_PREFIX, SCHEDULE_LOCK, isScheduleOperation, getScheduleServerSnapshot } =
@@ -65,6 +66,21 @@ const v4 = { title: "Daily reading", description: null, importance: "side", prio
   recurrence_mode: "daily", start_date: "2026-09-29", end_date: null,
   local_start_time: "08:00", local_end_time: "09:30", planned_end_day_offset: 0 };
 const untimed = { ...v4, local_start_time: null, local_end_time: null, planned_end_day_offset: null };
+
+const requestedScheduleDefaults = {
+  local_start_time: "08:00",
+  local_end_time: "09:30",
+  planned_end_day_offset: 0,
+};
+
+const parseScheduleDefaultsReceipt = (data, commandId, questId) =>
+  parseRawScheduleDefaultsReceipt(
+    data,
+    commandId,
+    questId,
+    1,
+    requestedScheduleDefaults,
+  );
 const snapshot = (patch = {}) => ({ recurrence_type: "daily", interval_count: null, weekdays: null, month_day: null,
   anchor_date: "2026-10-01", end_date: null, occurrence_limit: null, revision: 1, stopped_at: null,
   local_start_time: null, local_end_time: null, planned_end_day_offset: null, ...patch });
@@ -72,7 +88,7 @@ const detail = (patch = {}, rulePatch = {}) => ({ version: 1, quest_id: quest, t
   recurrence_mode: "daily", recurrence_rule_id: rule, rule: snapshot(rulePatch),
   paused: rulePatch.stopped_at != null, materialized_occurrence_count: 4, timezone: "Asia/Ho_Chi_Minh", ...patch });
 const scheduleReceipt = (patch = {}) => ({ version: 1, command_id: command, quest_id: quest,
-  recurrence_rule_id: rule, event_id: eventId, before: snapshot(), after: snapshot({ revision: 2 }),
+  recurrence_rule_id: rule, event_id: eventId, before: snapshot(), after: snapshot({ revision: 2, ...requestedScheduleDefaults }),
   changed: true, effective_at: "2026-10-04T12:00:00Z", replay: false, ...patch });
 
 
@@ -142,12 +158,12 @@ test("the schedule command receipt proves its revision exactly as the SQL comman
   assert.deepEqual(parseScheduleDefaultsReceipt(receipt, command, quest), receipt);
   assert.equal(parseScheduleDefaultsReceipt(receipt, "11111111-1111-4111-8111-111111111111", quest), null, "wrong command");
   assert.equal(parseScheduleDefaultsReceipt(receipt, command, "11111111-1111-4111-8111-111111111111"), null, "wrong series");
-  assert.equal(parseScheduleDefaultsReceipt({ ...receipt, after: snapshot({ revision: 1 }) }, command, quest), null,
+  assert.equal(parseScheduleDefaultsReceipt({ ...receipt, after: snapshot({ revision: 1, ...requestedScheduleDefaults }) }, command, quest), null,
     "a change must bump exactly one revision");
-  const unchanged = scheduleReceipt({ changed: false, after: snapshot() });
+  const unchanged = scheduleReceipt({ changed: false, before: snapshot({ ...requestedScheduleDefaults }), after: snapshot({ ...requestedScheduleDefaults }) });
   assert.deepEqual(parseScheduleDefaultsReceipt(unchanged, command, quest), unchanged,
     "an unchanged command leaves an identical snapshot");
-  assert.equal(parseScheduleDefaultsReceipt({ ...unchanged, after: snapshot({ revision: 4 }) }, command, quest), null,
+  assert.equal(parseScheduleDefaultsReceipt({ ...unchanged, after: snapshot({ revision: 4, ...requestedScheduleDefaults }) }, command, quest), null,
     "unchanged cannot bump the revision");
   assert.equal(parseScheduleDefaultsReceipt({ ...receipt, extra: true }, command, quest), null);
   assert.equal(parseScheduleDefaultsReceipt({ ...receipt, replay: "yes" }, command, quest), null);
@@ -342,12 +358,25 @@ test("the schedule action validates identity and maps certified rejections witho
   assert.deepEqual(globalThis.__revalidated, [["/dashboard"]]);
   assert.deepEqual(globalThis.__scheduleCalls, [[command, quest, 5, defaults]]);
 
-  assert.equal((await saveScheduleDefaults({ ...input, userId: "11111111-1111-4111-8111-111111111111" })).outcome, "rejected");
-  assert.equal((await saveScheduleDefaults({ ...input, defaults: { ...defaults, local_end_time: null } })).reason, "invalid",
-    "a partial tuple never reaches SQL");
-  assert.equal((await saveScheduleDefaults({ ...input, expectedRevision: 0 })).reason, "invalid");
-  assert.equal((await saveScheduleDefaults({ ...input, commandId: "nope" })).reason, "invalid");
-  assert.equal(globalThis.__scheduleCalls.length, 1, "invalid input sends nothing");
+  const accountMismatch = await saveScheduleDefaults({
+    ...input,
+    userId: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.equal(accountMismatch.outcome, "unknown",
+    "account/preflight failure cannot prove that a saved command did not commit");
+  assert.equal(accountMismatch.reason, undefined);
+
+  for (const invalidInput of [
+    { ...input, defaults: { ...defaults, local_end_time: null } },
+    { ...input, expectedRevision: 0 },
+    { ...input, commandId: "nope" },
+  ]) {
+    const result = await saveScheduleDefaults(invalidInput);
+    assert.equal(result.outcome, "unknown",
+      "client/preflight validation must preserve an unresolved saved command");
+    assert.equal(result.reason, undefined);
+  }
+  assert.equal(globalThis.__scheduleCalls.length, 1, "preflight-invalid input sends nothing");
 
   for (const [code, message, reason] of [
     ["23514", "Stale recurring rule revision", "stale"],
@@ -468,4 +497,222 @@ test("a submit that races a newer revision surfaces the conflict and never auto-
   assert.equal(markScheduleDraftConflicted(raced), raced, "re-marking is the identical object");
   assert.equal(reconcileScheduleDraft(raced, rule2).conflicted, true, "a later read must not clear it");
   assert.equal(reconcileScheduleDraft(raced, rule2).baseRevision, 1);
+});
+
+test("schedule receipt is bound to expected revision and exact requested defaults", () => {
+  const receipt = scheduleReceipt();
+
+  assert.notEqual(
+    parseRawScheduleDefaultsReceipt(
+      receipt,
+      command,
+      quest,
+      1,
+      requestedScheduleDefaults,
+    ),
+    null,
+    "the exact changed request is certified",
+  );
+
+  assert.equal(
+    parseRawScheduleDefaultsReceipt(
+      receipt,
+      command,
+      quest,
+      2,
+      requestedScheduleDefaults,
+    ),
+    null,
+    "the receipt cannot certify a different expected revision",
+  );
+
+  assert.equal(
+    parseRawScheduleDefaultsReceipt(
+      receipt,
+      command,
+      quest,
+      1,
+      {
+        ...requestedScheduleDefaults,
+        local_end_time: "10:00",
+      },
+    ),
+    null,
+    "the receipt cannot certify a different requested schedule tuple",
+  );
+
+  assert.equal(
+    parseRawScheduleDefaultsReceipt(
+      scheduleReceipt({
+        after: snapshot({
+          revision: 2,
+          anchor_date: "2026-10-02",
+          ...requestedScheduleDefaults,
+        }),
+      }),
+      command,
+      quest,
+      1,
+      requestedScheduleDefaults,
+    ),
+    null,
+    "schedule-defaults cannot mutate unrelated rule fields",
+  );
+
+  assert.equal(
+    parseRawScheduleDefaultsReceipt(
+      scheduleReceipt({
+        before: snapshot({ ...requestedScheduleDefaults }),
+        after: snapshot({ revision: 2, ...requestedScheduleDefaults }),
+        changed: true,
+      }),
+      command,
+      quest,
+      1,
+      requestedScheduleDefaults,
+    ),
+    null,
+    "changed=true is impossible when the requested tuple already existed",
+  );
+
+  const unchanged = snapshot({ ...requestedScheduleDefaults });
+
+  assert.notEqual(
+    parseRawScheduleDefaultsReceipt(
+      scheduleReceipt({
+        before: unchanged,
+        after: unchanged,
+        changed: false,
+      }),
+      command,
+      quest,
+      1,
+      requestedScheduleDefaults,
+    ),
+    null,
+    "an exact no-op keeps the revision and whole rule unchanged",
+  );
+
+  const clearBefore = snapshot({
+    revision: 7,
+    ...requestedScheduleDefaults,
+  });
+
+  const clearAfter = snapshot({
+    revision: 8,
+    local_start_time: null,
+    local_end_time: null,
+    planned_end_day_offset: null,
+  });
+
+  assert.notEqual(
+    parseRawScheduleDefaultsReceipt(
+      scheduleReceipt({
+        before: clearBefore,
+        after: clearAfter,
+        changed: true,
+      }),
+      command,
+      quest,
+      7,
+      {
+        local_start_time: null,
+        local_end_time: null,
+        planned_end_day_offset: null,
+      },
+    ),
+    null,
+    "clearing schedule defaults is bound to the exact all-null tuple",
+  );
+});
+
+test("schedule timing copy is DST-safe and recovery copy is dictionary-owned", () => {
+  assert.equal(en.scheduleDefaults.heading, "Default planned interval");
+  assert.equal(vi.scheduleDefaults.heading, "Khoảng thời gian dự kiến mặc định");
+
+  assert.doesNotMatch(
+    en.scheduleDefaults.nextDayHint,
+    /exactly 24 hours/i,
+    "local-day semantics must not promise 24 elapsed hours",
+  );
+
+  assert.doesNotMatch(
+    vi.scheduleDefaults.nextDayHint,
+    /đúng 24 giờ/i,
+    "Vietnamese copy must not promise 24 elapsed hours",
+  );
+
+  assert.match(en.scheduleDefaults.nextDayHint, /clocks change/i);
+  assert.match(vi.scheduleDefaults.nextDayHint, /đồng hồ thay đổi/i);
+
+  assert.equal(
+    Object.keys(en.scheduleDefaults.recovery).sort().join(","),
+    Object.keys(vi.scheduleDefaults.recovery).sort().join(","),
+    "schedule recovery copy has EN/VI parity",
+  );
+});
+
+test("Quest creation deterministic copy follows Dashboard locale", () => {
+  assert.equal(
+    Object.keys(en.questCreate).sort().join(","),
+    Object.keys(vi.questCreate).sort().join(","),
+    "Quest creation dictionaries keep EN/VI key parity",
+  );
+
+  assert.equal(
+    en.questCreate.weekdays.length,
+    7,
+    "English creation copy has seven weekdays",
+  );
+
+  assert.equal(
+    vi.questCreate.weekdays.length,
+    7,
+    "Vietnamese creation copy has seven weekdays",
+  );
+
+  const form = readFileSync(
+    new URL("../src/features/quests/create-form.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(form, /getDictionary\(locale\)/);
+  assert.match(form, /dictionary\.questCreate/);
+  assert.match(form, /dictionary\.scheduleDefaults/);
+  assert.match(form, /lang=\{locale\}/);
+
+  assert.doesNotMatch(
+    form,
+    /exactly 24 hours/i,
+    "creation copy must use DST-safe local-day semantics",
+  );
+
+  assert.doesNotMatch(
+    form,
+    />CREATE QUEST<\/h2>/,
+    "creation heading must come from the active locale",
+  );
+
+  assert.doesNotMatch(
+    form,
+    />Retry exact request<\/button>/,
+    "creation recovery action must come from the active locale",
+  );
+
+  const dashboard = readFileSync(
+    new URL("../src/app/dashboard/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    dashboard.includes(
+      '<QuestCreationForm timezone={profile.timezone!} userId={user.id} locale={locale} />'
+    ),
+    "Dashboard passes its active locale into Quest creation",
+  );
+
+  assert.ok(
+    !dashboard.includes('lang="en"><QuestCreationForm'),
+    "Quest creation is no longer forced into an English subtree",
+  );
 });

@@ -4,10 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 import { useRouter } from "next/navigation";
 import { useOnline } from "@/features/network/network-status";
 import { getDictionary, type Locale } from "@/lib/localization/dictionaries";
-import { readRecurringSeriesDetail, saveScheduleDefaults } from "./series-actions";
+import { readRecurringSeriesDetail } from "./series-actions";
 import { OccurrenceReadGeneration } from "./plan-model";
 import type { SeriesDetail } from "./series-detail-model";
-import { getScheduleServerSnapshot, SCHEDULE_LOCK, SCHEDULE_PREFIX, ScheduleDefaultsLifecycle, type ScheduleView } from "./schedule-pending";
+import { getScheduleServerSnapshot, type ScheduleView } from "./schedule-pending";
 import { NO_SCHEDULE_DEFAULTS, partialScheduleDefaults, scheduleDefaultsFromDraft, type ScheduleDefaults } from "./schedule-model";
 import {
   beginScheduleDraft, editScheduleDraft, markScheduleDraftConflicted,
@@ -18,6 +18,7 @@ import { RecurringRetirementControl } from "./recurring-retirement-control";
 import { usePauseController } from "./recurrence-pause-provider";
 import { getPauseServerSnapshot } from "./recurrence-pending";
 import { isFreshSeriesArchive } from "./recurring-series-state";
+import { useScheduleController } from "./schedule-provider";
 
 /**
  * One selection shape for the whole Dashboard. `occurrenceId` is present only for
@@ -27,7 +28,12 @@ import { isFreshSeriesArchive } from "./recurring-series-state";
  */
 export type SeriesSelection = { occurrenceId: string | null; questId: string; title: string };
 /** A settled schedule command: whether it saved, and the certified rejection reason if not. */
-export type ScheduleSaveOutcome = { saved: boolean; reason?: "stale" | "retired" | "invalid" | "conflict" };
+export type ScheduleSaveOutcome = {
+  saved: boolean;
+  pending?: boolean;
+  commandId?: string;
+  reason?: "stale" | "retired" | "invalid" | "conflict";
+};
 type OpenSeries = (selection: SeriesSelection, opener: HTMLElement) => void;
 
 const Selection = createContext<OpenSeries | null>(null);
@@ -89,43 +95,20 @@ function RecurringSeriesModal({ userId, locale, selection, onClose, onArchived }
   const { state: retirementState } = useRecurringRetirement();
   const pauseController = usePauseController(questId);
   const pause = useSyncExternalStore(pauseController.subscribe, pauseController.getSnapshot, getPauseServerSnapshot);
-  // Own namespace and lock, exactly like pause: schedule commands coordinate
-  // across tabs and survive a reload without sharing any other pending record.
-  const [schedule] = useState(() => new ScheduleDefaultsLifecycle(userId, questId, {
-    storage: () => window.localStorage,
-    lock: async <T,>(work: () => Promise<T>) => {
-      if (!navigator.locks) throw new Error("Tab coordination unavailable");
-      return navigator.locks.request(SCHEDULE_LOCK, work);
-    },
-    uuid: () => crypto.randomUUID(),
-    send: (operation) => saveScheduleDefaults({
-      userId: operation.userId, commandId: operation.commandId, questId: operation.questId,
-      expectedRevision: operation.expectedRevision, defaults: operation.defaults,
-    }),
-  }));
-  const scheduleState = useSyncExternalStore(schedule.subscribe, schedule.getSnapshot, getScheduleServerSnapshot);
+  // Schedule recovery is account-owned, so this modal consumes the same
+  // lifecycle that remains alive after the modal closes.
+  const schedule = useScheduleController(questId);
+  const scheduleState = useSyncExternalStore(
+    schedule.subscribe,
+    schedule.getSnapshot,
+    getScheduleServerSnapshot,
+  );
   const [generation] = useState(() => new OccurrenceReadGeneration());
   const [nonce, setNonce] = useState(0);
   const [loaded, setLoaded] = useState<{ detail: SeriesDetail | null; nonce: number; version: number; scheduleVersion: number } | null>(null);
   const commandAtOpen = useRef(retirementState.resultCommandId);
   const reconciling = pause.phase === "recovering" || pause.phase === "sending" ||
     scheduleState.phase === "recovering" || scheduleState.phase === "sending";
-  useEffect(() => { void schedule.recover(); }, [schedule]);
-  useEffect(() => {
-    // Cross-tab recovery for schedule commands only; pause has its own provider.
-    const head = `${SCHEDULE_PREFIX}${userId}:`;
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key.startsWith(head)) void schedule.recover();
-    };
-    const onFocus = () => { void schedule.recover(); };
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      schedule.deactivate();
-    };
-  }, [schedule, userId]);
   useEffect(() => { void pauseController.recover(); }, [pauseController]);
   useEffect(() => {
     const element = dialog.current!;
@@ -171,7 +154,13 @@ function RecurringSeriesModal({ userId, locale, selection, onClose, onArchived }
         const saved = await schedule.submit(defaults, expectedRevision);
         // Report the certified rejection reason so only a STALE rejection forces the
         // draft conflict state; other rejections keep their existing inline error.
-        return { saved, reason: schedule.getSnapshot().reason };
+        const snapshot = schedule.getSnapshot();
+        return {
+          saved,
+          pending: snapshot.phase === "uncertain",
+          commandId: snapshot.operation?.commandId ?? snapshot.settlement?.commandId,
+          reason: snapshot.reason,
+        };
       }}
       onScheduleRetry={() => schedule.retry()}
       onScheduleStale={() => setNonce((value) => value + 1)} />
@@ -203,6 +192,7 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
   // newest authoritative revision is never substituted at submit time.
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
   const [scheduleValidation, setScheduleValidation] = useState<string | null>(null);
+  const [pendingScheduleCommandId, setPendingScheduleCommandId] = useState<string | null>(null);
   const editing = draft !== null;
   // Reconciliation against authoritative detail is DERIVED during render, not applied in
   // an effect: a pristine draft synchronizes its values and base revision, while a
@@ -213,6 +203,50 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
   const endInput = effectiveDraft?.values.end ?? "";
   const nextDayInput = effectiveDraft?.values.nextDay ?? false;
   const scheduleConflicted = effectiveDraft?.conflicted ?? false;
+  const scheduleSettlement = schedule.settlement;
+
+  useEffect(() => {
+    if (
+      pendingScheduleCommandId === null ||
+      !scheduleSettlement ||
+      scheduleSettlement.commandId !== pendingScheduleCommandId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      setPendingScheduleCommandId(null);
+
+      if (scheduleSettlement.outcome === "success") {
+        setDraft(null);
+        setScheduleValidation(null);
+        onReload();
+        return;
+      }
+
+      if (scheduleSettlement.reason === "stale") {
+        setDraft((current) =>
+          current === null ? null : markScheduleDraftConflicted(current)
+        );
+        onScheduleStale();
+      }
+
+      onReload();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    scheduleSettlement,
+    pendingScheduleCommandId,
+    onReload,
+    onScheduleStale,
+  ]);
   // Every user edit is applied to the reconciled draft, so a synchronized pristine
   // draft becomes the base for all subsequent input.
   function updateDraft(patch: Partial<ScheduleDraft["values"]>) {
@@ -221,7 +255,7 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
   }
   async function togglePause(retry: boolean) {
     if (!navigator.onLine || !detail?.rule) return;
-    if (!retry && (loading || controller.getSnapshot().version !== detailVersion)) return;
+    if (!retry && (loading || schedule.phase !== "ready" || controller.getSnapshot().version !== detailVersion)) return;
     if (await (retry ? controller.retry() : controller.submit(!detail.paused))) onReload();
   }
   if (loading) return <p role="status" className="mt-4 text-sm">{t.loading}</p>;
@@ -248,15 +282,24 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
   async function persistSchedule(defaults: ScheduleDefaults, expectedRevision: number) {
     setScheduleValidation(null);
     const outcome = await onScheduleSave(defaults, expectedRevision);
-    if (outcome.saved) setDraft(null);
-    // ONLY a stale rejection means the submit raced a newer authoritative revision:
-    // keep the local draft, freeze its base revision, reload authoritative detail and
-    // surface the conflict. Other rejections keep their existing inline error, and no
-    // rejection is ever retried automatically.
-    else if (outcome.reason === "stale") {
-      setDraft((current) => (current === null ? null : markScheduleDraftConflicted(current)));
-      onScheduleStale();
+    if (outcome.saved) {
+      setPendingScheduleCommandId(null);
+      setDraft(null);
+    } else if (outcome.pending && outcome.commandId) {
+      // The local draft now owns this exact durable command until recovery settles it.
+      setPendingScheduleCommandId(outcome.commandId);
+    } else {
+      setPendingScheduleCommandId(null);
+
+      // Only a certified STALE rejection freezes the draft against the newer rule.
+      if (outcome.reason === "stale") {
+        setDraft((current) =>
+          current === null ? null : markScheduleDraftConflicted(current)
+        );
+        onScheduleStale();
+      }
     }
+
     onReload();
   }
   function saveSchedule() {
@@ -289,7 +332,7 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
       {pause.operation && <p className="text-sm text-exp">{rc.awaiting}: {pause.operation.paused ? rc.pause : rc.resume}</p>}
       {pause.phase === "uncertain"
         ? <button type="button" disabled={!online} onClick={() => { void togglePause(true); }} className={buttonClass}>{rc.retry}</button>
-        : <button type="button" disabled={!online || pause.phase !== "ready" || retirement.state.phase !== "ready"}
+        : <button type="button" disabled={!online || pause.phase !== "ready" || retirement.state.phase !== "ready" || schedule.phase !== "ready"}
             onClick={() => { void togglePause(false); }} className={buttonClass}>
             {pause.phase === "sending" ? rc.confirming : detail.paused ? t.resume : t.pause}
           </button>}

@@ -68,7 +68,7 @@ export async function setRecurringScheduleDefaults(commandId: string, questId: s
     p_origin: "web_ui",
   });
   if (error) throw new ScheduleCommandError(error.code ?? null, error.message);
-  const receipt = parseScheduleDefaultsReceipt(data, commandId, questId);
+  const receipt = parseScheduleDefaultsReceipt(data, commandId, questId, expectedRevision, defaults);
   if (!receipt) throw new Error("Invalid schedule defaults receipt");
   return receipt;
 }

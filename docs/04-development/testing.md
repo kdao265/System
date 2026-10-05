@@ -25,6 +25,7 @@ Use synthetic or redacted fixtures. Do not use production secrets or perform des
 | PWA installability and phone layout | Part of `npm run test:e2e`: manifest metadata, required icon/asset responses, service-worker script and 360/390/412 px layout checks in the mobile project; see [Personal Beta PWA](personal-beta-pwa.md) |
 | Explicit TypeScript check | `npx tsc --noEmit` |
 | Runtime timezone validation | `node --test tests/timezones.test.mjs` (Node.js 24, no database needed) |
+| Generated migration reproducibility | `node supabase/tests/verify-generated-migration.mjs`; **verification only** — composes the expected migration in memory, compares against the checked-in migration, exits 0 on an exact match and nonzero with first-difference diagnostics on a mismatch, and **never modifies any file**. Regeneration is a different, explicit mode: `--write`. Any other argument exits nonzero without touching the migration. |
 | Build | `npm run build`; `npm run start` serves the resulting production build |
 
 For documentation-only changes, inspect required content, relative links, templates and the file tree. Run `git diff --check`, `git status`, and `git diff --stat`; ordinary diffs do not include untracked files, so read those separately. No application tests are warranted for this initial documentation setup.

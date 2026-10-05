@@ -78,16 +78,12 @@ const renderList = (quests, withOwner = true) => renderToStaticMarkup(router(
   h(QuestManagementProvider, { userId: owner, locale: "en" },
     h(DailyQuestList, { result: { status: "ok", quests }, timezone: "UTC", selectedDate: "2026-10-04", userId: withOwner ? owner : undefined, locale: "en" }))));
 const detail = (paused = false, mode = "daily") => ({
-  version: 1, occurrence_id: occurrence, quest_id: quest, title, description: null, notes: null,
-  status: "draft", scheduled_at: null, planned_end_at: null, deadline_at: null,
-  execution_cycle: 1, reward_exp_snapshot: 37, estimated_duration_minutes_snapshot: null,
-  source_slot_date: "2026-10-04", source_timezone: "UTC",
-  recurrence_rule_id: "00000000-0000-0000-0000-000000000005", recurrence_revision: 1,
-  recurrence_mode: mode, plannable: true,
+  version: 1, quest_id: quest, title, recurrence_mode: mode,
+  recurrence_rule_id: "00000000-0000-0000-0000-000000000005",
+  paused, materialized_occurrence_count: 4, timezone: "UTC",
   rule: mode === "weekly"
-    ? { recurrence_type: "selected_weekdays", weekdays: [1, 3], month_day: null, interval_count: null, anchor_date: "2026-10-01", end_date: "2026-12-31", occurrence_limit: null, revision: 1, paused }
-    : { recurrence_type: "daily", weekdays: null, month_day: null, interval_count: null, anchor_date: "2026-10-01", end_date: null, occurrence_limit: null, revision: 1, paused },
-  goal: null,
+    ? { recurrence_type: "selected_weekdays", weekdays: [1, 3], month_day: null, interval_count: null, anchor_date: "2026-10-01", end_date: "2026-12-31", occurrence_limit: null, revision: 3, stopped_at: paused ? "2026-10-02T00:00:00Z" : null, local_start_time: "08:30", local_end_time: "09:00", planned_end_day_offset: 0 }
+    : { recurrence_type: "daily", weekdays: null, month_day: null, interval_count: null, anchor_date: "2026-10-01", end_date: null, occurrence_limit: null, revision: 1, stopped_at: paused ? "2026-10-02T00:00:00Z" : null, local_start_time: null, local_end_time: null, planned_end_day_offset: null },
 });
 
 test("recurring Daily card renders the Manage series disclosure; one-off overflow is untouched", () => {
@@ -142,8 +138,10 @@ test("active series modal content carries the whole-series warning and no perman
 test("EN/VI series localization parity holds and the manager exposes no delete path", () => {
   const leaves = (object, prefix = "") => Object.entries(object).flatMap(([key, value]) => typeof value === "string"
     ? [prefix + key] : leaves(value, `${prefix}${key}.`));
-  assert.deepEqual(leaves(vi).filter((key) => key.startsWith("seriesManage.")),
-    leaves(en).filter((key) => key.startsWith("seriesManage.")));
+  for (const prefix of ["seriesManage.", "scheduleDefaults.", "materialization."]) {
+    assert.deepEqual(leaves(vi).filter((key) => key.startsWith(prefix)),
+      leaves(en).filter((key) => key.startsWith(prefix)), prefix);
+  }
   for (const key of ["manage", "title", "affects", "running", "paused", "pause", "resume", "archive", "cadence", "state"]) {
     assert(en.seriesManage[key].trim().length > 0, `en seriesManage.${key}`);
     assert(vi.seriesManage[key].trim().length > 0, `vi seriesManage.${key}`);
@@ -155,7 +153,9 @@ test("EN/VI series localization parity holds and the manager exposes no delete p
 });
 
 const renderContent = (element) => renderToStaticMarkup(wrap(element));
-const contentProps = (overrides = {}) => ({ locale: "en", questId: quest, title, detail: detail(false), detailVersion: 0, loading: false, onRetry() {}, onReload() {}, ...overrides });
+const scheduleView = (overrides = {}) => ({ phase: "ready", version: 0, ...overrides });
+const contentProps = (overrides = {}) => ({ locale: "en", questId: quest, title, detail: detail(false), detailVersion: 0, loading: false, onRetry() {}, onReload() {},
+  schedule: scheduleView(), async onScheduleSave() { return { saved: false }; }, async onScheduleRetry() { return false; }, ...overrides });
 
 test("exactly one pause controller per quest; pause and retirement namespaces unchanged", async () => {
   assert.equal(PAUSE_PREFIX, "system.quest-recurrence.pending.v1:");
@@ -234,6 +234,49 @@ test("exactly one pause controller per quest; pause and retirement namespaces un
   registry.deactivate();
   assert.equal(controller.getSnapshot().phase, "blocked");
   assert.match(controller.getSnapshot().error, /Session changed/);
+});
+
+test("the manager submits draft.baseRevision and gates Save behind the conflict state", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const manager = read("../src/features/quests/recurring-series-manager.tsx");
+  assert.match(manager, /persistSchedule\(defaults, draft\.baseRevision\)|persistSchedule\(defaults, effectiveDraft\.baseRevision\)/,
+    "Save must send the revision the draft was loaded from");
+  assert.doesNotMatch(manager, /persistSchedule\(defaults, rule\.revision\)/,
+    "the newest authoritative revision must never be substituted at submit time");
+  assert.match(manager, /schedule\.phase !== "ready" \|\| scheduleConflicted/, "a conflict disables Save");
+  assert.match(manager, /id="series-schedule-conflict" role="alert"/, "the conflict is announced");
+  assert.match(manager, /onClick=\{reloadAuthoritativeDraft\}/, "explicit reload recovery is offered");
+  assert.doesNotMatch(manager, /persistSchedule\(defaults\)\)/, "every command carries an explicit revision");
+  // Exact accepted-command recovery still replays the original pending operation.
+  const pending = read("../src/features/quests/schedule-pending.ts");
+  assert.match(pending, /const operation: ScheduleOperation = stored \?\? \{/);
+  assert.match(pending, /if \(retry && !stored\) throw new Error\("Missing operation"\)/,
+    "retry refuses to run without the stored operation, so it can never mint a new expected revision");
+  assert.match(pending, /async retry\(\) \{ return this\.execute\(\); \}/,
+    "retry replays the original pending command unchanged");
+});
+
+// Release blocker 3: a recurring definition row opens the SAME shared Quest-ID manager,
+// so a series with zero materialized occurrences can still manage schedule defaults.
+test("recurring definition rows expose the shared manager without a second implementation", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const controls = read("../src/features/quests/recurring-controls.tsx");
+  assert.match(controls, /<RecurringSeriesManageButton questId=\{quest\.quest_id\} title=\{quest\.title\}/,
+    "every active recurring definition row offers Manage series");
+  assert.match(controls, /usePauseController\(quest\.quest_id\)/, "the existing shared pause controller is unchanged");
+  assert.match(controls, /<RecurringRetirementControl questId=\{quest\.quest_id\}/, "direct archive control remains");
+  assert.doesNotMatch(controls, /new RecurrencePauseLifecycle|new QuestManagementLifecycle|new ScheduleDefaultsLifecycle/,
+    "definition rows never construct a second controller");
+  assert.doesNotMatch(controls, /<dialog|SeriesModalContent/,
+    "there is no second modal implementation in the definition row");
+
+  const trigger = read("../src/features/quests/recurring-series-trigger.tsx");
+  assert.match(trigger, /open\(\{ occurrenceId: null, questId, title \}, event\.currentTarget\)/,
+    "the definition trigger passes questId, title and the opening focus target into the shared manager");
+  assert.match(trigger, /useSeriesSelection\(\)/, "it consumes the same shared selection context");
+  assert.equal((trigger.match(/<dialog/g) ?? []).length, 0, "no second dialog in the trigger module");
+  assert.equal((trigger.match(/new ScheduleDefaultsLifecycle|new RecurrencePauseLifecycle|new QuestManagementLifecycle/g) ?? []).length, 0,
+    "no second pause/retirement/schedule controller in the trigger module");
 });
 
 test("shared wiring: cards and modal consume one registry; one manager and one provider per Dashboard", () => {

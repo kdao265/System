@@ -58,7 +58,8 @@ test("recurring creation and pause survive committed responses lost before the b
   });
   await form.getByRole("button", { name: "Create recurring Quest", exact: true }).click();
   await expect(form.getByRole("alert")).toContainText("outcome is unknown");
-  const saved = await page.evaluate(() => Object.entries(localStorage).find(([key]) => key.startsWith("system.quest-creation.pending.v3:")));
+  // Recurring creation now dispatches create_recurring_quest_v2 through the v4 namespace.
+  const saved = await page.evaluate(() => Object.entries(localStorage).find(([key]) => key.startsWith("system.quest-creation.pending.v4:")));
   expect(saved).toBeDefined();
   await page.unrouteAll({ behavior: "wait" });
   await page.reload();

@@ -1,3 +1,5 @@
+import type { MaterializationIssue } from "./materialization-model";
+
 /** The twelve fields of public.list_day_quest_occurrences(), without derivation. */
 export type DayQuest = {
   occurrence_id: string;
@@ -15,7 +17,8 @@ export type DayQuest = {
 };
 
 export type DayQuestResult =
-  | { status: "ok"; quests: DayQuest[] }
+  // Nonfatal slot-level materialization notices ride along with a successful read.
+  | { status: "ok"; quests: DayQuest[]; issues?: MaterializationIssue[] }
   | { status: "invalid" | "unavailable" | "timezone-required" | "session-expired" };
 
 const FIELDS = [

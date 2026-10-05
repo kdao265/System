@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { createQuest } from "./create-action";
 import { QuestCreationLifecycle } from "./create-lifecycle";
-import { PENDING_PREFIX, RECURRING_PENDING_PREFIX } from "./create-pending";
+import { PENDING_PREFIX, RECURRING_PENDING_PREFIX, RECURRING_SCHEDULE_PENDING_PREFIX } from "./create-pending";
 import { formatProfileLocal } from "./time";
 import { isRecurring, weekdays } from "./recurring-model";
+import { partialScheduleDefaults, validScheduleDefaults } from "./schedule-model";
 import type { QuestDraft } from "./create-draft";
 
 const control = "mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:py-3";
@@ -38,7 +39,7 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
     controller.changeAccount(userId, controller.getSnapshot().profileTimezone);
     void controller.recover();
     const onStorage = (event: StorageEvent) => {
-      if (event.key === null || [PENDING_PREFIX, RECURRING_PENDING_PREFIX].some((prefix) => event.key?.startsWith(`${prefix}${userId}:`))) void controller.recover();
+      if (event.key === null || [PENDING_PREFIX, RECURRING_PENDING_PREFIX, RECURRING_SCHEDULE_PENDING_PREFIX].some((prefix) => event.key?.startsWith(`${prefix}${userId}:`))) void controller.recover();
     };
     const onFocus = () => { void controller.recover(); };
     window.addEventListener("storage", onStorage);
@@ -69,6 +70,13 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
   function update<K extends keyof QuestDraft>(name: K, value: QuestDraft[K]) { controller.updateDraft(name, value); }
   const locked = state.phase !== "ready";
   const active = state.phase === "sending" || state.phase === "recovering";
+  // Live schedule guidance mirrors the submit-time rule; the server remains authoritative.
+  const schedulePartial = partialScheduleDefaults(draft.local_start_time, draft.local_end_time);
+  const scheduleOutOfOrder = !schedulePartial && draft.local_start_time !== "" &&
+    !validScheduleDefaults(draft.local_start_time, draft.local_end_time, draft.ends_next_day ? 1 : 0);
+  const scheduleHint = schedulePartial ? "Enter both default times, or leave both empty."
+    : scheduleOutOfOrder ? "Default end must follow start on the same day, or be at or before start when ending the next day."
+    : null;
 
   return (
     <section aria-label="Create Quest" className="min-w-0 [overflow-wrap:anywhere] rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 sm:p-6">
@@ -106,6 +114,17 @@ function AccountQuestCreationForm({ timezone, userId }: { timezone: string; user
           </div>
           {draft.recurrence_mode === "weekly" && <fieldset><legend>Select weekdays</legend><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">{weekdays.map((day, index) => <label key={day} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-zinc-700 px-3 py-2"><input type="checkbox" checked={draft.weekdays.includes(index + 1)} onChange={(event) => update("weekdays", event.target.checked ? [...draft.weekdays, index + 1] : draft.weekdays.filter((value) => value !== index + 1))} className="size-5 accent-zinc-100" />{day}</label>)}</div></fieldset>}
           {draft.recurrence_mode === "monthly" && <div><label htmlFor="quest-month-day">Day of month</label><input id="quest-month-day" type="number" min="1" max="31" step="1" value={draft.month_day} onChange={(event) => update("month_day", event.target.value)} className={control} /><p className="mt-2 text-sm text-zinc-400">Shorter months use their last day. The chosen day is retained for later months.</p></div>}
+          <fieldset>
+            <legend>Schedule defaults (optional)</legend>
+            <p className="mt-1 text-sm text-zinc-400">Default times for each occurrence day in your Profile timezone ({timezone}). Leave both empty for untimed occurrences.</p>
+            <div className="mt-2 grid gap-4 sm:grid-cols-2">
+              <div><label htmlFor="quest-local-start-time">Default start time</label><input id="quest-local-start-time" type="time" value={draft.local_start_time} onChange={(event) => update("local_start_time", event.target.value)} className={control} /></div>
+              <div><label htmlFor="quest-local-end-time">Default end time</label><input id="quest-local-end-time" type="time" value={draft.local_end_time} onChange={(event) => update("local_end_time", event.target.value)} className={control} /></div>
+            </div>
+            <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-zinc-700 px-3 py-2"><input type="checkbox" checked={draft.ends_next_day} onChange={(event) => update("ends_next_day", event.target.checked)} className="size-5 accent-zinc-100" />Ends the next day</label>
+            <p className="mt-2 text-sm text-zinc-400">{draft.ends_next_day ? "An end at or before the start continues past midnight; equal times mean exactly 24 hours." : "A same-day end must be later than the start."}</p>
+            {scheduleHint && <p role="status" className="mt-2 text-sm text-amber-300">{scheduleHint}</p>}
+          </fieldset>
         </fieldset>}
         <div className="grid gap-4 sm:grid-cols-3">
           <div><label htmlFor="quest-reward">Reward EXP</label><input id="quest-reward" type="number" min="0" max="2147483647" step="1" value={draft.default_reward_exp} onChange={(event) => update("default_reward_exp", event.target.value)} disabled={locked} className={control} /></div>

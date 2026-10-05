@@ -1,4 +1,4 @@
-import { isRecurring } from "./recurring-model";
+import { isRecurring, isScheduledRecurringRequest } from "./recurring-model";
 import type { QuestCreationState } from "./create-action";
 import { draftFromPending, emptyDraft, requestFromDraft, type QuestDraft } from "./create-draft";
 import { persistPending, readPendingCreations, removePending, type PendingCreation, type StorageAccess, type PendingRead } from "./create-pending";
@@ -107,10 +107,18 @@ export class QuestCreationLifecycle {
     if (this.busy || this.state.phase !== "ready") return;
     const normalized = requestFromDraft(this.state.draft, this.state.draftTimezone);
     if (!normalized.request) { this.set({ error: normalized.error }); return; }
-    await this.execute("new", () => {
-      const identity = { userId: this.userId, commandId: this.deps.uuid(), timezone: this.state.draftTimezone };
-      return isRecurring(normalized.request) ? { ...identity, version: 3, request: normalized.request } : { ...identity, version: 2, request: normalized.request };
-    });
+    const request = normalized.request;
+    const identity = () => ({ userId: this.userId, commandId: this.deps.uuid(), timezone: this.state.draftTimezone });
+    // Recurring creation always uses the schedule-capable contract; the frozen
+    // v3 shape stays readable and replayable for recovery but is never produced.
+    if (isRecurring(request)) {
+      if (!isScheduledRecurringRequest(request)) { this.set({ error: "Recurring schedule defaults are incomplete." }); return; }
+      const operation: PendingCreation = { ...identity(), version: 4, request };
+      await this.execute("new", () => operation);
+      return;
+    }
+    const operation: PendingCreation = { ...identity(), version: 2, request };
+    await this.execute("new", () => operation);
   }
   async retry(commandId: string) {
     if (this.busy || this.state.phase !== "uncertain") return;
@@ -147,6 +155,7 @@ export class QuestCreationLifecycle {
         const form = new FormData();
         form.set("expected_account", userId);
         form.set("command_id", operation.commandId);
+        form.set("pending_version", String(operation.version));
         form.set("timezone", operation.timezone);
         form.set("mode", mode);
         form.set("request_json", JSON.stringify(operation.request));

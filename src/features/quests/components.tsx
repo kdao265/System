@@ -1,10 +1,11 @@
 import { getDictionary, type Locale } from "@/lib/localization/dictionaries";
 import { Badge } from "@/components/ui/primitives";
 import type { DayQuestResult } from "./model";
+import { issueClock, type MaterializationIssue } from "./materialization-model";
 import { addCalendarDays, MAX_CALENDAR_DATE, MIN_CALENDAR_DATE } from "./dates";
 import { QuestCompletionControl, QuestReopenControl } from "./completion-control";
 import { QuestManagementControl } from "./management-control";
-import { RecurringSeriesTrigger } from "./recurring-series-trigger";
+import { RecurringSeriesTrigger, RecurringSeriesManageButton } from "./recurring-series-trigger";
 
 const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
 const navLinkClass = "rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
@@ -55,8 +56,46 @@ export function DailyQuestLoading({ timezone, selectedDate, locale = "en" }: { t
   return <QuestCard timezone={timezone} selectedDate={selectedDate} locale={locale} loading><p role="status" className="mt-4 text-muted">{getDictionary(locale).daily.loading}</p></QuestCard>;
 }
 
+/**
+ * Nonfatal, slot-local materialization notices. This surface is independent of
+ * whether the day produced any occurrences, and never turns a successful read
+ * into an unavailable state. Each notice links to the SAME shared series manager,
+ * so a series whose first slot failed materialization can still be corrected even
+ * though it has no occurrence card to click.
+ */
+function MaterializationNotices({ issues, locale, userId }: {
+  issues: MaterializationIssue[]; locale: Locale; userId?: string;
+}) {
+  const mi = getDictionary(locale).materialization;
+  const sm = getDictionary(locale).seriesManage;
+  return (
+    <div lang={locale} role="alert" aria-live="polite"
+      className="mt-4 rounded-md border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+      <p className="font-medium">{mi.heading}</p>
+      <p className="mt-1 text-amber-300/80">{mi.hint}</p>
+      <ul className="mt-2 space-y-2">
+        {issues.map((issue, index) => {
+          const start = issueClock(issue.local_start_time);
+          const end = issueClock(issue.local_end_time);
+          const label = `${mi.quest} ${issue.quest_id.slice(0, 8)}`;
+          return <li key={`${issue.quest_id}:${issue.source_slot_date}:${index}`}>
+            {mi.reasons[issue.reason]} {mi.endpoint}: {mi.endpoints[issue.endpoint]} · {mi.slot}: {issue.source_slot_date}
+            {start && end ? ` ${start}–${end}` : ""} · {mi.quest}: {issue.quest_id.slice(0, 8)}
+            {userId && <RecurringSeriesManageButton questId={issue.quest_id} title={label} label={sm.manage} locale={locale} />}
+          </li>;
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export function DailyQuestList({ result, timezone, selectedDate, userId, locale = "en" }: { result: DayQuestResult; timezone: string; selectedDate: string; userId?: string; locale?: Locale }) {
   const t = getDictionary(locale).daily;
+  const formatter = new Intl.DateTimeFormat(locale, {
+    timeZone: timezone, year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short",
+  });
+  const issues = result.status === "ok" ? (result.issues ?? []) : [];
   let content: React.ReactNode;
   if (result.status === "timezone-required") {
     content = <>
@@ -76,14 +115,15 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, locale 
       {/* A full navigation reruns the server reads, including after cached client navigation. */}
       <a href={`/dashboard?date=${selectedDate}`} className={linkClass}>{t.retry}</a>
     </>;
-  } else if (result.quests.length === 0) {
-    content = <p role="status" className="mt-4 text-zinc-300">{t.empty}</p>;
   } else {
-    const formatter = new Intl.DateTimeFormat(locale, {
-      timeZone: timezone, year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short",
-    });
+    // Materialization warnings are INDEPENDENT of occurrence-list emptiness. A day
+    // with zero occurrences and one skipped slot must still surface the notice, so
+    // the warning surface renders first and unconditionally, and only then does the
+    // body resolve to either the Quest rows or the normal empty-day state. It is
+    // valid to show both the warning and "No Quests for this day".
     content = <>
+      {issues.length > 0 && <MaterializationNotices issues={issues} locale={locale} userId={userId} />}
+      {result.quests.length === 0 ? <p role="status" className="mt-4 text-zinc-300">{t.empty}</p> : <>
       <ul aria-label={t.occurrences} className="mt-5 space-y-3">
         {result.quests.map((quest) => (
           <li key={quest.occurrence_id} className="dashboard-quest-row" data-completed={quest.status === "completed"}>
@@ -125,6 +165,7 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, locale 
         ))}
       </ul>
       <p className="mt-4 text-xs text-zinc-500">{t.fresh}</p>
+    </>}
     </>;
   }
   return <QuestCard timezone={timezone} selectedDate={selectedDate} locale={locale}>{result.status === "ok" && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span className="text-success">{getDictionary(locale).dashboard.completed}: {result.quests.filter((quest) => quest.status === "completed").length}</span><span className="text-muted">{getDictionary(locale).dashboard.pending}: {result.quests.filter((quest) => quest.status !== "completed").length}</span><a href="#create-quest" className="ui-button ml-auto">+ {getDictionary(locale).dashboard.addQuest}</a></div>}{content}</QuestCard>;

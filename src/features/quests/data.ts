@@ -4,6 +4,7 @@ import { getAuthenticatedUser } from "@/features/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isSessionFailure } from "@/features/progression/numbers";
 import { parseDayQuests, type DayQuestResult } from "./model";
+import { parseMaterializeDay } from "./materialization-model";
 
 function errorCode(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error
@@ -36,11 +37,16 @@ export async function getDayQuests(selectedDate: string): Promise<DayQuestResult
   try {
     if (!await getAuthenticatedUser()) return { status: "session-expired" };
     const supabase = await createServerSupabaseClient(true);
-    const materialized = await supabase.rpc("materialize_quest_day", { p_day: selectedDate });
+    // Contract version 2: generation reports certified per-slot issues that stay
+    // nonfatal; only a response outside that contract fails the whole day read.
+    const materialized = await supabase.rpc("materialize_quest_day_v2", { p_day: selectedDate });
     if (materialized.error) return readFailure(materialized.error);
-    if (!Number.isInteger(materialized.data) || materialized.data < 0) return { status: "invalid" };
+    const generation = parseMaterializeDay(materialized.data, selectedDate);
+    if (!generation) return { status: "invalid" };
     const { data, error } = await supabase.rpc("list_day_quest_occurrences", { p_day: selectedDate });
-    return error ? readFailure(error) : parseDayQuests(data);
+    if (error) return readFailure(error);
+    const day = parseDayQuests(data);
+    return day.status === "ok" ? { status: "ok", quests: day.quests, issues: generation.issues } : day;
   } catch (caught) {
     unstable_rethrow(caught);
     return readFailure(caught);

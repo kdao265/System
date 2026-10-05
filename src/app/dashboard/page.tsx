@@ -23,6 +23,7 @@ import { ArchivedQuestsPanel } from "@/features/quests/archived-panel";
 import { QuestManagementProvider } from "@/features/quests/management-provider";
 import { RecurringRetirementProvider } from "@/features/quests/recurring-retirement-provider";
 import { RecurrencePauseProvider } from "@/features/quests/recurrence-pause-provider";
+import { ScheduleDefaultsProvider } from "@/features/quests/schedule-provider";
 import { RecurringSeriesManager } from "@/features/quests/recurring-series-manager";
 import { ArchivedRecurringQuestsPanel } from "@/features/quests/archived-recurring-panel";
 
@@ -51,6 +52,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
         <QuestManagementProvider userId={user.id} locale={locale}>
         <RecurringRetirementProvider userId={user.id} locale={locale}>
         <RecurrencePauseProvider userId={user.id}>
+        <ScheduleDefaultsProvider userId={user.id} locale={locale}>
         <RecurringSeriesManager userId={user.id} locale={locale}>
         <div className="dashboard-grid">
           <div className="dashboard-slot-level"><LevelSnapshot result={progression} locale={locale} selectedDate={selectedDate} /></div>
@@ -79,7 +81,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
         <div className="dashboard-tools" id="quest-tools" tabIndex={-1}>
           <div id="create-quest">
             <p className="mb-3 type-metadata text-muted">{t.legacyHint}</p>
-            <div lang="en"><QuestCreationForm timezone={profile.timezone!} userId={user.id} /></div>
+            <QuestCreationForm timezone={profile.timezone!} userId={user.id} locale={locale} />
           </div>
           <Suspense fallback={<Panel aria-busy="true"><p role="status">{getDictionary(locale).questManage.loadingArchived}</p></Panel>}>
             <ArchivedQuestsPanel userId={user.id} locale={locale} timezone={profile.timezone!} />
@@ -90,6 +92,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
           </Suspense>
         </div>
         </RecurringSeriesManager>
+        </ScheduleDefaultsProvider>
         </RecurrencePauseProvider>
         </RecurringRetirementProvider>
         </QuestManagementProvider>

@@ -1,19 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useOnline } from "@/features/network/network-status";
 import type { Locale } from "@/lib/localization/dictionaries";
 import type { QuestManagementOperation } from "./management-action";
 import { useRecurringRetirement } from "./recurring-retirement-provider";
 import { recurringRetirementCopy } from "./recurring-retirement-copy";
+import { useScheduleController } from "./schedule-provider";
+import { getScheduleServerSnapshot } from "./schedule-pending";
 
 export function RecurringRetirementControl({ questId, title, archived = false, disabled = false, locale = "en", archiveLabel }: {
   questId: string; title: string; archived?: boolean; disabled?: boolean; locale?: Locale; archiveLabel?: string;
 }) {
   const { controller, state } = useRecurringRetirement();
   const t = recurringRetirementCopy(locale), online = useOnline();
+
+  const scheduleController = useScheduleController(questId);
+  const schedule = useSyncExternalStore(
+    scheduleController.subscribe,
+    scheduleController.getSnapshot,
+    getScheduleServerSnapshot,
+  );
+
+  useEffect(() => {
+    void scheduleController.recover();
+  }, [scheduleController]);
   const [confirming, setConfirming] = useState<QuestManagementOperation | null>(null);
-  const locked = disabled || !online || state.phase !== "ready";
+  const locked = disabled || !online || state.phase !== "ready" || schedule.phase !== "ready";
   const result = state.questId === questId ? state.result : undefined;
   const button = "min-h-11 rounded-md border border-zinc-600 px-3 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
   async function submit() {

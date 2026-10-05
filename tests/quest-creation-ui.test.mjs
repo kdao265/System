@@ -35,7 +35,7 @@ const { pendingStorageKey, persistPending, readPendingCreations } = await import
 const { validateQuestCreationRequest } = await import("../src/features/quests/create-model.ts");
 const { validateQuestCreationReceipt } = await import("../src/features/quests/create-receipt.ts");
 const { localTimeToUtc } = await import("../src/features/quests/time.ts");
-const { creationSuccessMessage } = await import("../src/features/quests/create-message.ts");
+const { oneOffCreationSuccess } = await import("../src/features/quests/create-message.ts");
 const { createQuest } = await import("../src/features/quests/create-action.ts");
 const { configure, calls, invalidations } = await import(mocksUrl);
 const { validateRecurringRequest } = await import("../src/features/quests/recurring-model.ts");
@@ -43,13 +43,14 @@ const { validateRecurringReceipt } = await import("../src/features/quests/recurr
 const { parseRecurringQuests } = await import("../src/features/quests/recurring-list.ts");
 const { RecurrencePauseLifecycle, PAUSE_PREFIX } = await import("../src/features/quests/recurrence-pending.ts");
 const { changeRecurrencePause } = await import("../src/features/quests/recurrence-action.ts");
+const { en, vi } = await import("../src/lib/localization/dictionaries.ts");
 hooks.deregister();
 
 const A = "10000000-0000-4000-8000-000000000001";
 const B = "10000000-0000-4000-8000-000000000002";
 const base = { title: "Prepare report", description: null, importance: "side", priority: null, default_reward_exp: 0, scheduled_at: "2026-07-01T12:00:00.000Z", deadline_at: null };
-const unknown = { outcome: "unknown", error: "Unknown outcome" };
-const success = (replay = false) => ({ outcome: "success", success: { message: "Confirmed", replay } });
+const unknown = { outcome: "unknown", error: "outcome_unknown" };
+const success = (replay = false) => ({ outcome: "success", success: { kind: "one_off_created", replay, timezone: "UTC", scheduledAt: base.scheduled_at, deadlineAt: base.deadline_at, belongsToday: false } });
 let sequence = 0;
 const uuid = () => `20000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
 function receipt(args, replay = false) {
@@ -242,18 +243,18 @@ test("commit followed by lost response creates one simulated effect, reload retr
   });
   const h = setup({ send: createQuest }); const c = h.make(); await fill(c); await c.submit(); const id = h.sent[0].command_id;
   const restored = h.make(); await restored.recover(); await restored.retry(id);
-  assert.equal(effects.size, 1); assert.equal(h.storage.values.size, 0); assert.match(restored.getSnapshot().message, /earlier accepted/);
+  assert.equal(effects.size, 1); assert.equal(h.storage.values.size, 0); assert.equal(restored.getSnapshot().message?.kind, "one_off_created"); assert.equal(restored.getSnapshot().message?.replay, true);
 });
 
 test("browser-to-action promise rejection shows unknown outcome and preserves exact operation", async () => {
   const h = setup({ send: async () => { throw Error("browser transport failure"); } }); const c = h.make(); await fill(c); await c.submit();
-  assert.equal(c.getSnapshot().phase, "uncertain"); assert.match(c.getSnapshot().error, /outcome is unknown/);
+  assert.equal(c.getSnapshot().phase, "uncertain"); assert.equal(c.getSnapshot().error, "transport_unknown");
   await c.retry(h.sent[0].command_id); assert.equal(h.sent[1].request_json, h.sent[0].request_json); assert.equal(h.sent[1].command_id, h.sent[0].command_id);
 });
 
 test("a pre-RPC rejection during retry never discards the earlier uncertain operation", async () => {
   let result = unknown; const h = setup({ send: async () => result }); const c = h.make(); await fill(c); await c.submit();
-  const id = h.sent[0].command_id; result = { outcome: "rejected", reason: "validation", error: "Rejected" }; await c.retry(id);
+  const id = h.sent[0].command_id; result = { outcome: "rejected", reason: "validation", error: "invalid_details" }; await c.retry(id);
   assert.equal(c.getSnapshot().phase, "uncertain"); assert.equal(h.storage.values.size, 1);
 });
 
@@ -300,12 +301,50 @@ test("invalid RPC receipt remains uncertain through the actual adapter and lifec
   assert.equal(c.getSnapshot().phase, "uncertain"); assert.equal(h.storage.values.size, 1); assert.deepEqual(invalidations, []);
 });
 
-test("day messaging checks both instants, handles deadlines, and never advertises a day selector", () => {
-  const now = new Date("2026-07-02T01:00:00Z"); const id = uuid();
-  const todayDeadline = receipt({ command_id: id, request: { ...base, deadline_at: "2026-07-02T12:00:00.000Z" } });
-  assert.doesNotMatch(creationSuccessMessage(todayDeadline, "UTC", now), /neither|select/);
-  const future = receipt({ command_id: id, request: { ...base, scheduled_at: null, deadline_at: "2026-07-03T12:00:00.000Z" } });
-  const message = creationSuccessMessage(future, "UTC", now); assert.match(message, /deadline/); assert.match(message, /shows today only/); assert.doesNotMatch(message, /select|Quest created: planned start/);
+
+test("one-off success payload checks both instants without embedding UI copy", () => {
+  const now = new Date("2026-07-02T01:00:00Z");
+  const id = uuid();
+
+  const todayDeadline = receipt({
+    command_id: id,
+    request: {
+      ...base,
+      deadline_at: "2026-07-02T12:00:00.000Z",
+    },
+  });
+
+  const today = oneOffCreationSuccess(
+    todayDeadline,
+    "UTC",
+    now,
+  );
+
+  assert.equal(today.kind, "one_off_created");
+  assert.equal(today.belongsToday, true);
+  assert.equal(Object.hasOwn(today, "message"), false);
+
+  const future = receipt({
+    command_id: id,
+    request: {
+      ...base,
+      scheduled_at: null,
+      deadline_at: "2026-07-03T12:00:00.000Z",
+    },
+  });
+
+  const later = oneOffCreationSuccess(
+    future,
+    "UTC",
+    now,
+  );
+
+  assert.equal(later.belongsToday, false);
+  assert.equal(later.scheduledAt, null);
+  assert.equal(
+    later.deadlineAt,
+    "2026-07-03T12:00:00.000Z",
+  );
 });
 
 test("missing Auth session rejects before RPC and leaves lifecycle operation recoverable", async () => {
@@ -490,4 +529,77 @@ test("recurring list validates complete server projection without generating slo
     default_reward_exp: 37, materialized_occurrence_count: 1, last_slot_date: recurring.start_date };
   assert.deepEqual(parseRecurringQuests([row]), [row]); assert.deepEqual(parseRecurringQuests([]), []);
   for (const input of [null, [row, row], [{ ...row, weekdays: [1] }], [{ ...row, paused: "false" }], [{ ...row, default_reward_exp: undefined }], [{ ...row, last_slot_date: "bad" }]]) assert.equal(parseRecurringQuests(input), null);
+});
+
+test("creation dynamic errors use stable codes with EN/VI copy", async () => {
+  assert.equal(
+    Object.keys(en.questCreate.feedback).sort().join(","),
+    Object.keys(vi.questCreate.feedback).sort().join(","),
+    "creation feedback codes keep EN/VI parity",
+  );
+
+  const h = setup();
+  const c = h.make();
+  await fill(c);
+
+  c.updateDraft("description", "x".repeat(4001));
+  await c.submit();
+
+  assert.equal(c.getSnapshot().error, "description_too_long");
+  assert.match(en.questCreate.feedback.description_too_long, /4000/);
+  assert.match(vi.questCreate.feedback.description_too_long, /4000/);
+  assert.equal(h.sent.length, 0);
+
+  configure(() => assert.fail("RPC must not run"));
+
+  const rejected = await createQuest({}, form({
+    request: { ...base, importance: ["side"] },
+  }));
+
+  assert.equal(rejected.outcome, "rejected");
+  assert.equal(rejected.error, "invalid_details");
+});
+
+test("creation success payloads stay structured with EN/VI copy parity", async () => {
+  assert.equal(
+    Object.keys(en.questCreate.success).sort().join(","),
+    Object.keys(vi.questCreate.success).sort().join(","),
+    "creation success copy keeps EN/VI parity",
+  );
+
+  configure((_name, args) => ({
+    data: receipt(args, true),
+    error: null,
+  }));
+
+  const result = await createQuest({}, form());
+
+  assert.equal(result.outcome, "success");
+  assert.equal(result.success?.kind, "one_off_created");
+  assert.equal(result.success?.replay, true);
+  assert.equal(result.success?.timezone, "UTC");
+  assert.equal(
+    result.success?.scheduledAt,
+    base.scheduled_at,
+  );
+  assert.equal(
+    Object.hasOwn(result.success ?? {}, "message"),
+    false,
+  );
+
+  configure((_name, args) => ({
+    data: recurringReceipt(args, false),
+    error: null,
+  }));
+
+  const recurringResult = await createQuest(
+    {},
+    form({ request: recurring }),
+  );
+
+  assert.equal(recurringResult.outcome, "success");
+  assert.deepEqual(recurringResult.success, {
+    kind: "recurring_created",
+    replay: false,
+  });
 });

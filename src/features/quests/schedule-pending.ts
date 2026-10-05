@@ -24,6 +24,12 @@ type View = {
   message?: string;
   /** The certified rejection reason of the last settled command, if it was rejected. */
   reason?: ScheduleSaveResult["reason"];
+  /** Ephemeral proof of which exact command most recently settled. Never persisted. */
+  settlement?: {
+    commandId: string;
+    outcome: "success" | "rejected";
+    reason?: ScheduleSaveResult["reason"];
+  };
 };
 export type ScheduleView = View;
 // Shared consumers can hydrate after another consumer has already recovered.
@@ -119,7 +125,11 @@ export class ScheduleDefaultsLifecycle {
       await this.deps.lock(async () => {
         if (generation !== this.generation) return;
         const operation = this.synchronize();
-        this.set({ phase: operation ? "uncertain" : "ready", operation });
+        this.set({
+          phase: operation ? "uncertain" : "ready",
+          operation,
+          settlement: operation ? undefined : this.state.settlement,
+        });
       });
     } catch { if (generation === this.generation) this.block(); }
     finally { if (generation === this.generation) this.busy = false; }
@@ -134,7 +144,14 @@ export class ScheduleDefaultsLifecycle {
     if (this.busy || !this.active || this.state.phase !== (retry ? "uncertain" : "ready")) return false;
     this.busy = true;
     const generation = this.generation;
-    this.set({ ...this.state, phase: "sending", error: undefined, message: undefined, reason: undefined });
+    this.set({
+      ...this.state,
+      phase: "sending",
+      error: undefined,
+      message: undefined,
+      reason: undefined,
+      settlement: undefined,
+    });
     try {
       return await this.deps.lock(async () => {
         if (generation !== this.generation) return false;
@@ -162,6 +179,11 @@ export class ScheduleDefaultsLifecycle {
           if (storage.getItem(this.key()) !== null) throw new Error("Unverified removal");
           this.set({ phase: "ready", error: result.outcome === "rejected" ? result.error : undefined,
             reason: result.outcome === "rejected" ? result.reason : undefined,
+            settlement: {
+              commandId: operation.commandId,
+              outcome: result.outcome,
+              ...(result.outcome === "rejected" && result.reason ? { reason: result.reason } : {}),
+            },
             message: result.outcome === "success" ? "Request confirmed. Refreshing series details…" : undefined });
           return result.outcome === "success";
         }

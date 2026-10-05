@@ -5,7 +5,7 @@
  * read, so the UI never renders a series state the backend did not certify.
  * Snapshots mirror system_internal.recurring_rule_snapshot_v1 exactly.
  */
-import { isClockTime, validScheduleDefaults, type PlannedEndDayOffset } from "./schedule-model";
+import { isClockTime, validScheduleDefaults, type PlannedEndDayOffset, type ScheduleDefaults } from "./schedule-model";
 
 export type SeriesRecurrenceMode = "daily" | "weekly" | "monthly";
 export type SeriesRecurrenceType = "daily" | "selected_weekdays" | "monthly";
@@ -134,24 +134,125 @@ function sameRule(a: SeriesRuleSnapshot, b: SeriesRuleSnapshot) {
     === JSON.stringify(b[key as keyof SeriesRuleSnapshot] ?? null));
 }
 
-/** Command receipt for set_recurring_quest_schedule_defaults_v1, bound to the command and series. */
-export function parseScheduleDefaultsReceipt(data: unknown, commandId: string, questId: string): ScheduleDefaultsReceipt | null {
-  if (!record(data) || !exactKeys(data, RECEIPT_KEYS)) return null;
-  if (data.version !== 1 || typeof data.command_id !== "string" || data.command_id !== commandId || !UUID.test(commandId)) return null;
-  if (typeof data.quest_id !== "string" || data.quest_id !== questId || !UUID.test(questId)) return null;
-  if (typeof data.recurrence_rule_id !== "string" || !UUID.test(data.recurrence_rule_id)) return null;
-  if (typeof data.event_id !== "string" || !UUID.test(data.event_id)) return null;
-  if (typeof data.changed !== "boolean" || typeof data.replay !== "boolean") return null;
-  if (!timestamp(data.effective_at)) return null;
-  const before = parseRuleSnapshot(data.before);
-  const after = parseRuleSnapshot(data.after);
-  if (!before || !after) return null;
-  // The command bumps the revision exactly when it reports a change, and an
-  // unchanged command leaves an identical snapshot behind.
-  if (data.changed ? after.revision !== before.revision + 1 : !sameRule(before, after)) return null;
-  return data as unknown as ScheduleDefaultsReceipt;
+function sameScheduleDefaults(rule: SeriesRuleSnapshot, defaults: ScheduleDefaults) {
+  return rule.local_start_time === defaults.local_start_time &&
+    rule.local_end_time === defaults.local_end_time &&
+    rule.planned_end_day_offset === defaults.planned_end_day_offset;
 }
 
+function sameNonScheduleRule(a: SeriesRuleSnapshot, b: SeriesRuleSnapshot) {
+  return RULE_KEYS.every((key) => {
+    if (
+      key === "revision" ||
+      key === "local_start_time" ||
+      key === "local_end_time" ||
+      key === "planned_end_day_offset"
+    ) {
+      return true;
+    }
+
+    return JSON.stringify(a[key as keyof SeriesRuleSnapshot] ?? null) ===
+      JSON.stringify(b[key as keyof SeriesRuleSnapshot] ?? null);
+  });
+}
+
+/**
+ * Command receipt for set_recurring_quest_schedule_defaults_v1.
+ *
+ * A valid receipt proves not only command/Quest identity but the exact request:
+ * - before.revision is the revision supplied by the caller;
+ * - after carries exactly the requested schedule tuple;
+ * - the command changes no unrelated recurrence-rule field;
+ * - revision advances exactly once iff the schedule tuple changed.
+ */
+export function parseScheduleDefaultsReceipt(
+  data: unknown,
+  commandId: string,
+  questId: string,
+  expectedRevision: number,
+  defaults: ScheduleDefaults,
+): ScheduleDefaultsReceipt | null {
+  if (
+    !Number.isInteger(expectedRevision) ||
+    expectedRevision < 1 ||
+    !validScheduleDefaults(
+      defaults.local_start_time,
+      defaults.local_end_time,
+      defaults.planned_end_day_offset,
+    )
+  ) {
+    return null;
+  }
+
+  if (!record(data) || !exactKeys(data, RECEIPT_KEYS)) return null;
+
+  if (
+    data.version !== 1 ||
+    typeof data.command_id !== "string" ||
+    data.command_id !== commandId ||
+    !UUID.test(commandId)
+  ) {
+    return null;
+  }
+
+  if (
+    typeof data.quest_id !== "string" ||
+    data.quest_id !== questId ||
+    !UUID.test(questId)
+  ) {
+    return null;
+  }
+
+  if (
+    typeof data.recurrence_rule_id !== "string" ||
+    !UUID.test(data.recurrence_rule_id)
+  ) {
+    return null;
+  }
+
+  if (typeof data.event_id !== "string" || !UUID.test(data.event_id)) {
+    return null;
+  }
+
+  if (
+    typeof data.changed !== "boolean" ||
+    typeof data.replay !== "boolean" ||
+    !timestamp(data.effective_at)
+  ) {
+    return null;
+  }
+
+  const before = parseRuleSnapshot(data.before);
+  const after = parseRuleSnapshot(data.after);
+
+  if (!before || !after) return null;
+
+  // The receipt must start from the exact optimistic-concurrency revision
+  // supplied with this durable command.
+  if (before.revision !== expectedRevision) return null;
+
+  // Schedule-defaults is not allowed to mutate cadence, bounds, pause state,
+  // or any other non-schedule rule field.
+  if (!sameNonScheduleRule(before, after)) return null;
+
+  // The authoritative result must equal the exact requested schedule tuple.
+  if (!sameScheduleDefaults(after, defaults)) return null;
+
+  if (data.changed) {
+    if (after.revision !== before.revision + 1) return null;
+
+    // Reporting changed=true when the requested tuple already existed would
+    // contradict the certified command semantics.
+    if (sameScheduleDefaults(before, defaults)) return null;
+  } else {
+    // A no-op keeps the entire snapshot byte-for-value equivalent and proves
+    // that the requested tuple was already authoritative.
+    if (!sameRule(before, after)) return null;
+    if (!sameScheduleDefaults(before, defaults)) return null;
+  }
+
+  return data as unknown as ScheduleDefaultsReceipt;
+}
 
 function weekdays(value: unknown): value is number[] {
   return Array.isArray(value) && value.length > 0 && value.length <= 7 &&

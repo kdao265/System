@@ -31,26 +31,38 @@ export function draftFromPending(operation: PendingCreation): QuestDraft {
     deadline_at: request.deadline_at ? utcToLocalInput(request.deadline_at, operation.timezone) : "",
   };
 }
-export function requestFromDraft(draft: QuestDraft, timezone: string): { request: CreationRequest; error?: never } | { error: string; request?: never } {
+export type CreationDraftErrorCode =
+  | "schedule_partial"
+  | "schedule_order"
+  | "recurring_invalid"
+  | "time_ambiguous"
+  | "time_nonexistent"
+  | "time_invalid"
+  | "title_invalid"
+  | "description_too_long"
+  | "exp_invalid"
+  | "one_off_invalid";
+
+export function requestFromDraft(draft: QuestDraft, timezone: string): { request: CreationRequest; error?: never } | { error: CreationDraftErrorCode; request?: never } {
   if (draft.recurrence_mode && draft.recurrence_mode !== "one_off") {
     const defaults = scheduleDefaultsFromDraft(draft.local_start_time, draft.local_end_time, draft.ends_next_day);
     if (!defaults) return { error: partialScheduleDefaults(draft.local_start_time, draft.local_end_time)
-      ? "Enter both default planned times, or leave both empty. A partial schedule cannot be saved."
-      : "Default planned end must follow the start on the same day, or be at or before the start when the occurrence ends the next day." };
+      ? "schedule_partial"
+      : "schedule_order" };
     const request = { title: draft.title.trim(), description: draft.description.trim() || null,
       importance: draft.importance, priority: draft.priority || null, default_reward_exp: Number(draft.default_reward_exp),
       recurrence_mode: draft.recurrence_mode, start_date: draft.start_date, end_date: draft.end_date || null,
       ...(draft.recurrence_mode === "weekly" ? { weekdays: [...new Set(draft.weekdays)].sort((a, b) => a - b) } : {}),
       ...(draft.recurrence_mode === "monthly" ? { month_day: Number(draft.month_day) } : {}),
       ...defaults };
-    return validateRecurringRequest(request) ? { request } : { error: "Review the title, EXP, date range and recurrence selection. Weekly Quests need at least one weekday; monthly days must be 1 to 31." };
+    return validateRecurringRequest(request) ? { request } : { error: "recurring_invalid" };
   }
 
   const scheduled = draft.scheduled_at ? localTimeToUtc(draft.scheduled_at, timezone) : { ok: true as const, value: "" };
   const deadline = draft.deadline_at ? localTimeToUtc(draft.deadline_at, timezone) : { ok: true as const, value: "" };
   if (!scheduled.ok || !deadline.ok) {
     const reason = !scheduled.ok ? scheduled.reason : deadline.ok ? "format" : deadline.reason;
-    return { error: reason === "ambiguous" ? "That local time occurs twice during the daylight-saving transition." : reason === "nonexistent" ? "That local time does not exist during the daylight-saving transition." : "Enter a valid local date and time." };
+    return { error: reason === "ambiguous" ? "time_ambiguous" : reason === "nonexistent" ? "time_nonexistent" : "time_invalid" };
   }
   const request: QuestCreationRequest = {
     title: draft.title.trim(), description: draft.description.trim() || null,
@@ -58,8 +70,8 @@ export function requestFromDraft(draft: QuestDraft, timezone: string): { request
     default_reward_exp: draft.default_reward_exp.trim() === "" ? 0 : Number(draft.default_reward_exp),
     scheduled_at: scheduled.value || null, deadline_at: deadline.value || null,
   };
-  if (!request.title || [...request.title].length > 120) return { error: "Enter a title of 1 to 120 characters." };
-  if (request.description !== null && [...request.description].length > 4000) return { error: "Description must be 4000 characters or fewer." };
-  if (!Number.isInteger(request.default_reward_exp) || request.default_reward_exp < 0 || request.default_reward_exp > 2147483647) return { error: "EXP must be a whole number from 0 to 2,147,483,647." };
-  return validateQuestCreationRequest(request) ? { request } : { error: "Enter a planned start or deadline, with the deadline at or after the planned start." };
+  if (!request.title || [...request.title].length > 120) return { error: "title_invalid" };
+  if (request.description !== null && [...request.description].length > 4000) return { error: "description_too_long" };
+  if (!Number.isInteger(request.default_reward_exp) || request.default_reward_exp < 0 || request.default_reward_exp > 2147483647) return { error: "exp_invalid" };
+  return validateQuestCreationRequest(request) ? { request } : { error: "one_off_invalid" };
 }

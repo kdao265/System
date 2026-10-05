@@ -16,6 +16,15 @@ const mocksUrl = `data:text/javascript,${encodeURIComponent(`
   export async function requireUser() { return { id: "00000000-0000-0000-0000-000000000001" }; }
   export async function getAuthenticatedUser() { return { id: "00000000-0000-0000-0000-000000000001" }; }
   export function createServerSupabaseClient() { throw new Error("no transport in this suite"); }
+  export function createSupabaseClient() {
+    return {
+      auth: {
+        onAuthStateChange() {
+          return { data: { subscription: { unsubscribe() {} } } };
+        }
+      }
+    };
+  }
   export function revalidatePath() {}
 `)}`;
 const hooks = registerHooks({
@@ -51,6 +60,8 @@ const { RecurringSeriesManager, SeriesModalContent } = await import("../src/feat
 const { RecurringRetirementProvider } = await import("../src/features/quests/recurring-retirement-provider.tsx");
 const { QuestManagementProvider } = await import("../src/features/quests/management-provider.tsx");
 const { RecurrencePauseProvider, RecurrencePauseRegistry } = await import("../src/features/quests/recurrence-pause-provider.tsx");
+const { ScheduleDefaultsProvider, ScheduleDefaultsRegistry } = await import("../src/features/quests/schedule-provider.tsx");
+const { SCHEDULE_PREFIX, SCHEDULE_LOCK } = await import("../src/features/quests/schedule-pending.ts");
 const { PAUSE_PREFIX, PAUSE_LOCK, getPauseServerSnapshot } = await import("../src/features/quests/recurrence-pending.ts");
 const { RECURRING_RETIREMENT_PREFIX, RECURRING_RETIREMENT_LOCK } = await import("../src/features/quests/recurring-retirement-model.ts");
 const { MANAGEMENT_PREFIX, MANAGEMENT_LOCK, QuestManagementLifecycle } = await import("../src/features/quests/management-lifecycle.ts");
@@ -72,8 +83,10 @@ const base = {
   progression_ready: true, completable: false, already_completed_cycle: null,
 };
 const router = (element) => h(AppRouterContext.Provider, { value: { refresh() {} } }, element);
-const wrap = (element) => router(h(RecurrencePauseProvider, { userId: owner },
-  h(RecurringRetirementProvider, { userId: owner, locale: "en" }, element)));
+const wrap = (element) => router(
+  h(RecurrencePauseProvider, { userId: owner },
+    h(ScheduleDefaultsProvider, { userId: owner, locale: "en" },
+      h(RecurringRetirementProvider, { userId: owner, locale: "en" }, element))));
 const renderList = (quests, withOwner = true) => renderToStaticMarkup(router(
   h(QuestManagementProvider, { userId: owner, locale: "en" },
     h(DailyQuestList, { result: { status: "ok", quests }, timezone: "UTC", selectedDate: "2026-10-04", userId: withOwner ? owner : undefined, locale: "en" }))));
@@ -429,3 +442,422 @@ test("retirement result retains the submitted command identity across recovery a
   assert.equal(isFreshSeriesArchive({ ...c.getSnapshot(), result: { ...result.result } }, quest, command), false);
 });
 
+function scheduleRegistryHarness() {
+  const store = new Map();
+  const activity = [];
+  const sends = [];
+
+  const storage = {
+    get length() {
+      return store.size;
+    },
+    key(index) {
+      return [...store.keys()][index] ?? null;
+    },
+    getItem(key) {
+      return store.get(key) ?? null;
+    },
+    setItem(key, value) {
+      store.set(key, value);
+    },
+    removeItem(key) {
+      store.delete(key);
+    },
+    clear() {
+      store.clear();
+    },
+  };
+
+  const deps = {
+    storage: () => {
+      activity.push("storage");
+      return storage;
+    },
+    lock: async (work) => {
+      activity.push("lock");
+      return work();
+    },
+    uuid: () => command,
+    send: async (operation) => {
+      sends.push(operation);
+      return { outcome: "success" };
+    },
+  };
+
+  return {
+    store,
+    activity,
+    sends,
+    registry: new ScheduleDefaultsRegistry(owner, () => deps),
+  };
+}
+
+function savedScheduleOperation(questId = quest) {
+  return {
+    version: 1,
+    userId: owner,
+    questId,
+    commandId: command,
+    expectedRevision: 3,
+    defaults: {
+      local_start_time: "08:00",
+      local_end_time: "09:30",
+      planned_end_day_offset: 0,
+    },
+  };
+}
+
+test("schedule registry discovers durable recovery before the modal opens", async () => {
+  assert.equal(SCHEDULE_PREFIX, "system.quest-schedule.pending.v1:");
+  assert.equal(SCHEDULE_LOCK, "system.quest-schedule");
+
+  const h = scheduleRegistryHarness();
+  const key = `${SCHEDULE_PREFIX}${owner}:${quest}`;
+  const operation = savedScheduleOperation();
+
+  // No modal/row has asked for a controller yet.
+  h.store.set(key, JSON.stringify(operation));
+  assert.equal(h.registry.recoveryEntries().length, 0);
+
+  await h.registry.recover();
+
+  const entries = h.registry.recoveryEntries();
+  assert.equal(entries.length, 1, "account recovery discovers the saved quest");
+  assert.equal(entries[0].questId, quest);
+  assert.equal(entries[0].view.phase, "uncertain");
+  assert.deepEqual(entries[0].view.operation, operation);
+  assert.equal(h.sends.length, 0, "discovery never dispatches the uncertain command");
+
+  // Opening the modal later consumes exactly the already-owned controller.
+  assert.equal(
+    h.registry.get(quest),
+    entries[0].controller,
+    "one account-scoped schedule controller exists per questId",
+  );
+  assert.notEqual(h.registry.get(otherQuest), entries[0].controller);
+
+  // Recovery remains actionable without needing the originating modal.
+  assert.equal(
+    await entries[0].controller.retry(),
+    true,
+    "the global recovery entry can replay the exact durable command",
+  );
+  assert.equal(h.sends.length, 1);
+  assert.deepEqual(h.sends[0], operation);
+  assert.equal(h.store.has(key), false, "settled recovery removes the durable command");
+});
+
+test("schedule registry account mismatch blocks discovery and delayed controllers", async () => {
+  const h = scheduleRegistryHarness();
+  const key = `${SCHEDULE_PREFIX}${owner}:${quest}`;
+  const bytes = JSON.stringify(savedScheduleOperation());
+
+  h.store.set(key, bytes);
+
+  assert.equal(h.registry.accountChanged(owner), false);
+  assert.equal(h.registry.accountChanged(otherQuest), true);
+
+  await h.registry.recover();
+
+  assert.deepEqual(
+    h.activity,
+    [],
+    "an inactive old-account registry must not scan storage, acquire locks or dispatch",
+  );
+  assert.equal(h.store.get(key), bytes);
+
+  const late = h.registry.get(quest);
+  assert.equal(late.getSnapshot().phase, "blocked");
+
+  await late.recover();
+  assert.equal(await late.retry(), false);
+
+  assert.deepEqual(
+    h.activity,
+    [],
+    "controllers created after account mismatch remain inactive",
+  );
+  assert.equal(h.store.get(key), bytes, "old-account recovery bytes are preserved");
+
+  h.registry.activate();
+  await h.registry.recover();
+
+  assert.equal(
+    h.registry.get(quest).getSnapshot().phase,
+    "uncertain",
+    "only explicit activation permits recovery again",
+  );
+});
+
+test("schedule recovery wiring is account-scoped and Dashboard-owned", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+  const manager = read("../src/features/quests/recurring-series-manager.tsx");
+  assert.match(manager, /useScheduleController\(questId\)/);
+  assert.doesNotMatch(
+    manager,
+    /new ScheduleDefaultsLifecycle/,
+    "the modal must not own a private schedule lifecycle",
+  );
+
+  const provider = read("../src/features/quests/schedule-provider.tsx");
+  assert.match(provider, /SCHEDULE_PREFIX/);
+  assert.match(provider, /SCHEDULE_LOCK/);
+  assert.match(provider, /discoverStoredQuestIds/);
+  assert.match(provider, /recoveryEntries/);
+
+  const page = read("../src/app/dashboard/page.tsx");
+
+  assert.equal(
+    (page.match(/<ScheduleDefaultsProvider/g) ?? []).length,
+    1,
+    "exactly one account-scoped schedule provider is mounted",
+  );
+
+  assert.equal(
+    (page.match(/<RecurringSeriesManager/g) ?? []).length,
+    1,
+    "the shared series manager remains singular",
+  );
+});
+
+test("recovered schedule settlement keeps exact command identity", async () => {
+  const h = scheduleRegistryHarness();
+  const key = `${SCHEDULE_PREFIX}${owner}:${quest}`;
+  const operation = savedScheduleOperation();
+
+  h.store.set(key, JSON.stringify(operation));
+
+  await h.registry.recover();
+
+  const controller = h.registry.get(quest);
+
+  assert.equal(controller.getSnapshot().phase, "uncertain");
+  assert.equal(controller.getSnapshot().settlement, undefined);
+
+  assert.equal(await controller.retry(), true);
+
+  assert.deepEqual(
+    controller.getSnapshot().settlement,
+    {
+      commandId: command,
+      outcome: "success",
+    },
+    "a recovered success identifies the exact durable command it settled",
+  );
+
+  assert.equal(h.store.has(key), false);
+
+  // A later account-level reconciliation must not erase the ephemeral proof
+  // before an open modal has had a chance to settle its local draft.
+  await controller.recover();
+
+  assert.deepEqual(controller.getSnapshot().settlement, {
+    commandId: command,
+    outcome: "success",
+  });
+});
+
+test("modal draft settlement is bound to the exact recovered command", () => {
+  const manager = readFileSync(
+    new URL("../src/features/quests/recurring-series-manager.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(manager, /pendingScheduleCommandId/);
+
+  assert.match(
+    manager,
+    /snapshot\.operation\?\.commandId \?\? snapshot\.settlement\?\.commandId/,
+    "submit reports either the unresolved command or the exact settled command",
+  );
+
+  assert.match(
+    manager,
+    /scheduleSettlement\.commandId !== pendingScheduleCommandId/,
+    "an unrelated settlement must never discard the local draft",
+  );
+
+  assert.match(
+    manager,
+    /scheduleSettlement\.outcome === "success"/,
+    "the matching recovered success settles the draft",
+  );
+
+  assert.match(
+    manager,
+    /setPendingScheduleCommandId\(outcome\.commandId\)/,
+    "an unknown save binds its draft to the durable command identity",
+  );
+});
+
+test("fresh recurring lifecycle actions are gated by unresolved schedule recovery", () => {
+  const read = (path) =>
+    readFileSync(new URL(path, import.meta.url), "utf8");
+
+  const rows = read("../src/features/quests/recurring-controls.tsx");
+
+  assert.match(
+    rows,
+    /useScheduleController\(quest\.quest_id\)/,
+    "definition rows consume the account-scoped schedule controller",
+  );
+
+  assert.match(
+    rows,
+    /if \(!retry && schedule\.phase !== "ready"\) return;/,
+    "fresh row Pause is blocked while schedule recovery is unresolved",
+  );
+
+  assert.match(
+    rows,
+    /retirement\.state\.phase !== "ready" \|\| schedule\.phase !== "ready"/,
+    "fresh row Pause is disabled while schedule recovery is unresolved",
+  );
+
+  const manager = read("../src/features/quests/recurring-series-manager.tsx");
+
+  assert.match(
+    manager,
+    /!retry && \(loading \|\| schedule\.phase !== "ready"/,
+    "fresh modal Pause is guarded by schedule readiness",
+  );
+
+  assert.match(
+    manager,
+    /retirement\.state\.phase !== "ready" \|\| schedule\.phase !== "ready"/,
+    "fresh modal Pause is disabled by unresolved schedule recovery",
+  );
+});
+
+test("archive restore and delete are gated centrally by schedule recovery", () => {
+  const control = readFileSync(
+    new URL("../src/features/quests/recurring-retirement-control.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    control,
+    /useScheduleController\(questId\)/,
+    "retirement control observes the same per-series schedule lifecycle",
+  );
+
+  assert.match(
+    control,
+    /const locked = .*schedule\.phase !== "ready";/,
+    "fresh Archive, Restore and Delete stay locked until schedule recovery settles",
+  );
+
+  assert.match(
+    control,
+    /scheduleController\.recover\(\)/,
+    "archived rows can hydrate schedule state even without opening the series modal",
+  );
+});
+
+test("materialization notices use authoritative titles and mark next-day intervals", () => {
+  const components = readFileSync(
+    new URL("../src/features/quests/components.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    components,
+    /quest_id\.slice/,
+    "materialization notices never expose shortened Quest IDs",
+  );
+
+  assert.ok(
+    components.includes("seriesTitles?.[issue.quest_id]"),
+    "the notice resolves the recurring title by Quest ID",
+  );
+
+  assert.ok(
+    components.includes("issue.planned_end_day_offset === 1"),
+    "next-day timing participates in notice rendering",
+  );
+
+  assert.ok(
+    components.includes("sd.nextDay"),
+    "notice reuses localized next-day copy",
+  );
+
+  assert.ok(
+    components.includes("title={title}"),
+    "Manage series receives the resolved title",
+  );
+
+  const dailyPanel = readFileSync(
+    new URL("../src/features/quests/panel.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    dailyPanel.includes(
+      'result.status === "ok" && result.issues?.length'
+    ),
+    "title lookup occurs only for successful reads with issues",
+  );
+
+  assert.ok(
+    dailyPanel.includes("readRecurringQuests(userId)"),
+    "Daily notices consume the shared recurring read",
+  );
+
+  const recurringPanel = readFileSync(
+    new URL("../src/features/quests/recurring-panel.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    recurringPanel.includes("readRecurringQuests(userId)"),
+    "Recurring panel consumes the same read",
+  );
+
+  const sharedRead = readFileSync(
+    new URL("../src/features/quests/recurring-read.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(sharedRead.includes("cache("));
+  assert.ok(sharedRead.includes("list_recurring_quests"));
+  assert.ok(sharedRead.includes("parseRecurringQuests(data)"));
+});
+
+test("new UI punctuation remains encoding-safe", () => {
+  const components = readFileSync(
+    new URL("../src/features/quests/components.tsx", import.meta.url),
+    "utf8",
+  );
+
+  const form = readFileSync(
+    new URL("../src/features/quests/create-form.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    components.includes("\\u2013"),
+    "materialization interval uses an encoding-safe en-dash escape",
+  );
+
+  assert.ok(
+    components.includes("\\u00b7"),
+    "materialization metadata uses an encoding-safe middle-dot escape",
+  );
+
+  assert.doesNotMatch(
+    components,
+    /\$\{start\}\?\$\{end\}/,
+    "materialization interval must never degrade to a question mark",
+  );
+
+  assert.ok(
+    form.includes("\\u00b7"),
+    "creation success metadata uses an encoding-safe middle-dot escape",
+  );
+
+  assert.ok(
+    !form.includes('.join(" ? ")'),
+    "creation success separator must never degrade to a question mark",
+  );
+});

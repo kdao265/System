@@ -31,14 +31,18 @@ export async function saveScheduleDefaults(input: {
 }): Promise<ScheduleSaveResult> {
   const user = await requireUser();
   if (!input || input.userId !== user.id) {
-    return { outcome: "rejected", error: "Your account changed. Refresh before continuing." };
+    return { outcome: "unknown", error: "Your account changed. The exact saved schedule request remains pending." };
   }
   const defaults = input.defaults;
   if (typeof input.commandId !== "string" || !UUID.test(input.commandId) ||
       typeof input.questId !== "string" || !UUID.test(input.questId) ||
       !Number.isInteger(input.expectedRevision) || input.expectedRevision < 1 || !defaults ||
       !validScheduleDefaults(defaults.local_start_time, defaults.local_end_time, defaults.planned_end_day_offset)) {
-    return { outcome: "rejected", reason: "invalid", error: "The schedule defaults request is invalid. Refresh before continuing." };
+    // Do not certify non-settlement before the authoritative RPC boundary.
+    return {
+      outcome: "unknown",
+      error: "The saved schedule request could not be verified before dispatch. Preserve it and check recovery before continuing.",
+    };
   }
   try {
     await setRecurringScheduleDefaults(input.commandId, input.questId, input.expectedRevision, defaults);

@@ -63,11 +63,16 @@ export function DailyQuestLoading({ timezone, selectedDate, locale = "en" }: { t
  * so a series whose first slot failed materialization can still be corrected even
  * though it has no occurrence card to click.
  */
-function MaterializationNotices({ issues, locale, userId }: {
-  issues: MaterializationIssue[]; locale: Locale; userId?: string;
+function MaterializationNotices({ issues, locale, userId, seriesTitles }: {
+  issues: MaterializationIssue[];
+  locale: Locale;
+  userId?: string;
+  seriesTitles?: Readonly<Record<string, string>>;
 }) {
-  const mi = getDictionary(locale).materialization;
-  const sm = getDictionary(locale).seriesManage;
+  const dictionary = getDictionary(locale);
+  const mi = dictionary.materialization;
+  const sm = dictionary.seriesManage;
+  const sd = dictionary.scheduleDefaults;
   return (
     <div lang={locale} role="alert" aria-live="polite"
       className="mt-4 rounded-md border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-amber-200">
@@ -77,11 +82,15 @@ function MaterializationNotices({ issues, locale, userId }: {
         {issues.map((issue, index) => {
           const start = issueClock(issue.local_start_time);
           const end = issueClock(issue.local_end_time);
-          const label = `${mi.quest} ${issue.quest_id.slice(0, 8)}`;
+          const title = seriesTitles?.[issue.quest_id] ?? mi.quest;
+          const interval = start && end
+            ? ` ${start}\u2013${end}${issue.planned_end_day_offset === 1 ? ` (${sd.nextDay})` : ""}`
+            : "";
+
           return <li key={`${issue.quest_id}:${issue.source_slot_date}:${index}`}>
-            {mi.reasons[issue.reason]} {mi.endpoint}: {mi.endpoints[issue.endpoint]} · {mi.slot}: {issue.source_slot_date}
-            {start && end ? ` ${start}–${end}` : ""} · {mi.quest}: {issue.quest_id.slice(0, 8)}
-            {userId && <RecurringSeriesManageButton questId={issue.quest_id} title={label} label={sm.manage} locale={locale} />}
+            {mi.reasons[issue.reason]} {mi.endpoint}: {mi.endpoints[issue.endpoint]} {"\u00b7"} {mi.slot}: {issue.source_slot_date}
+            {interval} {"\u00b7"} {mi.quest}: {title}
+            {userId && <RecurringSeriesManageButton questId={issue.quest_id} title={title} label={sm.manage} locale={locale} />}
           </li>;
         })}
       </ul>
@@ -89,7 +98,14 @@ function MaterializationNotices({ issues, locale, userId }: {
   );
 }
 
-export function DailyQuestList({ result, timezone, selectedDate, userId, locale = "en" }: { result: DayQuestResult; timezone: string; selectedDate: string; userId?: string; locale?: Locale }) {
+export function DailyQuestList({ result, timezone, selectedDate, userId, seriesTitles, locale = "en" }: {
+  result: DayQuestResult;
+  timezone: string;
+  selectedDate: string;
+  userId?: string;
+  seriesTitles?: Readonly<Record<string, string>>;
+  locale?: Locale;
+}) {
   const t = getDictionary(locale).daily;
   const formatter = new Intl.DateTimeFormat(locale, {
     timeZone: timezone, year: "numeric", month: "short", day: "numeric",
@@ -122,7 +138,7 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, locale 
     // body resolve to either the Quest rows or the normal empty-day state. It is
     // valid to show both the warning and "No Quests for this day".
     content = <>
-      {issues.length > 0 && <MaterializationNotices issues={issues} locale={locale} userId={userId} />}
+      {issues.length > 0 && <MaterializationNotices issues={issues} locale={locale} userId={userId} seriesTitles={seriesTitles} />}
       {result.quests.length === 0 ? <p role="status" className="mt-4 text-zinc-300">{t.empty}</p> : <>
       <ul aria-label={t.occurrences} className="mt-5 space-y-3">
         {result.quests.map((quest) => (

@@ -217,23 +217,33 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
       return;
     }
 
-    setPendingScheduleCommandId(null);
+    let cancelled = false;
 
-    if (scheduleSettlement.outcome === "success") {
-      setDraft(null);
-      setScheduleValidation(null);
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      setPendingScheduleCommandId(null);
+
+      if (scheduleSettlement.outcome === "success") {
+        setDraft(null);
+        setScheduleValidation(null);
+        onReload();
+        return;
+      }
+
+      if (scheduleSettlement.reason === "stale") {
+        setDraft((current) =>
+          current === null ? null : markScheduleDraftConflicted(current)
+        );
+        onScheduleStale();
+      }
+
       onReload();
-      return;
-    }
+    });
 
-    if (scheduleSettlement.reason === "stale") {
-      setDraft((current) =>
-        current === null ? null : markScheduleDraftConflicted(current)
-      );
-      onScheduleStale();
-    }
-
-    onReload();
+    return () => {
+      cancelled = true;
+    };
   }, [
     scheduleSettlement,
     pendingScheduleCommandId,

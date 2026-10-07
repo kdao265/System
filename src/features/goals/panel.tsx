@@ -91,24 +91,24 @@ export function GoalsPanel({ userId, page, detail, selected, scope, candidates, 
   }
   return <DetachContext.Provider value={{ disabled: disabled || !!goal?.archived_at, detach: (linkId) => {
     if (goal && !goal.archived_at) void send({ userId, commandId: crypto.randomUUID(), goalId: goal.id, revision: goal.revision, kind: "detach", linkId });
-  } }}><div className="mt-6 min-w-0 space-y-6 [overflow-wrap:anywhere]">
+  } }}><div className="goals-workspace mt-6 min-w-0 space-y-6 [overflow-wrap:anywhere]">
     {!online && <p role="status" className="text-sm text-amber-200">Offline. Displayed progress may be out of date. Reconnect and refresh Goals before continuing.</p>}
-    <div className="flex flex-wrap gap-2">
+    <div className="goals-scope-controls">
       <Link prefetch={false} className={goalButton} aria-current={scope === "unarchived" ? "page" : undefined} href="/goals">Active Main Quests</Link>
       <Link prefetch={false} className={goalButton} aria-current={scope === "archived" ? "page" : undefined} href="/goals?scope=archived">Archived Main Quests</Link>
       <button type="button" className={goalButton} onClick={() => router.refresh()}>Refresh Goals</button>
     </div>
-    <section aria-label="Main Quest changes" aria-busy={busy} className="space-y-3">
+    <section aria-label="Main Quest changes" aria-busy={busy} className="goals-feedback space-y-3">
       {result && <p role={result.outcome === "success" ? "status" : "alert"} className="text-sm text-amber-200">{result.message}</p>}
-      {pending && <div className="rounded-md border border-amber-700 p-3">
+      {pending && <div className="goals-pending-change">
         <p className="text-sm">Saved Main Quest change: {pending.kind.replaceAll("_", " ")}. Resolve it before making another change.</p>
         <button type="button" className={`${goalButton} mt-2`} disabled={busy || storageBlocked || !online} onClick={() => send(pending, true)}>{busy ? "Saving…" : "Retry saved request"}</button>
       </div>}
     </section>
     {selected && !detail && <p role="alert">This Main Quest is unavailable. Refresh Goals to try again. Progress could not be read.</p>}
-    {goal && detail && <section aria-label="Main Quest detail" className="min-w-0 rounded-xl border border-sky-900 bg-zinc-950 p-4 sm:p-6">
+    {goal && detail && <section aria-label="Main Quest detail" className={`goals-detail min-w-0 ${goal.archived_at ? "goals-detail-archived" : ""}`}>
       <p className="text-xs tracking-widest text-sky-300">MAIN QUEST</p>
-      <h2 className="mt-2 text-2xl font-semibold">{goal.title}</h2>
+      <h2 className="goals-detail-title mt-2">{goal.title}</h2>
       {goal.description && <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{goal.description}</p>}
       <GoalProgress goal={goal} />
       <p className="mt-3 text-xs text-zinc-500">Created {goal.created_at.slice(0, 10)} · Updated {goal.updated_at.slice(0, 10)}</p>
@@ -128,7 +128,7 @@ export function GoalsPanel({ userId, page, detail, selected, scope, candidates, 
           </fieldset>
         </form>
       </details>}
-      <h3 className="mt-6 text-lg font-medium">Sub Quests</h3>
+      <h3 className="goals-subquests-heading mt-6">Sub Quests</h3>
       <p className="mt-1 text-sm text-zinc-400">In attach order. Complete or reopen through the existing Quest controls below.</p>
       {children}
       {detail.subquests.length === 0 && <p className="mt-3 text-sm text-zinc-400">No Sub Quests yet. Attach existing one-off Quests to start tracking progress.</p>}
@@ -158,7 +158,7 @@ export function GoalsPanel({ userId, page, detail, selected, scope, candidates, 
         </details>
       </>}
     </section>}
-    <section aria-label="Create Main Quest" className="rounded-xl border border-zinc-800 p-4 sm:p-6">
+    <section aria-label="Create Main Quest" className="goals-create">
       <h2 className="text-lg font-semibold">Create Main Quest</h2>
       <form ref={creationForm} className="mt-3" onSubmit={(event) => { event.preventDefault(); metadata(event.currentTarget, false); }}>
         <fieldset disabled={disabled} className="min-w-0 space-y-3">
@@ -168,12 +168,12 @@ export function GoalsPanel({ userId, page, detail, selected, scope, candidates, 
         </fieldset>
       </form>
     </section>
-    <section aria-label="Main Quest list">
+    <section aria-label="Main Quest list" className="goals-list">
       <h2 className="text-xl font-semibold">{scope === "archived" ? "Archived Main Quests" : "Active Main Quests"}</h2>
       {page === null ? <p role="alert" className="mt-3">Goals are unavailable. Refresh Goals to try again. Progress could not be read.</p> : <>
         {!page.goals.length && <p className="mt-3 text-zinc-400">{scope === "archived" ? "No archived Main Quests." : "No Main Quests yet. Create one above."}</p>}
         <ul className="mt-4 grid min-w-0 gap-4">
-          {page.goals.map((item) => <li key={item.id} className={`min-w-0 rounded-xl border p-4 sm:p-6 ${item.is_complete ? "border-emerald-900" : "border-zinc-800"}`}>
+          {page.goals.map((item) => <li key={item.id} className={`goals-list-item ${item.is_complete ? "goals-list-item-complete" : ""}`}>
             <h3 className="text-lg font-medium"><Link prefetch={false} href={href(item.id)} className="inline-flex min-h-11 items-center underline decoration-zinc-600 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{item.title}</Link></h3>
             {item.description && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-400">{item.description}</p>}
             <GoalProgress goal={item} />

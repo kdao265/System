@@ -1,0 +1,27 @@
+@layer components {
+  .system-form-surface { border-color: var(--border-system); background: linear-gradient(180deg, #70dcf20d, transparent 25%), var(--surface-glass); }
+  .system-form-heading { color: var(--system-cyan); letter-spacing: 0.28em; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+  .system-form-section { border-top: 1px solid var(--border-soft); padding-top: 1rem; }
+  .system-form-section:first-child { border-top: 0; padding-top: 0; }
+  .system-form-label { display: block; color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; }
+  .system-form-hint { color: var(--text-secondary); font-size: 0.8125rem; }
+  .system-form-checkbox { min-height: 2.75rem; border: 1px solid var(--border-soft); border-radius: var(--radius-control); background: #ffffff05; padding: 0.5rem 0.75rem; }
+  .system-form-checkbox:focus-within { border-color: var(--border-active); box-shadow: var(--glow-soft); }
+  .ui-notice { min-width: 0; border: 1px solid var(--border-soft); border-left-width: 3px; border-radius: var(--radius-control); padding: 0.75rem 1rem; overflow-wrap: anywhere; }
+  .ui-notice-title { margin: 0; color: var(--text-primary); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+  .ui-notice-content { margin-top: 0.35rem; font-size: 0.875rem; }
+  .ui-notice-info { border-color: var(--system-cyan); background: #70dcf20d; }
+  .ui-notice-success { border-color: var(--success); background: #79e2b00d; }
+  .ui-notice-warning { border-color: var(--warning); background: #f5cd7a0d; }
+  .ui-notice-danger { border-color: var(--danger); background: #ff9fa90d; }
+  .ui-notice + .ui-notice { margin-top: 0.75rem; }
+  .system-dialog { border-color: var(--system-violet); background: linear-gradient(180deg, #b8a5f50d, transparent 22%), var(--surface-glass); }
+  .system-dialog-zone { border-top: 1px solid var(--border-soft); padding-top: 1rem; }
+  .system-dialog-zone:first-of-type { border-top: 0; padding-top: 0; }
+  .system-dialog-zone-title { color: var(--system-violet); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+  .system-dialog-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  @media (max-width: 639px) {
+    .system-dialog { max-height: calc(100dvh - 0.5rem); min-height: calc(100dvh - 0.5rem); width: calc(100% - 0.5rem); padding: 1rem; }
+    .system-dialog-actions > .ui-button { flex: 1 1 auto; }
+  }
+}

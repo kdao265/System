@@ -141,7 +141,7 @@ function RecurringSeriesModal({ userId, locale, selection, onClose, onArchived }
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}
-    className="m-auto max-h-[calc(100dvh-1rem)] min-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-xl overflow-y-auto rounded-xl border border-violet-400/40 bg-zinc-950 p-4 text-zinc-100 shadow-2xl backdrop:bg-black/75 sm:min-h-0 sm:p-6">
+    className="system-dialog m-auto max-h-[calc(100dvh-1rem)] min-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-xl overflow-y-auto rounded-xl border p-4 text-zinc-100 shadow-2xl backdrop:bg-black/75 sm:min-h-0 sm:p-6">
     <div className="flex items-start justify-between gap-3">
       <h2 id="recurring-series-title" className="text-lg font-semibold">{t.title}</h2>
       <button ref={closeButton} type="button" className={buttonClass} onClick={onClose}>{t.close}</button>
@@ -316,7 +316,8 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
     ? dash[detail.recurrence_mode] : qd[rule.recurrence_type as keyof typeof qd];
   const weekdays = rule.weekdays?.map((day) => new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 4 + day)))).join(", ");
   return <>
-    <h3 className="mt-4 text-xl font-semibold wrap-anywhere">{title}</h3>
+    <div className="system-dialog-zone">
+    <h3 className="mt-2 text-xl font-semibold wrap-anywhere">{title}</h3>
     <p className="mt-2 text-sm font-medium text-amber-200">{t.affects}</p>
     <dl className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-x-3 gap-y-2 text-sm [&_dd]:wrap-anywhere [&_dt]:text-zinc-400">
       <dt>{t.cadence}</dt><dd>{cadence}</dd>
@@ -328,7 +329,8 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
       {rule.interval_count !== null && <><dt>{qd.interval}</dt><dd>{rule.interval_count}</dd></>}
       {rule.occurrence_limit !== null && <><dt>{qd.limit}</dt><dd>{rule.occurrence_limit}</dd></>}
     </dl>
-    <div className="mt-5">
+    </div>
+    <div className="system-dialog-zone mt-5">
       {pause.operation && <p className="text-sm text-exp">{rc.awaiting}: {pause.operation.paused ? rc.pause : rc.resume}</p>}
       {pause.phase === "uncertain"
         ? <button type="button" disabled={!online} onClick={() => { void togglePause(true); }} className={buttonClass}>{rc.retry}</button>
@@ -344,8 +346,8 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
         {schedule.message && <p role="status" className="mt-2 text-sm text-emerald-300">{schedule.message}</p>}
       </div>
     </div>
-    <div className="mt-5 border-t border-zinc-800 pt-4" lang={locale}>
-      <h4 className="text-sm font-semibold">{sd.heading}</h4>
+    <div className="system-dialog-zone mt-5" lang={locale}>
+      <h4 className="system-dialog-zone-title">{sd.heading}</h4>
       <p className="mt-1 text-sm text-zinc-400">{sd.hint}</p>
       <dl className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-x-3 gap-y-2 text-sm [&_dd]:wrap-anywhere [&_dt]:text-zinc-400">
         {hasDefaults ? <>
@@ -362,24 +364,24 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
         <div><label htmlFor="series-schedule-start" className="text-sm text-zinc-300">{sd.start}</label>
           <input id="series-schedule-start" type="time" value={startInput} aria-describedby={scheduleConflicted ? "series-schedule-conflict" : undefined}
             onChange={(event) => updateDraft({ start: event.target.value })}
-            disabled={scheduleLocked} className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 pointer-coarse:py-3" /></div>
+            disabled={scheduleLocked} className="ui-field mt-1" /></div>
         <div><label htmlFor="series-schedule-end" className="text-sm text-zinc-300">{sd.end}</label>
           <input id="series-schedule-end" type="time" value={endInput} aria-describedby={scheduleConflicted ? "series-schedule-conflict" : undefined}
             onChange={(event) => updateDraft({ end: event.target.value })}
-            disabled={scheduleLocked} className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 pointer-coarse:py-3" /></div>
+            disabled={scheduleLocked} className="ui-field mt-1" /></div>
       </div>}
-      {editing && <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm">
+      {editing && <label className="system-form-checkbox mt-3 flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" checked={nextDayInput}
           onChange={(event) => updateDraft({ nextDay: event.target.checked })}
           disabled={scheduleLocked} className="size-5 accent-zinc-100" />{sd.nextDay}
       </label>}
-      {scheduleConflicted && <div id="series-schedule-conflict" role="alert" className="mt-3 rounded-md border border-amber-700 bg-amber-950/30 p-3">
+      {scheduleConflicted && <div id="series-schedule-conflict" role="alert" className="ui-notice ui-notice-warning mt-3">
         <p className="text-sm text-amber-200">{sd.conflict}</p>
         <button type="button" onClick={reloadAuthoritativeDraft} className={`${buttonClass} mt-2`}>{sd.reload}</button>
       </div>}
       {editing && <p className="mt-2 text-sm text-zinc-400">{nextDayInput ? sd.nextDayHint : sd.sameDayHint}</p>}
       {scheduleValidation && <p role="alert" className="mt-2 text-sm text-amber-300">{scheduleValidation}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="system-dialog-actions mt-3">
         {schedule.phase === "uncertain"
           ? <button type="button" disabled={!online} onClick={() => { void onScheduleRetry(); }} className={buttonClass}>{sd.retry}</button>
           : editing ? <>
@@ -393,11 +395,9 @@ export function SeriesModalContent({ locale, questId, title, detail, detailVersi
             </>}
       </div>
     </div>
-    <div className="mt-5 border-t border-zinc-800 pt-4">
+    <div className="system-dialog-zone mt-5">
       <RecurringRetirementControl questId={questId} title={title} locale={locale}
         archiveLabel={t.archive} disabled={pause.phase !== "ready"} />
     </div>
   </>;
 }
-
-

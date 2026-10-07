@@ -1,0 +1,23 @@
+.goals-workspace { --goals-surface: #0d1720; }
+.goals-scope-controls { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-soft); }
+.goals-scope-controls .ui-nav-link[aria-current="page"], .goals-scope-controls [aria-current="page"] { color: var(--system-cyan); border-color: var(--border-active); background: var(--surface-raised); }
+.goals-feedback { min-width: 0; }
+.goals-pending-change { border: 1px solid var(--border-warning); border-left: 3px solid var(--system-gold); border-radius: var(--radius-control); padding: 0.75rem; background: #f5cd7a12; }
+.goals-detail { padding: 1rem; border: 1px solid var(--border-system); border-left: 2px solid var(--system-blue); border-radius: var(--radius-panel); background: linear-gradient(145deg, #9ab9ff12, transparent 45%), var(--goals-surface); }
+.goals-detail-archived { border-color: var(--border-warning); border-left-color: var(--system-gold); background: linear-gradient(145deg, #f5cd7a12, transparent 45%), var(--goals-surface); }
+.goals-detail-title { min-width: 0; font-size: clamp(1.5rem, 5vw, 2.25rem); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.goals-subquests-heading { font-size: 1.125rem; font-weight: 650; }
+.goals-subquest-row { min-width: 0; padding: 0.75rem; border: 1px solid var(--border-soft); border-left: 2px solid var(--system-cyan); border-radius: var(--radius-control); background: #09121a99; }
+.goals-subquest-completed { border-left-color: var(--success); background: #172b2799; }
+.goals-subquest-title { font-weight: 650; overflow-wrap: anywhere; }
+.goals-create { padding: 1rem; border: 1px solid var(--border-soft); border-top-color: var(--system-gold); border-radius: var(--radius-panel); background: linear-gradient(145deg, #f5cd7a0d, transparent 45%), var(--surface); }
+.goals-list { min-width: 0; }
+.goals-list-item { min-width: 0; padding: 1rem; border: 1px solid var(--border-soft); border-left: 2px solid var(--system-cyan); border-radius: var(--radius-panel); background: var(--surface); }
+.goals-list-item-complete { border-left-color: var(--success); }
+.goals-progress-readout { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.goals-progress-percent { color: var(--system-blue); font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.goals-progress-state { font-size: 0.8125rem; }
+@media (max-width: 759px) {
+  .goals-scope-controls .goals-button { flex: 1 1 100%; }
+  .goals-detail, .goals-create, .goals-list-item { padding: 0.875rem; }
+}

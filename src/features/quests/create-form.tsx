@@ -12,8 +12,9 @@ import { formatProfileLocal } from "./time";
 import { isRecurring } from "./recurring-model";
 import { partialScheduleDefaults, validScheduleDefaults } from "./schedule-model";
 import type { QuestDraft } from "./create-draft";
+import { Notice } from "@/components/ui/primitives";
 
-const control = "mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:py-3";
+const control = "ui-field mt-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 // The key isolates draft, pending state and subscriptions before the new account renders.
 export function QuestCreationForm(props: { timezone: string; userId: string; locale?: Locale }) {
@@ -97,29 +98,29 @@ function AccountQuestCreationForm({ timezone, userId, locale = "en" }: { timezon
     : null;
 
   return (
-    <section lang={locale} aria-label={t.aria} className="min-w-0 [overflow-wrap:anywhere] rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 sm:p-6">
-      <h2 className="text-xs font-medium tracking-[0.3em] text-zinc-400">{t.heading}</h2>
+    <section lang={locale} aria-label={t.aria} className="ui-panel system-form-surface min-w-0">
+      <h2 className="system-form-heading">{t.heading}</h2>
       <p className="mt-2 text-sm text-zinc-400">{t.formTimesUse}: {state.draftTimezone}</p>
       <p className="mt-1 text-sm text-zinc-400">{t.currentProfileTimezone}: {state.profileTimezone}</p>
       {state.phase === "ready" && state.draftTimezone !== state.profileTimezone && <div className="mt-3 text-sm text-amber-200">
         <p>{t.reviewTimezone}</p>
         <button type="button" onClick={() => controller.reviewTimezone()} className="mt-2 underline">{t.useCurrentProfileTimezone}</button>
       </div>}
-      {state.phase === "recovering" && <p role="status" className="mt-3">{t.checkingSaved}</p>}
-      {!state.accountChanged && state.operations.map((operation) => <div key={operation.commandId} className="mt-4 rounded-md border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-amber-100">
+      {state.phase === "recovering" && <Notice tone="info" role="status" className="mt-3">{t.checkingSaved}</Notice>}
+      {!state.accountChanged && state.operations.map((operation) => <Notice key={operation.commandId} tone="warning" className="mt-4 text-sm">
         <p>{t.awaitingConfirmation}: {operation.request.title}</p>
         <p>{t.originalTimezone}: {operation.timezone}. {t.exactPreserved}</p>
         {!isRecurring(operation.request) && operation.request.scheduled_at && <p>{t.plannedStart}: {formatProfileLocal(operation.request.scheduled_at, operation.timezone)}</p>}
         {!isRecurring(operation.request) && operation.request.deadline_at && <p>{t.deadline}: {formatProfileLocal(operation.request.deadline_at, operation.timezone)}</p>}
         {isRecurring(operation.request) && <p>{t.recurring}: {operation.request.recurrence_mode === "daily" ? t.daily : operation.request.recurrence_mode === "weekly" ? t.weekly : t.monthly}, {t.starting} {operation.request.start_date}. {t.datesProfileTimezone}</p>}
         <button type="button" onClick={() => { if (navigator.onLine) void controller.retry(operation.commandId); }} disabled={!online || state.phase !== "uncertain"} className="mt-3 rounded-md border border-amber-500 px-3 py-2 disabled:opacity-50 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{t.retryExact}</button>
-      </div>)}
+      </Notice>)}
       {state.phase === "blocked" && !state.accountChanged && <button type="button" onClick={() => { void controller.recover(); }} className="mt-3 underline">{t.checkRecovery}</button>}
       {(state.accountChanged || state.draftTimezone !== state.profileTimezone) && <a href="/dashboard" className="mt-3 block underline">{t.refreshAccountProfile}</a>}
       <form onSubmit={submit} className="mt-5 space-y-4" aria-busy={active}>
-        <div><label htmlFor="quest-cadence">{t.questType}</label><select id="quest-cadence" value={draft.recurrence_mode} onChange={(event) => update("recurrence_mode", event.target.value as QuestDraft["recurrence_mode"])} disabled={locked} className={control}><option value="one_off">{t.oneOff}</option><option value="daily">{t.daily}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option></select></div>
-        <div><label htmlFor="quest-title">{t.title}</label><input id="quest-title" value={draft.title} onChange={(event) => update("title", event.target.value)} disabled={locked} className={control} /></div>
-        <div><label htmlFor="quest-description">{t.description} <span className="text-sm text-zinc-400">({t.optional})</span></label><textarea id="quest-description" value={draft.description} onChange={(event) => update("description", event.target.value)} disabled={locked} rows={3} className={control} /></div>
+        <div className="system-form-section"><div className="space-y-4"><div><label className="system-form-label" htmlFor="quest-cadence">{t.questType}</label><select id="quest-cadence" value={draft.recurrence_mode} onChange={(event) => update("recurrence_mode", event.target.value as QuestDraft["recurrence_mode"])} disabled={locked} className={control}><option value="one_off">{t.oneOff}</option><option value="daily">{t.daily}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option></select></div>
+        <div><label className="system-form-label" htmlFor="quest-title">{t.title}</label><input id="quest-title" value={draft.title} onChange={(event) => update("title", event.target.value)} disabled={locked} className={control} /></div>
+        <div><label className="system-form-label" htmlFor="quest-description">{t.description} <span className="system-form-hint">({t.optional})</span></label><textarea id="quest-description" value={draft.description} onChange={(event) => update("description", event.target.value)} disabled={locked} rows={3} className={control} /></div></div></div>
         {draft.recurrence_mode === "one_off" ? <div className="grid gap-4 sm:grid-cols-2">
           <div><label htmlFor="quest-scheduled-at">{t.plannedStart} ({t.optional})</label><input id="quest-scheduled-at" type="datetime-local" value={draft.scheduled_at} onChange={(event) => update("scheduled_at", event.target.value)} disabled={locked} className={control} /></div>
           <div><label htmlFor="quest-deadline-at">{t.deadline} ({t.optional})</label><input id="quest-deadline-at" type="datetime-local" value={draft.deadline_at} onChange={(event) => update("deadline_at", event.target.value)} disabled={locked} className={control} /></div>
@@ -144,13 +145,13 @@ function AccountQuestCreationForm({ timezone, userId, locale = "en" }: { timezon
             {scheduleHint && <p role="status" className="mt-2 text-sm text-amber-300">{scheduleHint}</p>}
           </fieldset>
         </fieldset>}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="system-form-section grid gap-4 sm:grid-cols-3">
           <div><label htmlFor="quest-reward">{t.rewardExp}</label><input id="quest-reward" type="number" min="0" max="2147483647" step="1" value={draft.default_reward_exp} onChange={(event) => update("default_reward_exp", event.target.value)} disabled={locked} className={control} /></div>
           <div><label htmlFor="quest-importance">{t.importance}</label><select id="quest-importance" value={draft.importance} onChange={(event) => update("importance", event.target.value as QuestDraft["importance"])} disabled={locked} className={control}><option value="side">{t.side}</option><option value="main">{t.main}</option></select></div>
           <div><label htmlFor="quest-priority">{t.priority} ({t.optional})</label><select id="quest-priority" value={draft.priority} onChange={(event) => update("priority", event.target.value as QuestDraft["priority"])} disabled={locked} className={control}><option value="">{t.unspecified}</option><option value="low">{t.low}</option><option value="medium">{t.medium}</option><option value="high">{t.high}</option><option value="critical">{t.critical}</option></select></div>
         </div>
-        <div aria-live="polite" aria-atomic="true">{errorText && <p role="alert" className="text-sm text-red-300">{errorText}</p>}{successText && <p role="status" className="text-sm text-emerald-300">{successText}</p>}</div>
-        <button type="submit" disabled={locked || !online} className="w-full rounded-md bg-zinc-100 px-4 py-2 font-medium text-zinc-950 disabled:opacity-50 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">{state.phase === "sending" ? t.confirming : draft.recurrence_mode === "one_off" ? t.scheduleQuest : t.createRecurringQuest}</button>
+        <div aria-live="polite" aria-atomic="true">{errorText && <Notice tone="danger" role="alert">{errorText}</Notice>}{successText && <Notice tone="success" role="status">{successText}</Notice>}</div>
+        <button type="submit" disabled={locked || !online} className="ui-button ui-button-primary w-full">{state.phase === "sending" ? t.confirming : draft.recurrence_mode === "one_off" ? t.scheduleQuest : t.createRecurringQuest}</button>
       </form>
     </section>
   );

@@ -342,7 +342,7 @@ test("accessible distinct loading, empty, invalid, retry, timezone and time disp
   assert.match(html, /Completion readiness \(server\)/);
   assert.ok(html.includes("X".repeat(120)));
   assert.match(html, /overflow-wrap:anywhere/);
-  assert.match(html, /sm:grid-cols-2/);
+  assert.match(html, /dashboard-quest-meta/);
 });
 
 const progression = {

@@ -1,0 +1,176 @@
+:root {
+  color-scheme: dark;
+  --app: #09090b;
+  --surface: #11171f;
+  --elevated: #19232e;
+  --border-subtle: #2c3c4c;
+  --border-strong: #71869a;
+  --accent: #70dcf2;
+  --accent-secondary: #9ab9ff;
+  --success: #79e2b0;
+  --warning: #f5cd7a;
+  --danger: #ff9fa9;
+  --text: #edf4fa;
+  --muted: #afbdcc;
+  --exp: #f5cd7a;
+  --level: #f5cd7a;
+  --quest: #b8a5f5;
+  --main-quest: #9ab9ff;
+  --calendar: #70dcf2;
+  --radius-control: 0.5rem;
+  --radius-panel: 1rem;
+  --space-panel: clamp(1rem, 3vw, 1.5rem);
+  --space-section: 1.5rem;
+  --shadow-panel: 0 8px 28px #00000026;
+  --glow-accent: 0 0 22px #70dcf212;
+  --duration-ui: 160ms;
+  --ease-ui: cubic-bezier(0.2, 0, 0, 1);
+  --duration-motion-fast: 220ms;
+  --duration-motion-ambient: 24s;
+  --ease-motion: cubic-bezier(0.22, 1, 0.36, 1);
+  --focus-ring: 2px solid var(--accent);
+  --font-system: Arial, Helvetica, sans-serif;
+
+  /* SYSTEM identity vocabulary (54B). The legacy tokens above stay authoritative so
+     every existing semantic meaning and scoped override (e.g. the Dashboard surface
+     overrides) keeps working; new HUD surfaces read these aliases instead of hard-coded
+     colors. Glow is hierarchical: soft = focus, medium = primary interaction, hero =
+     the single hero surface. */
+  --app-background: var(--app);          /* page base: near-black navy */
+  --surface-raised: var(--elevated);     /* lifted panel/input surface */
+  --surface-glass: #11171fcc;            /* translucent HUD surface wash */
+  --border-soft: var(--border-subtle);   /* default panel separation */
+  --border-system: #70dcf266;            /* cyan SYSTEM frame */
+  --border-active: var(--accent);        /* focused/active frame */
+  --border-warning: #f5cd7a80;           /* warning frame */
+  --border-danger: #ff9fa980;            /* destructive frame */
+  --system-cyan: var(--accent);          /* primary SYSTEM / interaction */
+  --system-blue: var(--accent-secondary);/* secondary cool accent / Main Quest */
+  --system-gold: var(--exp);             /* EXP / Level / reward / achievement */
+  --system-violet: var(--quest);         /* rare / special / recurring accents */
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --text-dim: #8b98a9;                   /* tertiary metadata; >= 4.5:1 on app/surface/elevated */
+  --glow-soft: 0 0 10px #70dcf21f;
+  --glow-medium: 0 0 18px #70dcf22e;
+  --glow-hero: 0 0 24px #70dcf22b, 0 0 48px #9ab9ff1a;
+  --frame-cut: 0.75rem;                  /* HUD clipped corner size */
+  --frame-segment: 3rem;                 /* sparse accent line segment length */
+  --frame-inset: 4px;                    /* inner frame line inset */
+  --frame-inner: #ffffff14;              /* restrained inner border */
+  --ambient-grid-opacity: 0.06;          /* ambient HUD grid visibility */
+  --ambient-scanline-opacity: 0.04;      /* ambient scanline visibility (surfaces in 54C) */
+}
+
+@theme inline {
+  --color-app: var(--app);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-muted: var(--muted);
+  --color-primary: var(--text);
+  --color-exp: var(--exp);
+  --color-level: var(--level);
+  --color-quest: var(--quest);
+  --color-main-quest: var(--main-quest);
+  --color-calendar: var(--calendar);
+  --color-app-background: var(--app-background);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-glass: var(--surface-glass);
+  --color-border-soft: var(--border-soft);
+  --color-border-system: var(--border-system);
+  --color-border-active: var(--border-active);
+  --color-border-warning: var(--border-warning);
+  --color-border-danger: var(--border-danger);
+  --color-system-cyan: var(--system-cyan);
+  --color-system-blue: var(--system-blue);
+  --color-system-gold: var(--system-gold);
+  --color-system-violet: var(--system-violet);
+  --color-dim: var(--text-dim);
+}
+
+body {
+  margin: 0;
+  background: var(--app);
+  color: var(--text);
+  font-family: var(--font-system);
+  line-height: 1.6;
+}
+
+/* Compact presentation vocabulary. Feature-specific grids and legacy utilities stay local. */
+@layer components {
+  .type-display { font-size: clamp(2rem, 6vw, 3rem); font-weight: 700; line-height: 1.15; letter-spacing: 0.12em; }
+  .type-page { font-size: clamp(1.75rem, 5vw, 2.25rem); font-weight: 650; line-height: 1.25; letter-spacing: -0.02em; }
+  .type-section { font-size: 1.125rem; font-weight: 650; line-height: 1.4; }
+  .type-card { font-size: 1rem; font-weight: 600; line-height: 1.5; }
+  .type-body { font-size: 1rem; line-height: 1.6; }
+  .type-metadata { font-size: 0.8125rem; line-height: 1.5; }
+  .type-stat { font-size: 2rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .app-header { min-width: 0; padding-bottom: var(--space-section); margin-bottom: var(--space-section); border-bottom: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+  .ui-panel { min-width: 0; position: relative; padding: var(--space-panel); border: 1px solid var(--border-soft); border-radius: var(--radius-panel); background: linear-gradient(180deg, #ffffff07, transparent 42%), var(--surface); box-shadow: var(--shadow-panel); overflow-wrap: anywhere; }
+  /* Restrained inner frame line; sits inside the panel padding so it never crosses content. */
+  .ui-panel::before { content: ""; position: absolute; inset: var(--frame-inset); border: 1px solid var(--frame-inner); border-radius: calc(var(--radius-panel) - var(--frame-inset)); pointer-events: none; }
+  .ui-panel-hud { border-color: var(--border-system); --frame-inner: #70dcf240; background-color: var(--surface-glass); background-image: linear-gradient(var(--system-cyan), var(--system-cyan)), linear-gradient(180deg, #70dcf21a, transparent 45%), linear-gradient(180deg, #ffffff07, transparent 42%); background-repeat: no-repeat; background-position: left top, left top, left top; background-size: var(--frame-segment) 2px, 100% 100%, 100% 100%; clip-path: polygon(0 0, calc(100% - var(--frame-cut)) 0, 100% var(--frame-cut), 100% 100%, var(--frame-cut) 100%, 0 calc(100% - var(--frame-cut))); }
+  .ui-panel-hud::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(#70dcf259 1px, transparent 1px), linear-gradient(90deg, #70dcf259 1px, transparent 1px); background-size: 24px 24px; opacity: var(--ambient-grid-opacity); }
+  /* Generic hero wash for future secondary hero surfaces. The Dashboard Main Quest
+     deliberately does NOT use this variant: it stays on the base Panel and frames
+     itself via .dashboard-hero (single pseudo-element ownership, no stacked frames —
+     see the 54D decision note in src/styles/dashboard.css). */
+  .ui-panel-hero { border-color: var(--border-system); --frame-inner: #f5cd7a40; background-color: var(--surface-raised); background-image: linear-gradient(165deg, #f5cd7a17, transparent 48%), linear-gradient(180deg, #70dcf212, transparent 40%), linear-gradient(180deg, #ffffff08, transparent 42%); box-shadow: var(--shadow-panel), var(--glow-hero); }
+  .ui-panel-warning { border-color: var(--border-warning); --frame-inner: #f5cd7a40; background-color: var(--surface); background-image: linear-gradient(180deg, #f5cd7a17, transparent 45%), linear-gradient(180deg, #ffffff07, transparent 42%); }
+  .ui-panel-danger { border-color: var(--border-danger); --frame-inner: #ff9fa940; background-color: var(--surface); background-image: linear-gradient(180deg, #ff9fa917, transparent 45%), linear-gradient(180deg, #ffffff07, transparent 42%); }
+  .ui-button { display: inline-flex; min-height: 2.75rem; max-width: 100%; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 0.5rem 0.875rem; background: linear-gradient(180deg, #ffffff0a, transparent 55%), var(--surface); color: var(--text); font-size: 0.875rem; font-weight: 600; line-height: 1.4; text-align: center; overflow-wrap: anywhere; cursor: pointer; transition: background-color var(--duration-ui) var(--ease-ui), border-color var(--duration-ui) var(--ease-ui), transform var(--duration-motion-fast) var(--ease-motion), box-shadow var(--duration-motion-fast) var(--ease-motion); }
+  .ui-button:hover:not(:disabled) { background: linear-gradient(180deg, #ffffff0a, transparent 55%), var(--elevated); border-color: var(--accent); }
+  .ui-button:hover:not(:disabled) { transform: translateY(-1px); }
+  .ui-button:active:not(:disabled) { transform: translateY(0); }
+  .ui-button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ui-button-primary { color: var(--app); background: var(--accent); border-color: var(--accent); }
+  .ui-button-primary:hover:not(:disabled) { color: var(--app); background: var(--accent-secondary); box-shadow: var(--glow-medium); }
+  .ui-button-danger { color: var(--danger); border-color: var(--danger); }
+  .ui-nav-link { flex: 1 1 auto; }
+  .ui-nav-link[aria-current="page"] { color: var(--accent); border-color: var(--accent); background: linear-gradient(180deg, #ffffff0a, transparent 55%), var(--elevated); box-shadow: var(--glow-accent); }
+  .ui-nav-link { transition: background-color var(--duration-ui) var(--ease-ui), border-color var(--duration-ui) var(--ease-ui), color var(--duration-ui) var(--ease-ui), transform var(--duration-motion-fast) var(--ease-motion); }
+  .ui-nav-link:hover:not([aria-current="page"]) { transform: translateX(2px); }
+  .ui-field { display: block; min-width: 0; min-height: 2.75rem; width: 100%; max-width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--elevated); color: var(--text); padding: 0.5rem 0.75rem; font-size: 1rem; line-height: 1.5; box-shadow: inset 0 1px 2px #0000004d; }
+  .ui-field::placeholder { color: var(--text-dim); }
+  .ui-button:focus-visible { outline: var(--focus-ring); outline-offset: 3px; box-shadow: var(--glow-soft); }
+  .ui-field:focus-visible { outline: var(--focus-ring); outline-offset: 3px; box-shadow: inset 0 1px 2px #0000004d, var(--glow-soft); }
+  .ui-badge { display: inline-flex; max-width: 100%; align-items: center; border: 1px solid currentColor; border-radius: var(--radius-control); padding: 0.125rem 0.5rem; font-size: 0.8125rem; line-height: 1.5; background: color-mix(in srgb, currentColor 10%, transparent); }
+  .ui-tone-accent { color: var(--accent); }
+  .ui-tone-success { color: var(--success); }
+  .ui-tone-warning { color: var(--warning); }
+  .ui-tone-danger { color: var(--danger); }
+  .ui-tone-muted { color: var(--muted); }
+  .ui-tone-exp { color: var(--exp); }
+  .ui-tone-violet { color: var(--quest); }
+  /* Energy/progression bar: dark track, cell ticks, luminous leading fill. EXP stays gold;
+     Main Quest and completed keep their own semantic tones. */
+  .ui-progress { height: 0.625rem; width: 100%; overflow: hidden; border-radius: var(--radius-control); background: #0b121a; border: 1px solid var(--border-soft); box-shadow: inset 0 1px 2px #00000073; }
+  .ui-progress > div { height: 100%; border-radius: inherit; background-color: var(--exp); background-image: linear-gradient(180deg, #ffffff40, transparent 62%), repeating-linear-gradient(90deg, #00000030 0 1px, transparent 1px 8px); transition: width var(--duration-motion-fast) var(--ease-motion); }
+  .ui-progress-exp > div { background-color: var(--exp); }
+  .ui-progress-main-quest > div { background-color: var(--main-quest); }
+  .ui-progress-success > div { background-color: var(--success); }
+  .ui-empty { position: relative; padding: var(--space-panel); border: 1px dashed var(--border-system); border-radius: var(--radius-control); background: linear-gradient(180deg, #70dcf20d, transparent 58%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration-ui: 0ms; --duration-motion-fast: 0ms; --duration-motion-ambient: 0ms; }
+  .ui-button, .ui-nav-link, .ui-progress > div { transition: none; }
+}
+
+/* Page frame for edge-to-edge standalone installs. Each side keeps the existing page
+   spacing unless the installed app reports a larger display cutout or home-indicator
+   inset, in which case the larger value wins. In a normal browser tab every env()
+   value is zero, so spacing is unchanged. */
+@utility page-frame {
+  padding-top: max(4rem, env(safe-area-inset-top));
+  padding-bottom: max(4rem, env(safe-area-inset-bottom));
+  padding-left: max(1.5rem, env(safe-area-inset-left));
+  padding-right: max(1.5rem, env(safe-area-inset-right));
+}

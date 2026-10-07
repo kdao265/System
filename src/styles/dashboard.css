@@ -1,0 +1,307 @@
+/* Dashboard V2: composition and replaceable, asset-free scenery. Domain styles
+   and the foundation tokens remain authoritative outside this page. The page
+   header/shell styling lives in system-shell.css since the 54C shell. */
+.dashboard-page {
+  --surface: #0e1923;
+  --elevated: #172632;
+  --radius-panel: 0.625rem;
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-top: max(1.25rem, env(safe-area-inset-top));
+  background: radial-gradient(ellipse at 45% 0, #17384b38, transparent 48%);
+}
+.dashboard-player { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem 1rem; margin-bottom: 1.25rem; overflow-wrap: anywhere; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+.dashboard-grid > *, .dashboard-tools > * { min-width: 0; }
+.dashboard-grid .ui-panel { border-top-color: #56828f; box-shadow: 0 6px 24px #0004; }
+.dashboard-slot-daily > div:has(> section) { margin-bottom: 1rem; }
+.dashboard-page :where(button, input, select, summary) { min-height: 44px; max-width: 100%; }
+.dashboard-page :where(a, button, input, select, summary):focus-visible { outline: var(--focus-ring); outline-offset: 4px; }
+.dashboard-page :where(a, button) { overflow-wrap: anywhere; }
+.dashboard-page :where([id]) { scroll-margin-top: 1rem; }
+.dashboard-page :where(.text-zinc-400, .text-zinc-500) { color: var(--muted); }
+/* ── Main Quest hero (54D): the dashboard's strongest surface. ───────────────
+   Panel collision decision (54B): the hero STAYS on the base Panel variant — option A.
+   .dashboard-hero owns BOTH of its pseudo-elements with a single responsibility each:
+   ::before is the inherited one-line inner frame (recolored via --frame-inner) and
+   ::after draws only asymmetric accent segments. The generic .ui-panel-hero wash and
+   glow therefore never stack onto this surface. */
+.dashboard-hero {
+  position: relative; isolation: isolate; overflow: hidden; min-height: 23rem;
+  border-color: #2b4654;
+  border-left-color: #f5cd7a73;
+  --frame-inner: #70dcf240;
+  background:
+    radial-gradient(130% 100% at 88% -12%, #f5cd7a1a, transparent 55%),
+    radial-gradient(110% 130% at 108% 46%, #70dcf214, transparent 62%),
+    #0c1720;
+}
+/* Asymmetric HUD accent segments only (never a second full frame): gold segment
+   top-left, cyan fade across the top-right, cyan right spine, gold descent
+   bottom-left — all as background layers, so nothing can cover interactive content. */
+.dashboard-hero::after {
+  content: ""; position: absolute; inset: 7px; pointer-events: none;
+  background:
+    linear-gradient(90deg, #f5cd7ab3, #f5cd7a00) top left / var(--frame-segment) 1.5px no-repeat,
+    linear-gradient(90deg, #70dcf2cc, #70dcf214) top right / 6rem 1px no-repeat,
+    linear-gradient(180deg, #70dcf2cc, #70dcf214) top right / 1px 7rem no-repeat,
+    linear-gradient(180deg, #f5cd7a99, #f5cd7a00) bottom left / 1px 4.5rem no-repeat;
+}
+/* Ambient scenery: asset-free, decorative, aria-hidden and low contrast behind copy.
+   The left wash keeps the text zone dark; a restrained gold bloom, technical
+   scanlines, quadrant-varied orbital geometry and a horizon grid carry the mood. */
+.dashboard-horizon {
+  position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px),
+    linear-gradient(90deg, #0c1720 0%, #0c1720e6 46%, #0c17207a 74%, #0c17204d),
+    radial-gradient(ellipse at 84% 26%, #d4a04a4d, transparent 46%),
+    radial-gradient(ellipse at 98% 84%, #70dcf21f, transparent 52%),
+    linear-gradient(168deg, #173544, #0b1721 70%);
+}
+/* Orbital HUD ring with asymmetric quadrant hairlines plus a concentric echo. */
+.dashboard-horizon::before {
+  content: ""; position: absolute; width: 20rem; height: 20rem; right: -2.5rem; top: 1.5rem;
+  border-radius: 50%;
+  border-top: 1px solid #f5cd7a8c; border-right: 1px solid #f5cd7a66;
+  border-bottom: 1px solid #70dcf259; border-left: 1px solid #70dcf21f;
+  box-shadow: 0 0 0 24px #e8c07805, 0 0 0 25px #70dcf21a;
+  animation: system-orbit var(--duration-motion-ambient) linear infinite;
+}
+.dashboard-horizon::after { content: ""; position: absolute; inset: 55% -20% -45%; transform: perspective(220px) rotateX(55deg); background-image: linear-gradient(#70dcf216 1px, transparent 1px), linear-gradient(90deg, #70dcf216 1px, transparent 1px); background-size: 44px 44px; animation: system-horizon-drift var(--duration-motion-ambient) ease-in-out infinite alternate; }
+.dashboard-horizon i { position: absolute; right: -5%; bottom: 20%; width: 65%; height: 32%; background: #213a444f; clip-path: polygon(0 100%, 20% 60%, 35% 75%, 62% 0, 75% 35%, 100% 10%, 100% 100%); }
+.dashboard-horizon i:nth-child(2) { bottom: 7%; right: -12%; background: #0a1a24aa; transform: scale(1.25); }
+.dashboard-horizon i:nth-child(3) { right: 12%; bottom: 28%; height: 38%; width: 5%; background: linear-gradient(90deg, #70dcf208, #70dcf244); clip-path: polygon(40% 0, 55% 0, 65% 55%, 100% 62%, 100% 100%, 0 100%, 0 65%, 25% 58%); }
+.dashboard-hero-content { position: relative; }
+/* Micro label with a sparse gold linework segment — tracked metadata, not the title. */
+.dashboard-hero-eyebrow { display: flex; align-items: center; gap: 0.65rem; font-size: 0.7rem; }
+.dashboard-hero-eyebrow::after { content: ""; flex: 0 0 var(--frame-segment); height: 1px; background: linear-gradient(90deg, var(--system-gold), transparent); }
+/* The Quest title is the dominant text: strong weight, tight natural tracking, light
+   shadow only for legibility over the ambient scenery. */
+.dashboard-hero-title { margin-top: 1.1rem; max-width: 34rem; font-size: clamp(1.7rem, 2.6vw, 2.5rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; text-shadow: 0 1px 2px #04070aaa; }
+/* SYSTEM status readout: count on the left, gold mono percentage on the right. */
+.dashboard-hero-status { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.35rem 1rem; }
+.dashboard-hero-count { font-size: 0.875rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dashboard-hero-percent { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.02em; }
+/* The bar reads as part of the hero frame rather than a separate widget. */
+.dashboard-hero .ui-progress { height: 0.75rem; border-color: #70dcf259; }
+.dashboard-hero .ui-progress > div { background-image: linear-gradient(180deg, #ffffff52, transparent 60%), repeating-linear-gradient(90deg, #00000040 0 1px, transparent 1px 8px); }
+/* Empty state keeps a deliberate HUD card (dashed system frame, gold-cyan wash, gold
+   corner segment) so an account without a Main Quest never looks like a broken hero. */
+.dashboard-hero .ui-empty { max-width: 30rem; border-color: #70dcf266; background: linear-gradient(160deg, #f5cd7a17, #70dcf20d 55%, transparent); }
+.dashboard-hero .ui-empty::before { content: ""; position: absolute; top: 0; left: 0; height: 1.5px; width: var(--frame-segment); background: linear-gradient(90deg, var(--system-gold), transparent); }
+.dashboard-hero .ui-empty .type-card { font-size: clamp(1.6rem, 3vw, 2.3rem); line-height: 1.2; }
+/* Gold progression CTA: intentional system button with a top accent segment. Hover
+   re-declares the image layers because the shared .ui-button:hover resets them. */
+.dashboard-gold-button {
+  border-color: #f5cd7a99; color: var(--exp);
+  background:
+    linear-gradient(180deg, #f5cd7a26, transparent 55%),
+    linear-gradient(#f5cd7a, #f5cd7a) top left / var(--frame-segment) 1.5px no-repeat,
+    #261f16;
+}
+.dashboard-gold-button:hover {
+  border-color: var(--exp);
+  background: linear-gradient(180deg, #f5cd7a33, transparent 55%), linear-gradient(#f5cd7a, #f5cd7a) top left / var(--frame-segment) 1.5px no-repeat, #34291b;
+}
+/* Sub Quest preview: light STATUS rows (single nested level, hairline + state rail),
+   visually below the title/progress. Completion is marked by glyph, label, state rail
+   and strikethrough — never by color alone. */
+.dashboard-subquests { display: grid; gap: 0.45rem; margin-top: 1.1rem; font-size: 0.8125rem; list-style: none; }
+.dashboard-subquests li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 0.35rem 0.75rem;
+  padding: 0.5rem 0.7rem; border: 1px solid #70dcf224; border-left: 2px solid #70dcf266;
+  border-radius: 0.25rem; background: linear-gradient(100deg, #172632a6, #0b161f8c);
+}
+.dashboard-subquests li[data-completed="true"] { border-left-color: var(--success); }
+.dashboard-subquest-title { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-subquests li[data-completed="true"] .dashboard-subquest-title { color: var(--muted); text-decoration: line-through; text-decoration-color: #79e2b099; }
+.dashboard-subquests li > .type-metadata { letter-spacing: 0.05em; white-space: nowrap; }
+/* Level / EXP (54D): the secondary STATUS module — quieter than the hero. Cyan frames
+   the module (top segment + inner frame), gold carries progression, and the numeric
+   level is the focal point. Values, semantics and the progressbar contract are
+   presentation-independent. */
+.dashboard-level { text-align: center; height: 100%; border-color: #2b4654; --frame-inner: #70dcf240;
+  background-image:
+    linear-gradient(var(--system-cyan), var(--system-cyan)),
+    linear-gradient(180deg, #70dcf212, transparent 34%),
+    linear-gradient(180deg, #ffffff07, transparent 42%);
+  background-repeat: no-repeat;
+  background-position: left top, left top, left top;
+  background-size: var(--frame-segment) 2px, 100% 100%, 100% 100%;
+}
+/* Concentric HUD gauge: dark segment ticks over a gold arc and track, cyan hairline
+   framing. The ::before adds an outer radar scale; ::after marks the arc end at
+   --ring-angle (presentation only — real numbers stay as text). */
+.dashboard-level-ring {
+  position: relative; display: grid; place-items: center;
+  width: 8rem; height: 8rem; margin: 1.25rem auto; border-radius: 50%; padding: 7px;
+  border: 1px solid #70dcf266;
+  background:
+    repeating-conic-gradient(rgb(8 14 20 / 0.9) 0 0.55deg, transparent 0.55deg 6deg),
+    conic-gradient(var(--exp) var(--ring-progress), #26333f 0);
+  box-shadow: 0 0 20px #f5cd7a0f;
+}
+.dashboard-level-ring::before {
+  content: ""; position: absolute; inset: -9px; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, #70dcf28c 0 0.4deg, transparent 0.4deg 15deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 2.5px));
+}
+.dashboard-level-ring::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%;
+  background: conic-gradient(#0000 0 358.4deg, #ffe9bd 358.4deg 360deg);
+  transform: rotate(var(--ring-angle, 0deg));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
+  animation: system-level-pulse 3.2s ease-in-out infinite;
+}
+.dashboard-level-ring > div {
+  display: grid; place-content: center; width: 100%; height: 100%; border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #14242f, #0c1720 70%);
+  box-shadow: inset 0 0 0 4px #16222e, inset 0 0 18px #70dcf214;
+}
+.dashboard-level-ring h2 { font-size: 2.5rem; text-shadow: 0 0 16px #f5cd7a4d; }
+.dashboard-level .ui-progress { height: 0.35rem; border-color: #2b4654; }
+.dashboard-calendar { height: 100%; }
+.dashboard-agenda { margin-top: 1rem; }
+.dashboard-agenda li { padding: 0.75rem 0 0.75rem 0.75rem; border-left: 2px solid #70dcf270; border-bottom: 1px solid var(--border-subtle); }
+.dashboard-agenda li + li { margin-top: 0.5rem; }
+.dashboard-agenda .ui-badge { font-size: 0.65rem; padding: 0 0.35rem; border-color: #71869a66; }
+.dashboard-event-link { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 44px; font-weight: 600; font-size: 0.875rem; }
+.dashboard-event-link:hover { color: var(--accent); }
+.dashboard-daily-heading { font-size: 1rem; letter-spacing: 0.08em; color: var(--text); }
+.dashboard-date-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.dashboard-date-nav .ui-nav-link { flex: 0 1 auto; }
+.dashboard-date-form { display: flex; width: 100%; min-width: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.dashboard-date-field { min-width: 10rem; flex: 1 1 10rem; }
+.ui-nav-link-unavailable { color: var(--text-dim); border-color: var(--border-soft); cursor: not-allowed; }
+.dashboard-materialization-notice { border: 1px solid var(--border-warning); border-left: 3px solid var(--system-gold); border-radius: var(--radius-control); padding: 0.75rem; background: linear-gradient(110deg, #f5cd7a14, #241c1266); color: #ffe0a1; }
+.dashboard-materialization-item { overflow-wrap: anywhere; }
+
+@keyframes system-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes system-horizon-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 22px 0, -22px 0; }
+}
+
+@keyframes system-level-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-horizon::before,
+  .dashboard-horizon::after,
+  .dashboard-level-ring::after { animation: none; }
+}
+.dashboard-materialization-action { margin-left: 0.5rem; min-height: 2.25rem; padding: 0.25rem 0.625rem; font-size: 0.75rem; }
+.dashboard-quest-row { min-width: 0; position: relative; padding: 0.875rem; border: 1px solid var(--border-subtle); border-left: 2px solid #70dcf26b; border-radius: 0.375rem; background: linear-gradient(100deg, #17263299, #0b161fcc); }
+.dashboard-quest-row::after { content: ""; position: absolute; top: 0.5rem; right: 0.5rem; width: var(--frame-segment); height: 1px; background: linear-gradient(90deg, transparent, var(--system-cyan)); opacity: 0.55; pointer-events: none; }
+.dashboard-quest-row[data-completed="true"] { border-left-color: var(--success); background: linear-gradient(100deg, #172b2799, #0b161fcc); }
+.dashboard-quest-heading { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.35rem 0.6rem; }
+.dashboard-quest-marker { color: var(--system-cyan); font-size: 1rem; }
+.dashboard-quest-row[data-completed="true"] .dashboard-quest-marker { color: var(--success); }
+.dashboard-quest-title { min-width: 0; font-weight: 650; color: var(--text-primary); overflow-wrap: anywhere; }
+.dashboard-quest-status { grid-column: 2; justify-self: start; font-size: 0.7rem; }
+.dashboard-quest-reward { grid-column: 3; grid-row: 1; color: var(--system-gold); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.8rem; white-space: nowrap; }
+.dashboard-quest-actions { grid-column: 3; grid-row: 2; display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 0.35rem; }
+.dashboard-quest-actions > * { margin-top: 0; }
+.dashboard-quest-meta { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; font-size: 0.75rem; }
+.dashboard-quest-meta-item { min-width: 0; }
+.dashboard-quest-meta dt { color: var(--text-secondary); }
+.dashboard-quest-meta dd { margin-top: 0.125rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.dashboard-quest-meta-reward dd { color: var(--system-gold); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.dashboard-quest-readiness-blocked dd { color: var(--system-gold); }
+.dashboard-quest-primary-action, .dashboard-quest-secondary-action { min-width: 0; }
+.dashboard-quest-primary-action > *, .dashboard-quest-secondary-action > * { margin-top: 0.75rem; }
+.dashboard-quest-secondary-action .ui-button { color: var(--system-gold); border-color: var(--border-warning); }
+.ui-button-warning { color: var(--system-gold); border-color: var(--border-warning); background: linear-gradient(180deg, #f5cd7a1a, transparent 55%), #241b12; }
+.ui-button-warning:hover:not(:disabled) { color: var(--text-primary); border-color: var(--system-gold); background: #382816; }
+.quest-control-feedback { margin-top: 0.75rem; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.quest-control-feedback-success { color: var(--success); }
+.quest-control-feedback-warning { color: var(--warning); }
+.quest-control-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
+.quest-control-prompt { flex: 1 1 100%; color: var(--warning); font-size: 0.8125rem; }
+.quest-control-secondary { margin-top: 0.75rem; color: var(--warning); border-color: var(--border-warning); }
+.quest-management-confirm { margin-top: 0.75rem; border: 1px solid var(--border-soft); border-radius: var(--radius-control); padding: 0.75rem; background: #0b121acc; font-size: 0.8125rem; }
+.quest-management-confirm-danger { border-color: var(--border-danger); background: #2a111633; color: var(--danger); }
+.quest-management-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.quest-management-hint { margin-top: 0.5rem; color: var(--warning); font-size: 0.75rem; }
+.quest-management-feedback { margin-top: 0.5rem; max-width: 18rem; font-size: 0.75rem; }
+.quest-management-summary { display: inline-flex; min-height: 2.75rem; cursor: pointer; list-style: none; align-items: center; border: 1px solid var(--border-soft); border-radius: var(--radius-control); padding: 0.5rem 0.75rem; color: var(--text-secondary); }
+.quest-management-summary:hover { border-color: var(--border-active); background: var(--surface-raised); }
+.quest-management-summary:focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
+.quest-management-menu { position: absolute; right: 0; z-index: 20; margin-top: 0.5rem; width: 13rem; border: 1px solid var(--border-soft); border-radius: var(--radius-control); padding: 0.5rem; background: #080e14; box-shadow: var(--shadow-panel); }
+.quest-management-menu-action { display: block; min-height: 2.75rem; width: 100%; border-radius: var(--radius-control); padding: 0.5rem 0.75rem; color: var(--text-primary); text-align: left; }
+.quest-management-menu-action:hover { background: var(--surface-raised); }
+.quest-management-menu-action:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.quest-management-menu-danger { margin-top: 0.25rem; color: var(--danger); }
+.dashboard-recurring ul { max-height: 32rem; overflow-y: auto; padding: 2px; scrollbar-color: var(--border-strong) transparent; }
+.dashboard-recurring-item { min-width: 0; padding: 0.75rem; border: 1px solid #8d78c855; border-left: 2px solid var(--system-violet); border-radius: 0.375rem; background: linear-gradient(110deg, #1c183066, #09121a66); }
+.dashboard-recurring-item-paused { border-left-color: var(--warning); background: linear-gradient(110deg, #2a211766, #09121a66); }
+.dashboard-recurring-heading { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.35rem 0.5rem; }
+.dashboard-recurring-heading h3 { min-width: 0; font-size: 0.875rem; font-weight: 650; overflow-wrap: anywhere; }
+.dashboard-recurring-marker { color: var(--system-violet); }
+.dashboard-recurring-item-paused .dashboard-recurring-marker { color: var(--warning); }
+.dashboard-recurring-state { font-size: 0.7rem; }
+.dashboard-recurring-cadence, .dashboard-recurring-dates { margin-top: 0.35rem; color: var(--text-secondary); font-size: 0.75rem; overflow-wrap: anywhere; }
+.dashboard-recurring-pending { margin-top: 0.5rem; color: var(--system-gold); font-size: 0.75rem; }
+.dashboard-recurring-actions, .dashboard-recurring-tertiary { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dashboard-recurring-actions { margin-top: 0.75rem; }
+.dashboard-recurring-actions .ui-button, .dashboard-recurring-tertiary .ui-button { margin-top: 0; }
+.dashboard-recurring-manage { margin-top: 0.5rem; color: var(--system-violet); border-color: #8d78c877; }
+.dashboard-recurring-retirement { margin-top: 0.5rem; }
+.dashboard-recurring-retirement .quest-management-confirm { margin-top: 0.5rem; }
+.dashboard-tools { display: grid; gap: 1rem; margin-top: 1.5rem; align-items: start; }
+.dashboard-tools section { border-color: var(--border-subtle); background: #0d1720; }
+@media (min-width: 760px) {
+  .dashboard-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .dashboard-slot-main { grid-column: 1; grid-row: 1; align-self: stretch; }
+  .dashboard-slot-main > section { height: 100%; }
+  .dashboard-slot-level { grid-column: 2; grid-row: 1; align-self: stretch; }
+  .dashboard-slot-daily { grid-column: 1; grid-row: 2 / span 2; }
+  .dashboard-slot-calendar { grid-column: 2; grid-row: 2; }
+  .dashboard-slot-recurring { grid-column: 2; grid-row: 3; }
+  .dashboard-tools { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+}
+@media (min-width: 1200px) {
+  .dashboard-grid { grid-template-columns: minmax(0, 6fr) minmax(0, 2.4fr) minmax(0, 3.6fr); }
+  .dashboard-slot-main { grid-column: 1; }
+  .dashboard-slot-level { grid-column: 2; }
+  .dashboard-slot-calendar { grid-column: 3; grid-row: 1; align-self: stretch; }
+  .dashboard-slot-daily { grid-column: 1 / span 2; grid-row: 2; }
+  .dashboard-slot-recurring { grid-column: 3; grid-row: 2; }
+  .dashboard-tools { grid-template-columns: minmax(0, 8.4fr) minmax(0, 3.6fr); }
+}
+@media (max-width: 759px) {
+  .dashboard-page { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+  .dashboard-level { display: grid; grid-template-columns: 6rem minmax(0, 1fr); column-gap: 1rem; text-align: left; align-content: center; }
+  .dashboard-level:not(:has(.dashboard-level-ring)) { display: block; }
+  .dashboard-level > p:first-child { grid-column: 1 / -1; margin-bottom: 0.5rem; }
+  .dashboard-level-ring { grid-column: 1; grid-row: 2 / span 7; width: 6rem; height: 6rem; margin: 0; align-self: center; }
+  .dashboard-level > :not(:first-child):not(.dashboard-level-ring) { grid-column: 2; }
+  .dashboard-level-ring h2 { font-size: 2rem; }
+  .dashboard-level .ui-progress { margin-top: 0.5rem; }
+  .dashboard-hero { min-height: 0; }
+  .dashboard-horizon { opacity: 0.6; }
+  /* Mobile reduces scenery complexity: smaller orbital geometry, same language. */
+  .dashboard-horizon::before { width: 14rem; height: 14rem; right: -3rem; top: 0.5rem; box-shadow: 0 0 0 16px #e8c07805, 0 0 0 17px #70dcf21a; }
+  .dashboard-horizon i { right: 0; }
+  .dashboard-horizon i:nth-child(2) { right: 0; transform-origin: right center; }
+  .dashboard-hero-title { margin-top: 0.75rem; }
+  .dashboard-hero-percent { font-size: 1.25rem; }
+  .dashboard-subquests { margin-top: 0.75rem; }
+  .dashboard-quest-heading { grid-template-columns: auto minmax(0, 1fr); }
+  .dashboard-quest-reward { grid-column: 2; grid-row: 2; justify-self: start; }
+  .dashboard-quest-status { grid-column: 2; grid-row: 3; }
+  .dashboard-quest-actions { grid-column: 2; grid-row: 4; justify-content: flex-start; }
+  .dashboard-quest-meta { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-materialization-action { display: flex; margin: 0.5rem 0 0; }
+  .dashboard-recurring-actions, .dashboard-recurring-tertiary { flex-direction: column; align-items: stretch; }
+  .dashboard-recurring-actions .ui-button, .dashboard-recurring-tertiary .ui-button { width: 100%; }
+}

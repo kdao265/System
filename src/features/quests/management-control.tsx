@@ -51,18 +51,18 @@ function ConfirmAction({
   const confirm = destructive ? t.confirmDelete : operation === "archive" ? t.confirmArchive : t.confirmRestore;
 
   return (
-    <div className={`mt-3 rounded-md border p-3 text-sm ${destructive ? "border-red-900/80 bg-red-950/20" : "border-zinc-700 bg-zinc-950/70"}`}>
-      <p className={destructive ? "text-red-200" : "text-zinc-200"}>{prompt}</p>
+    <div className={`quest-management-confirm ${destructive ? "quest-management-confirm-danger" : ""}`}>
+      <p>{prompt}</p>
       <form action={formAction} className="mt-3 flex flex-wrap gap-2">
         <input type="hidden" name="expected_account" value={userId} />
         <input type="hidden" name="quest_id" value={questId} />
         <input type="hidden" name="operation" value={operation} />
         <button type="submit" disabled={pending}
-          className={`rounded-md px-3 py-2 text-sm font-medium disabled:cursor-wait disabled:opacity-60 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${destructive ? "bg-red-500 text-white" : "bg-zinc-100 text-zinc-950"}`}>
+          className={`ui-button ${destructive ? "ui-button-danger" : "ui-button-primary"}`}>
           {pending ? t.working : confirm}
         </button>
         <button type="button" onClick={cancel} disabled={pending}
-          className="rounded-md border border-zinc-600 px-3 py-2 text-sm text-zinc-200 disabled:opacity-60 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+          className="ui-button">
           {t.cancel}
         </button>
       </form>
@@ -115,7 +115,7 @@ export function QuestManagementControl({
           pending={pending} locale={locale} formAction={formAction}
           cancel={() => setConfirming(null)} />
         {feedback && <p role={state.outcome === "success" ? "status" : "alert"}
-          className={`mt-2 text-sm ${state.outcome === "success" ? "text-emerald-300" : "text-amber-200"}`}>
+          className={`quest-management-feedback ${state.outcome === "success" ? "quest-control-feedback-success" : "quest-control-feedback-warning"}`}>
           {feedback}
         </p>}
       </div>
@@ -125,19 +125,19 @@ export function QuestManagementControl({
   if (archived) {
     return (
       <div className="mt-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="quest-management-actions">
           <button type="button" onClick={() => setConfirming("restore")} disabled={pending}
-            className="rounded-md border border-zinc-600 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900 disabled:opacity-60 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+            className="ui-button">
             {t.restore}
           </button>
           <button type="button" onClick={() => setConfirming("delete")} disabled={pending || deleteBlocked}
-            className="rounded-md border border-red-900 px-3 py-2 text-sm text-red-300 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300">
+            className="ui-button ui-button-danger">
             {t.delete}
           </button>
         </div>
-        {deleteBlocked && <p className="mt-2 text-xs text-amber-200">{t.restoreReopenFirst}</p>}
+        {deleteBlocked && <p className="quest-management-hint">{t.restoreReopenFirst}</p>}
         {feedback && <p role={state.outcome === "success" ? "status" : "alert"}
-          className={`mt-2 text-sm ${state.outcome === "success" ? "text-emerald-300" : "text-amber-200"}`}>
+          className={`quest-management-feedback ${state.outcome === "success" ? "quest-control-feedback-success" : "quest-control-feedback-warning"}`}>
           {feedback}
         </p>}
       </div>
@@ -148,23 +148,23 @@ export function QuestManagementControl({
     <div className="relative shrink-0">
       <details className="group">
         <summary aria-label={`${t.actions}: ${title}`}
-          className="cursor-pointer list-none rounded-md border border-zinc-700 px-2.5 py-1 text-sm text-zinc-300 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+          className="quest-management-summary">
           <span aria-hidden="true">...</span>
         </summary>
-        <div className="absolute right-0 z-20 mt-2 w-52 rounded-lg border border-zinc-700 bg-zinc-950 p-2 shadow-xl">
+        <div className="quest-management-menu">
           <button type="button" onClick={() => setConfirming("archive")} disabled={pending}
-            className="block w-full rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900 disabled:opacity-60">
+            className="quest-management-menu-action">
             {t.archive}
           </button>
           <button type="button" onClick={() => setConfirming("delete")} disabled={pending || deleteBlocked}
-            className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-red-300 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50">
+            className="quest-management-menu-action quest-management-menu-danger">
             {t.delete}
           </button>
-          {deleteBlocked && <p className="px-3 pb-1 pt-2 text-xs text-amber-200">{t.reopenFirst}</p>}
+          {deleteBlocked && <p className="quest-management-hint">{t.reopenFirst}</p>}
         </div>
       </details>
       {feedback && <p role={state.outcome === "success" ? "status" : "alert"}
-        className={`mt-2 max-w-72 text-xs ${state.outcome === "success" ? "text-emerald-300" : "text-amber-200"}`}>
+        className={`quest-management-feedback ${state.outcome === "success" ? "quest-control-feedback-success" : "quest-control-feedback-warning"}`}>
         {feedback}
       </p>}
     </div>

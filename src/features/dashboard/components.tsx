@@ -13,19 +13,19 @@ export function MainQuestHero({ result, locale }: { result: MainQuestResult; loc
   return <Panel aria-label={t.main} className="dashboard-hero">
     <div className="dashboard-horizon" aria-hidden="true"><i /><i /><i /></div>
     <div className="dashboard-hero-content">
-      <p className="type-metadata tracking-[0.2em] text-exp">◇ {t.main}</p>
+      <p className="type-metadata tracking-[0.2em] text-exp dashboard-hero-eyebrow">◇ {t.main}</p>
       {detail ? <>
         <h2 className="dashboard-hero-title">{detail.goal.title}</h2>
         {detail.goal.description && <p className="mt-3 max-w-xl line-clamp-3 text-muted">{detail.goal.description}</p>}
-        <div className="mt-6 flex flex-wrap justify-between gap-2 text-sm">
-          <span>{detail.goal.completed_subquests} / {detail.goal.total_subquests} {t.subquests}</span>
-          <strong className="text-exp">{new Intl.NumberFormat(locale).format(progressPercent(detail.goal))}%</strong>
+        <div className="dashboard-hero-status mt-6">
+          <span className="dashboard-hero-count">{detail.goal.completed_subquests} / {detail.goal.total_subquests} {t.subquests}</span>
+          <strong className="dashboard-hero-percent text-exp font-mono">{new Intl.NumberFormat(locale).format(progressPercent(detail.goal))}%</strong>
         </div>
         <ProgressBar value={progressPercent(detail.goal)} label={t.progress} className="mt-2" />
         {detail.subquests.length > 0 && <ul className="dashboard-subquests" aria-label={t.subquests}>
-          {detail.subquests.slice(0, 3).map((sub) => <li key={sub.link_id}>
+          {detail.subquests.slice(0, 3).map((sub) => <li key={sub.link_id} data-completed={sub.status === "completed"}>
             <span aria-hidden="true" className={sub.status === "completed" ? "text-success" : "text-exp"}>{sub.status === "completed" ? "✓" : "◇"}</span>
-            <span className="min-w-0 flex-1">{sub.title}</span>
+            <span className="dashboard-subquest-title">{sub.title}</span>
             <span className="type-metadata text-muted">{getDictionary(locale).daily.states[sub.status]}</span>
           </li>)}
         </ul>}
@@ -45,7 +45,12 @@ export function LevelSnapshot({ result, locale, selectedDate }: { result: Progre
   return <Panel aria-label={exp?.state === "unavailable" ? t.levelUnconfigured : exp?.state === "invalid" ? t.levelInvalid : t.level} className="dashboard-level">
     <p className="type-metadata tracking-[0.2em] text-exp">LEVEL / EXP</p>
     {exp?.state === "available" ? <>
-      <div className="dashboard-level-ring" style={{ "--ring-progress": `${exp.nextLevel === null ? 100 : exp.percentInLevel}%` } as CSSProperties}>
+      {/* Presentation only: --ring-angle positions the decorative arc-end marker;
+          progress meaning stays in the progressbar + textual percentages. */}
+      <div className="dashboard-level-ring" style={{
+        "--ring-progress": `${exp.nextLevel === null ? 100 : exp.percentInLevel}%`,
+        "--ring-angle": `${(exp.nextLevel === null ? 100 : exp.percentInLevel ?? 0) * 3.6}deg`,
+      } as CSSProperties}>
         <div><span className="type-metadata text-muted">LEVEL</span><h2 className="type-stat text-level"><span className="sr-only">Level </span>{exp.currentLevel}</h2></div>
       </div>
       <p className="type-metadata text-muted">{t.currentExp}</p>

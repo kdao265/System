@@ -57,7 +57,10 @@ export async function visualFoundationJourney(page: Page, context: BrowserContex
   await link.focus();
   await expect(link).toBeFocused();
   expect(await link.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
-  expect(await link.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s, 0s");
+  // Reduced motion must disable every transition, regardless of how many
+  // properties the stylesheet declares (transition:none serializes as one 0s).
+  const durations = await link.evaluate((element) => getComputedStyle(element).transitionDuration.split(","));
+  expect(durations.every((duration) => Number.parseFloat(duration) === 0)).toBe(true);
 
   await context.addCookies([{ name: "system-locale", value: "unsupported", url: page.url() }]);
   await page.reload();

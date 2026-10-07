@@ -1,4 +1,4 @@
-import { AppHeader } from "@/components/app-header";
+import { SystemShell } from "@/components/system-shell";
 import { cookies } from "next/headers";
 import { getDictionary, LOCALE_COOKIE, resolveLocale } from "@/lib/localization/dictionaries";
 import { LevelSnapshot } from "@/features/dashboard/components";
@@ -41,8 +41,7 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
   const locale = resolveLocale((await cookies()).get(LOCALE_COOKIE)?.value);
   const t = getDictionary(locale).dashboard;
   return (
-    <main lang={locale} className="dashboard-page page-frame">
-      <AppHeader current="dashboard" selectedDate={selectedDate} compact />
+    <SystemShell current="dashboard" lang={locale} selectedDate={selectedDate} compact width="wide" pageClassName="dashboard-page">
       <section aria-label={t.player} className="dashboard-player">
         <div><p className="type-metadata text-accent">{t.overview}</p>
           <h2 className="type-card">{profile.display_name || t.operator}</h2></div>
@@ -98,6 +97,6 @@ export default async function DashboardPage({ searchParams = Promise.resolve({})
         </QuestManagementProvider>
       </QuestCompletionProvider>
       <footer lang="en" className="mt-8"><LogoutForm /></footer>
-    </main>
+    </SystemShell>
   );
 }

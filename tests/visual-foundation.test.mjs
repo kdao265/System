@@ -58,7 +58,9 @@ test("the server-provided locale controls navigation and the selected option on 
 });
 
 test("semantic foregrounds meet normal-text contrast and control borders remain visible", () => {
-  const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+  // The design tokens live in the foundation stylesheet since the 54A CSS split;
+  // the contrast requirements themselves are unchanged.
+  const css = readFileSync(new URL("../src/styles/system-foundation.css", import.meta.url), "utf8");
   const colors = Object.fromEntries([...css.matchAll(/--([\w-]+): (#[\da-f]{6});/g)].map(([, key, value]) => [key, value]));
   const luminance = (hex) => {
     const rgb = hex.slice(1).match(/../g).map((v) => parseInt(v, 16) / 255)

@@ -7,9 +7,9 @@ import { QuestCompletionControl, QuestReopenControl } from "./completion-control
 import { QuestManagementControl } from "./management-control";
 import { RecurringSeriesTrigger, RecurringSeriesManageButton } from "./recurring-series-trigger";
 
-const linkClass = "mt-4 inline-block rounded-md border border-zinc-600 px-4 py-2 text-sm underline-offset-4 hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
-const navLinkClass = "rounded-md border border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3";
-const navUnavailableClass = "rounded-md border border-zinc-800 px-3 py-2 text-sm text-zinc-600 pointer-coarse:py-3";
+const linkClass = "ui-button mt-4";
+const navLinkClass = "ui-button ui-nav-link";
+const navUnavailableClass = "ui-button ui-nav-link ui-nav-link-unavailable";
 function displayDate(value: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
 }
@@ -25,10 +25,10 @@ function QuestCard({ timezone, selectedDate, children, loading = false, locale =
   return (
     <section lang={locale} aria-label={t.title} aria-busy={loading}
       className="ui-panel dashboard-daily [overflow-wrap:anywhere]">
-      <h2 className="text-xs font-medium tracking-[0.3em] text-zinc-400">{t.heading}</h2>
+      <h2 className="dashboard-daily-heading">{t.heading}</h2>
       <p className="mt-2 text-sm text-zinc-300">{t.selected}: {displayDate(selectedDate, locale)}</p>
       <p className="mt-1 text-sm text-zinc-400">{t.timezone}: {timezone}</p>
-      <nav aria-label={t.navigation} className="mt-4 flex flex-wrap items-center gap-2">
+      <nav aria-label={t.navigation} className="dashboard-date-nav mt-4">
         {atMinimum ? <span aria-disabled="true" aria-label={t.previousUnavailable}
           className={navUnavailableClass}>{t.previous}</span> :
           <a href={`/dashboard?date=${previousDate}`} aria-label={t.viewPrevious}
@@ -39,10 +39,10 @@ function QuestCard({ timezone, selectedDate, children, loading = false, locale =
           className={navUnavailableClass}>{t.next}</span> :
           <a href={`/dashboard?date=${nextDate}`} aria-label={t.viewNext}
             className={navLinkClass}>{t.next}</a>}
-        <form action="/dashboard" className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <form action="/dashboard" className="dashboard-date-form">
           <label htmlFor="quest-date" className="text-sm text-zinc-300">{t.choose}</label>
           <input id="quest-date" name="date" type="date" min={MIN_CALENDAR_DATE} max={MAX_CALENDAR_DATE} defaultValue={selectedDate}
-            className="min-w-0 flex-1 basis-40 rounded-md border border-zinc-600 bg-zinc-950 px-2 py-2 text-sm text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white pointer-coarse:py-3 pointer-coarse:text-base" />
+            className="ui-field dashboard-date-field" />
           <button type="submit"
             className={navLinkClass}>{t.view}</button>
         </form>
@@ -75,7 +75,7 @@ function MaterializationNotices({ issues, locale, userId, seriesTitles }: {
   const sd = dictionary.scheduleDefaults;
   return (
     <div lang={locale} role="alert" aria-live="polite"
-      className="mt-4 rounded-md border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+    className="dashboard-materialization-notice mt-4">
       <p className="font-medium">{mi.heading}</p>
       <p className="mt-1 text-amber-300/80">{mi.hint}</p>
       <ul className="mt-2 space-y-2">
@@ -87,10 +87,10 @@ function MaterializationNotices({ issues, locale, userId, seriesTitles }: {
             ? ` ${start}\u2013${end}${issue.planned_end_day_offset === 1 ? ` (${sd.nextDay})` : ""}`
             : "";
 
-          return <li key={`${issue.quest_id}:${issue.source_slot_date}:${index}`}>
+          return           <li key={`${issue.quest_id}:${issue.source_slot_date}:${index}`} className="dashboard-materialization-item">
             {mi.reasons[issue.reason]} {mi.endpoint}: {mi.endpoints[issue.endpoint]} {"\u00b7"} {mi.slot}: {issue.source_slot_date}
             {interval} {"\u00b7"} {mi.quest}: {title}
-            {userId && <RecurringSeriesManageButton questId={issue.quest_id} title={title} label={sm.manage} locale={locale} />}
+            {userId &&             <RecurringSeriesManageButton questId={issue.quest_id} title={title} label={sm.manage} locale={locale} className="ui-button ui-button-warning dashboard-materialization-action" />}
           </li>;
         })}
       </ul>
@@ -143,10 +143,12 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, seriesT
       <ul aria-label={t.occurrences} className="mt-5 space-y-3">
         {result.quests.map((quest) => (
           <li key={quest.occurrence_id} className="dashboard-quest-row" data-completed={quest.status === "completed"}>
-            <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-              <h3 className="min-w-0 flex-1 basis-40 font-medium text-zinc-100">{quest.quest_title}</h3>
-              <div className="flex items-center gap-2">
-                <Badge tone={quest.status === "completed" ? "success" : "muted"}>{t.status}: {t.states[quest.status]}</Badge>
+            <div className="dashboard-quest-heading">
+              <span className="dashboard-quest-marker" aria-hidden="true">{quest.status === "completed" ? "✓" : "◇"}</span>
+              <h3 className="dashboard-quest-title">{quest.quest_title}</h3>
+              <Badge className="dashboard-quest-status" tone={quest.status === "completed" ? "success" : "accent"}>{t.status}: {t.states[quest.status]}</Badge>
+              {quest.reward_exp_snapshot !== null && <span className="dashboard-quest-reward">{quest.reward_exp_snapshot} EXP</span>}
+              <div className="dashboard-quest-actions">
                 {quest.source_slot_date !== null && userId &&
                   <RecurringSeriesTrigger occurrenceId={quest.occurrence_id} questId={quest.quest_id}
                     title={quest.quest_title} locale={locale} />}
@@ -156,27 +158,27 @@ export function DailyQuestList({ result, timezone, selectedDate, userId, seriesT
               </div>
             </div>
             {quest.source_slot_date && <p className="mt-2 text-sm text-zinc-400">{t.recurring} · {displayDate(quest.source_slot_date, locale)}</p>}
-            <dl className="mt-3 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+            <dl className="dashboard-quest-meta mt-3">
               {([
                 [t.scheduled, quest.scheduled_at], [t.deadline, quest.deadline_at],
               ] as const).map(([label, value]) => value !== null && (
-                <div key={label} className="min-w-0">
+                <div key={label} className="dashboard-quest-meta-item">
                   <dt className="text-zinc-400">{label}</dt>
                   <dd className="mt-1 text-zinc-200"><time dateTime={value}>{formatter.format(new Date(value))}</time></dd>
                 </div>
               ))}
-              <div className="min-w-0">
+              <div className="dashboard-quest-meta-item dashboard-quest-meta-reward">
                 <dt className="text-zinc-400">{t.reward}</dt>
                 <dd className="mt-1 font-mono text-amber-300">{quest.reward_exp_snapshot === null ? t.notSet : `${quest.reward_exp_snapshot} EXP`}</dd>
               </div>
-              <div className="min-w-0">
+              <div className={`dashboard-quest-meta-item dashboard-quest-readiness${quest.completable ? "" : " dashboard-quest-readiness-blocked"}`}>
                 <dt className="text-zinc-400">{t.readiness}</dt>
                 <dd className="mt-1 text-zinc-200">{quest.completable ? t.ready : t.notReady}</dd>
                 {!quest.progression_ready && <dd className="mt-1 text-zinc-400">{t.setup}</dd>}
               </div>
             </dl>
-            {quest.completable && userId && <QuestCompletionControl userId={userId} occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} locale={locale} selectedDate={selectedDate} />}
-            {quest.status === "completed" && quest.already_completed_cycle === quest.execution_cycle && userId && <QuestReopenControl occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} locale={locale} />}
+            {quest.completable && userId && <div className="dashboard-quest-primary-action"><QuestCompletionControl userId={userId} occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} locale={locale} selectedDate={selectedDate} /></div>}
+            {quest.status === "completed" && quest.already_completed_cycle === quest.execution_cycle && userId && <div className="dashboard-quest-secondary-action"><QuestReopenControl occurrenceId={quest.occurrence_id} executionCycle={quest.execution_cycle} locale={locale} /></div>}
           </li>
         ))}
       </ul>

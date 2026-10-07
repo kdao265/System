@@ -1,0 +1,38 @@
+/* Calendar palette. The two entry colors are derived UI styling for the two Calendar
+   sources (Schedule Event vs Quest occurrence) and exist nowhere in the database: a
+   row's kind is its `source`, never a stored color. Neutrals keep the grid quiet so
+   Today (sky) and the selected day (white ring) stay the loudest things on screen. */
+@theme {
+  --color-cal-line: var(--border-subtle); /* grid rule */
+  --color-cal-cell: #111113;      /* in-month cell */
+  --color-cal-outside: #0b0b0d;   /* adjacent-month cell */
+  --color-cal-event: var(--calendar); /* Schedule Event */
+  --color-cal-quest: var(--quest);    /* Quest occurrence */
+}
+
+/* Hour rules for the Week timeline: one line every 2.75rem (the height of one hour),
+   drawn as a background so the grid needs no per-hour elements. */
+@utility cal-timeline {
+  background-image: repeating-linear-gradient(to bottom, var(--color-cal-line) 0 1px, transparent 1px 2.75rem);
+}
+
+.calendar-page-header { padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft); }
+.calendar-kicker { color: var(--system-cyan); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.24em; }
+.calendar-toolbar { display: grid; gap: 0.75rem; margin-top: 1.25rem; padding: 0.75rem; border: 1px solid var(--border-soft); border-left: 2px solid var(--system-cyan); border-radius: var(--radius-control); background: linear-gradient(110deg, #70dcf20d, transparent 55%); }
+.calendar-toolbar-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.calendar-toolbar-button[aria-current="page"] { color: var(--system-cyan); border-color: var(--border-active); background: var(--surface-raised); }
+.calendar-date-form { display: flex; min-width: 0; flex-wrap: wrap; align-items: end; gap: 0.5rem; }
+.calendar-date-field { min-width: 10rem; }
+.calendar-day-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-top: 1rem; }
+.calendar-day-strip .calendar-toolbar-button { flex-direction: column; }
+.calendar-error { border: 1px solid var(--border-danger); border-radius: var(--radius-control); padding: 1rem; background: #2a111633; }
+.calendar-event-form, .calendar-agenda-day { position: relative; padding: 1rem; border: 1px solid var(--border-soft); border-radius: var(--radius-panel); background: linear-gradient(180deg, #ffffff06, transparent 38%), var(--surface); }
+.calendar-event-form { border-top-color: var(--system-cyan); }
+.calendar-agenda-day-today { border-color: var(--border-active); background: linear-gradient(110deg, #70dcf210, transparent 55%), var(--surface); }
+.calendar-agenda-item { min-width: 0; padding: 0.625rem 0 0.625rem 0.75rem; border-left: 2px solid var(--system-cyan); }
+.calendar-agenda-quest { border-left-color: var(--system-violet); }
+.calendar-agenda-event h3, .calendar-agenda-quest h3 { font-weight: 650; }
+.calendar-agenda-item + .calendar-agenda-item { margin-top: 0.25rem; border-top: 1px solid var(--border-soft); }
+.calendar-all-day input { accent-color: var(--system-cyan); }
+@media (min-width: 420px) { .calendar-day-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+@media (max-width: 419px) { .calendar-date-field { flex: 1 1 100%; } }

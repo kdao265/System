@@ -1,0 +1,116 @@
+/* SYSTEM application shell (54C): one shared structure for Dashboard, Calendar and
+   Goals. Three responsive bands, all driven by media queries (never client JS):
+   - < 760px     compact stacked top shell (identity, wrapping nav, locale row)
+   - 760-899px   two-column top shell (identity | locale, nav across the bottom)
+   - >= 900px    sticky vertical navigation rail beside an independent content column
+   The rail reads root-level 54B SYSTEM tokens on purpose: shell chrome is
+   page-level furniture and must not inherit page-scoped overrides such as the
+   Dashboard's --surface/--elevated re-theming. HUD details are pseudo-elements so
+   the DOM stays semantic. */
+
+.system-shell {
+  width: 100%;
+  min-width: 0;
+  /* The header lives outside <main>'s page-frame padding, so the shell owns the
+     top/horizontal gutters, including installed-app display cutouts. */
+  --shell-gutter: max(1.5rem, env(safe-area-inset-left));
+  --shell-gutter-right: max(1.5rem, env(safe-area-inset-right));
+  --shell-gutter-top: max(1.25rem, env(safe-area-inset-top));
+}
+
+.system-shell-content {
+  width: 100%;
+  min-width: 0;
+  padding-top: var(--shell-gutter-top);
+}
+.system-shell-content-wide { max-width: 100rem; margin-inline: auto; }
+.system-shell-content-narrow { max-width: 42rem; margin-inline: auto; }
+
+.system-shell-rail {
+  padding-top: var(--shell-gutter-top);
+  padding-right: var(--shell-gutter-right);
+  padding-bottom: 1rem;
+  padding-left: var(--shell-gutter);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.system-brand { min-width: 0; }
+.system-brand .type-metadata { font-size: 0.65rem; letter-spacing: 0.2em; }
+.system-brand .type-display { margin-top: 0.15rem; font-size: clamp(1.55rem, 5vw, 1.8rem); letter-spacing: 0.18em; text-shadow: 0 0 22px #f5cd7a22; }
+.system-brand .type-page { margin-top: 0.15rem; font-size: clamp(1.35rem, 4.5vw, 1.6rem); }
+/* Sparse cyan frame segment under the identity block (thin geometry, no extra DOM). */
+.system-brand::after { content: ""; display: block; width: var(--frame-segment); height: 1px; margin-top: 0.75rem; background: linear-gradient(90deg, var(--system-cyan), transparent); }
+.system-shell-tagline { max-width: 24rem; margin-top: 0.4rem; font-size: 0.8125rem; color: var(--muted); }
+
+.system-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; min-width: 0; margin-top: 1.25rem; }
+.system-nav .ui-nav-link { position: relative; font-size: 0.8125rem; padding-inline: 0.65rem; }
+/* HUD marker for the active route: a cyan segment on the link's left edge, drawn
+   without affecting layout so the 44px target and text position never shift. */
+.system-nav .ui-nav-link[aria-current="page"]::before {
+  content: ""; position: absolute; left: 3px; top: 50%; width: 3px; height: 1.375rem;
+  transform: translateY(-50%); border-radius: 2px;
+  background: var(--system-cyan); box-shadow: var(--glow-soft);
+}
+
+.system-locale { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem; min-width: 0; margin-top: 1.25rem; }
+.system-locale-field { min-width: 0; flex: 1 1 10rem; }
+.system-locale label { color: var(--text-secondary); }
+.system-locale-field .ui-field { margin-top: 0.25rem; font-size: 0.9375rem; }
+.system-locale-hint { flex-basis: 100%; max-width: 24rem; font-size: 0.7rem; color: var(--muted); }
+.system-locale-error { flex-basis: 100%; font-size: 0.8125rem; }
+
+/* The Dashboard keeps its tighter phone gutters; other routes stay at the
+   page-frame spacing below this tier only. */
+@media (max-width: 759px) {
+  .system-shell-wide {
+    --shell-gutter: max(1rem, env(safe-area-inset-left));
+    --shell-gutter-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* Tablet band: keep the top shell but split identity from the secondary locale
+   control so page content starts below one compact row instead of a tall stack.
+   The locale block sizes inline (select + apply button), so its track is capped:
+   an uncapped auto track squeezes the identity column until the SYSTEM wordmark
+   breaks mid-word (found at 820x900 in the 54C preflight). 24rem keeps the locale
+   row on one line while leaving the brand well above its word width at 760px. */
+@media (min-width: 760px) and (max-width: 899px) {
+  .system-shell-rail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); align-items: start; column-gap: 1.5rem; }
+  .system-brand { grid-row: 1; grid-column: 1; }
+  .system-locale { grid-row: 1; grid-column: 2; margin-top: 0; }
+  .system-nav { grid-row: 2; grid-column: 1 / -1; }
+}
+
+@media (min-width: 900px) {
+  .system-shell {
+    display: grid;
+    grid-template-columns: clamp(13rem, 15vw, 15rem) minmax(0, 1fr);
+    column-gap: clamp(1.25rem, 2vw, 2rem);
+    max-width: 112.5rem;
+    margin-inline: auto;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  .system-shell-rail {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    height: 100svh;
+    overflow-y: auto;
+    padding: max(1.5rem, env(safe-area-inset-top)) 1.25rem 1.5rem;
+    border-right: 1px solid var(--border-soft);
+    border-bottom: 0;
+    scrollbar-color: var(--border-strong) transparent;
+    background:
+      repeating-linear-gradient(180deg, rgb(255 255 255 / var(--ambient-scanline-opacity)) 0 1px, transparent 1px 4px),
+      linear-gradient(180deg, #70dcf20f, transparent 16rem),
+      var(--surface-glass);
+  }
+  .system-nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.375rem; margin-top: 0; }
+  .system-nav .ui-nav-link { justify-content: flex-start; font-size: 0.875rem; padding-inline: 0.875rem; }
+  .system-locale { display: grid; gap: 0.5rem; margin-top: auto; }
+  .system-locale-field { flex: none; }
+}

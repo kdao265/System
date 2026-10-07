@@ -1,4 +1,4 @@
-import { AppHeader } from "@/components/app-header";
+import { SystemShell } from "@/components/system-shell";
 import { redirect } from "next/navigation";
 import { getProfileContext, isOnboardingComplete } from "@/features/profile/session";
 import { ProfileError } from "@/features/profile/profile-error";
@@ -29,16 +29,15 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
     detail ? getProgressionStatus() : null,
   ]);
   const today = todayInTimezone(profile.timezone!);
-  return <main lang="en" className="mx-auto w-full max-w-2xl page-frame">
-    <AppHeader current="goals" />
+  return <SystemShell current="goals" lang="en">
     <p className="mt-2 text-sm text-zinc-400">Group your one-off Quests. Progress follows their current completion state.</p>
     <GoalsPanel key={user.id} userId={user.id} page={page} detail={detail} selected={selected} scope={scope} candidates={candidates} candidateAfter={candidateAfter}>
       {detail && <QuestCompletionProvider userId={user.id}>
         <div className="mt-4"><QuestCompletionRecovery selectedDate={today} refreshHref={`/goals?id=${detail.goal.id}&scope=${scope}`} refreshLabel="Goals" /></div>
         <QuestReopenRead userId={user.id} result={{ status: "ok", quests: detail.subquests }} />
         <ol aria-label="Sub Quests" className="mt-4 space-y-3">
-          {detail.subquests.map((sub) => <li key={sub.link_id} className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-            <h4 className="font-medium">{sub.title}</h4>
+          {detail.subquests.map((sub) => <li key={sub.link_id} className={`goals-subquest-row ${sub.status === "completed" ? "goals-subquest-completed" : ""}`}>
+            <h4 className="goals-subquest-title">{sub.title}</h4>
             <p className="mt-2 text-sm text-zinc-300">Status: {sub.status[0].toUpperCase() + sub.status.slice(1)}{sub.quest_archived_at ? " · Quest archived" : ""}</p>
             <p className="mt-1 text-sm text-zinc-400">{sub.status === "completed" ? "Completed Sub Quest" : "Incomplete Sub Quest"}</p>
             {canCompleteSubQuest(sub, progression) && <QuestCompletionControl userId={user.id} occurrenceId={sub.occurrence_id} executionCycle={sub.execution_cycle} selectedDate={today} />}
@@ -49,5 +48,5 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
         </ol>
       </QuestCompletionProvider>}
     </GoalsPanel>
-  </main>;
+  </SystemShell>;
 }

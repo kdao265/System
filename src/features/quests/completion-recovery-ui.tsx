@@ -23,11 +23,11 @@ export function QuestCompletionRecovery({ selectedDate, refreshHref: suppliedHre
   useEffect(() => {
     if (reopenState.confirmations.length > 0 || staleCount > 0) void reopenCoordinator.refreshDashboard(() => router.refresh());
   }, [reopenCoordinator, reopenState.confirmations.length, staleCount, router]);
-  if (state.accountChanged || reopenState.accountChanged) return <section aria-label="Quest recovery"><p role="alert">{state.error ?? reopenState.error}</p><a href={refreshHref}>Refresh account and Profile</a></section>;
+  if (state.accountChanged || reopenState.accountChanged) return <section aria-label="Quest recovery" className="ui-notice ui-notice-danger"><p role="alert">{state.error ?? reopenState.error}</p><a href={refreshHref}>Refresh account and Profile</a></section>;
   if (!state.operations.length && !state.confirmations.length && !state.dispositions.length && !state.error && !reopenState.operations.length && !reopenState.confirmations.length && !reopenState.blocks.length && !reopenState.refreshRequired && !reopenState.error) return null;
   return (
-    <section aria-label="Quest recovery" aria-busy={state.busy || state.refreshing || reopenState.busy || reopenState.refreshing} className="rounded-lg border border-amber-800 bg-zinc-950/80 p-4 [overflow-wrap:anywhere] sm:p-6">
-      <h2 className="text-xs font-medium tracking-[0.3em] text-amber-300">QUEST RECOVERY</h2>
+    <section aria-label="Quest recovery" aria-busy={state.busy || state.refreshing || reopenState.busy || reopenState.refreshing} className="ui-panel ui-panel-warning system-recovery-surface p-4 sm:p-6">
+      <h2 className="system-form-heading">QUEST RECOVERY</h2>
       {state.error && <p role="alert" className="mt-2 text-sm text-amber-200">{state.error}</p>}
       {state.operations.map((operation) => (
         <div key={operation.commandId} className="mt-3 rounded-md border border-amber-800 p-3">

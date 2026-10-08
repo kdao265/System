@@ -40,6 +40,24 @@ export function prepareCreateIdentity(storage: IdentityStorage, verifiedUserId: 
   } catch { return { outcome: "storage_unavailable" }; }
 }
 
+// Explicit recovery for blocked metadata only. The caller supplies the current
+// verified account; a ready identity still requires the normal resolution flow.
+export function clearBlockedCreateIdentity(storage: IdentityStorage, verifiedUserId: string):
+  { outcome: "cleared" | "resolution_required" } | IdentityFailure {
+  // readCreateIdentity also reports invalid_identity for an invalid account ID.
+  // That is not evidence of blocked storage and must never authorize removal.
+  if (!isBookId(verifiedUserId)) return { outcome: "invalid_identity" };
+  const pending = readCreateIdentity(storage, verifiedUserId);
+  if (pending.outcome === "empty") return { outcome: "cleared" };
+  if (pending.outcome === "ready") return { outcome: "resolution_required" };
+  if (pending.outcome !== "invalid_identity" && pending.outcome !== "account_changed") return pending;
+  try {
+    storage.removeItem(key);
+    return storage.getItem(key) === null ? { outcome: "cleared" } : { outcome: "storage_unavailable" };
+  }
+  catch { return { outcome: "storage_unavailable" }; }
+}
+
 // Invoke only after explicit resolution. Comparison protects a newer attempt
 // from an older asynchronous completion; failed cleanup retains the same ID.
 export function clearCreateIdentity(storage: IdentityStorage, identity: CreateIdentity): { outcome: "cleared" } | IdentityFailure {

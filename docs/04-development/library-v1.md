@@ -382,3 +382,53 @@ auth/profile gates, typed errors, identity-only pending-create metadata and save
 refresh-required outcomes; those are not claimed as L1 behavior. Mobile, EN/VI and
 Library end-to-end UI acceptance belong to L3/L4. Migration rollout and any later
 commit/push require separate authorization. Preserve book data on rollback.
+
+## 11. Pre-L3 L2 blocked-create identity follow-up (2026-10-08)
+
+Task contract: the Product Owner authorizes a narrow follow-up on feat/library-v1
+at fca1c5b. Invalid stored metadata or a changed account currently blocks create
+preparation with no explicit cleanup path. Add a feature-local blocked-state
+cleanup helper and focused identity tests, preserving the stable-ID contract in
+[architecture section 6](../02-architecture/library-v1.md#6-create-identity-and-uncertain-outcomes)
+and LIB-AC-10/18 in the [requirements](../01-requirements/library-v1.md).
+
+Accept only a valid verified account ID; remove only the Library pending-create
+key when its current read is invalid_identity or account_changed. Never remove a
+ready identity, expose stale metadata or persist draft content. Empty storage may
+report cleared; read/remove/verification errors must fail closed. Tests must cover
+malformed JSON/shape/extra keys/version, account changes, ready-ID preservation,
+unrelated keys and storage failures while preserving existing identity tests.
+
+Scope is create-identity.ts, library-identity.test.mjs and this task/validation
+record. No L3, migration/DB-contract changes, changes to actions/data/contracts/
+model, dependencies, commits, pushes, merges, rebases or deployment. Preserve the
+user-owned untracked .vscode directory. Run focused identity and combined Library
+tests, lint, TypeScript, diff checks and the full Node suite if reasonable. Stop
+for Product Owner review with uncommitted changes and actual validation results.
+
+Implemented: clearBlockedCreateIdentity checks the supplied verified account ID
+before reading storage, returns resolution_required without removal for ready
+identities, and removes only invalid_identity/account_changed metadata. It returns
+cleared for empty storage or verified removal, and storage_unavailable on read,
+removal or verification failure. No stale payload is returned or persisted. The
+caller remains responsible for supplying the currently verified account. Existing
+prepare/read/clear behavior and all six original identity tests are unchanged.
+There is no UI wiring in this follow-up.
+
+Validation on the final source/test changes:
+
+- node --test tests/library-identity.test.mjs: 15/15 passed.
+- node --test tests/library-application.test.mjs tests/library-identity.test.mjs:
+  38/38 passed.
+- node --test tests/*.test.mjs: 391/391 passed, none skipped.
+- npm run lint: passed with zero warnings.
+- npx --no-install tsc --noEmit: passed.
+- git diff --check: passed; only the existing LF-to-CRLF advisory was emitted.
+
+Local commands required the approved escalated runner because sandbox process
+startup failed before execution. No database, browser, build or deployment check
+was needed for this helper-only change. Diff review confirms only the three scoped
+files changed; nothing is staged. HEAD remains fca1c5b on feat/library-v1, and the
+untracked .vscode/settings.json SHA-256 is unchanged. No L3, migration/DB-contract,
+actions/data/contracts/model or dependency change, commit, push, merge, rebase or
+deployment occurred. Stop for Product Owner review.

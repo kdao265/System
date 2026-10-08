@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { startAuthEnvironment } from "../../tests/helpers/auth-environment.mjs";
 import { exerciseGoalsWire } from "./helpers/goals-wire.mjs";
+import { exerciseLibraryWire } from "./helpers/library-wire.mjs";
 
 const env = await startAuthEnvironment({ buildApp: false, activateOwner: false, testMigrationHistory: true });
 // ADR-015 stage two is applied here from the promoted migration file: the harness
@@ -277,12 +278,18 @@ try {
   assert.equal(aliasResolution.current_status, "scheduled");
   pass("pre-activation history survives; cross-owner IDs remain denied and stale-cycle semantics remain intact");
 
+  // Library installs after the frozen historical policy/catalog checkpoint.
+  await env.applyLibraryMigration();
+  const libraryCalls = await exerciseLibraryWire(env, owner, outsider, anon);
+  pass("Library: five guarded RPCs, RLS, stable creates, revision races, response loss and private projections");
+
   // Removing configuration after activation must not fall back to multi-user mode.
   await env.sql("DELETE FROM system_private.owner_configuration;");
   for (const client of [owner, outsider, anon]) {
     for (const [name, args] of approved.calls) await denied(client, name, args);
     for (const [name, args] of goalCalls) await denied(client, name, args);
-    for (const table of ["goals", "goal_quest_links"]) {
+    for (const [name, args] of libraryCalls) await denied(client, name, args);
+    for (const table of ["goals", "goal_quest_links", "books"]) {
       const result = await client.from(table).select("*");
       assert(result.error || result.data.length === 0, `${table}: missing config leaked data`);
     }

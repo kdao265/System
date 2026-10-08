@@ -187,6 +187,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     const recurringRetirement = "20261003120000_recurring_quest_archive_delete_v1.sql";
     const occurrencePlanning = "20261003180000_calendar_quest_plan_v1.sql";
     const recurringSchedule = "20261004120000_recurring_schedule_defaults_v1.sql";
+    const libraryBooks = "20261007120000_create_books_v1.sql";
     // Each historical suite runs at the first checkpoint whose committed schema its
     // assertions describe. The Player/EXP suites were amended by migration four
     // (8ab0326), which added the two exp_ledger executor SELECT policies that its
@@ -207,7 +208,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
     };
     for (const file of readdirSync(migrationDir).filter((name) => name.endsWith(".sql")).sort()) {
       signal?.throwIfAborted();
-      if ([deferredActivation, postActivationProjection, recurringRetirement, occurrencePlanning, recurringSchedule].includes(file)) continue;
+      if ([deferredActivation, postActivationProjection, recurringRetirement, occurrencePlanning, recurringSchedule, libraryBooks].includes(file)) continue;
       await sql(readFileSync(new URL(file, migrationDir), "utf8"));
       if (testMigrationHistory) {
         for (const suite of regressionAtVersion[file.slice(0, 14)] ?? []) {
@@ -302,6 +303,26 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       assert.deepEqual(afterRecurring, beforeRecurring, "Recurring defaults preserve every legacy public RPC identity, signature, defaults and security/ACLs");
       console.log('PASS: every legacy public RPC identity/signature/default/security/ACL preserved');
       assert.match(await sql("SELECT system_internal.tzdb_active_release_v1();"), /^system-tz-v1\/[a-f0-9]{64}$/);
+      await applyLibraryMigration();
+    }
+    // Keep the frozen ADR-015 policy counts/checks before this new checkpoint.
+    // The private-owner runner activates manually and calls this after its old suites.
+    async function applyLibraryMigration() {
+      const legacyCatalog = "SELECT jsonb_agg(to_jsonb(p) ORDER BY oid) FROM pg_proc p WHERE pronamespace='public'::regnamespace;";
+      const legacy = JSON.parse(await sql(legacyCatalog));
+      const memberships = await sql("SELECT jsonb_agg(to_jsonb(m) ORDER BY roleid,member,grantor) FROM pg_auth_members m;");
+      await sql(readFileSync(new URL(libraryBooks, migrationDir), "utf8"));
+      assert.equal(await sql("SELECT jsonb_agg(to_jsonb(m) ORDER BY roleid,member,grantor) FROM pg_auth_members m WHERE roleid<>'library_command_owner'::regrole;"),
+        memberships, "Library restores all borrowed existing role memberships");
+      const existing = new Set(legacy.map(row => row.oid));
+      assert.deepEqual(JSON.parse(await sql(legacyCatalog)).filter(row => existing.has(row.oid)), legacy,
+        "Library preserves all existing public RPC bodies, attributes and ACLs");
+      if (testMigrationHistory) {
+        for (const suite of ["library-books-catalog", "library-books"]) {
+          await sql(readFileSync(new URL(`../../supabase/tests/${suite}.sql`, import.meta.url), "utf8"));
+          console.log(`PASS: migration checkpoint regression ${suite}`);
+        }
+      }
     }
     if (isolatedApp) {
       assert(buildApp && activateOwner, "Isolated E2E app requires a fresh build and activated owner");
@@ -350,7 +371,7 @@ GRANT anon, authenticated TO auth_smoke_api;`);
       assert(app, "Disposable app must advertise its bound loopback port");
       return app;
     }
-    return { url, key: anonKey, owner, other, startApp, close, sql };
+    return { url, key: anonKey, owner, other, startApp, close, sql, applyLibraryMigration };
   } catch (error) {
     await close();
     throw error;

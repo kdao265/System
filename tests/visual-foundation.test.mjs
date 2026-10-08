@@ -27,7 +27,7 @@ test("vi/en have exactly the same nonempty dictionary keys; Vietnamese is the st
 });
 
 test("navigation defaults to Vietnamese, retains English URLs and marks only the active route", () => {
-  for (const current of ["dashboard", "calendar", "goals"]) {
+  for (const current of ["dashboard", "calendar", "goals", "library"]) {
     const html = render(h(AppHeader, { current, selectedDate: "2026-10-01" }));
     assert.match(html, /lang="vi"/); assert.match(html, /Điều hướng SYSTEM/);
     assert.match(html, /Tổng quan/); assert.match(html, /Mục tiêu \/ Main Quest/);

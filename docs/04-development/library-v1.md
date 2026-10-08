@@ -432,3 +432,183 @@ files changed; nothing is staged. HEAD remains fca1c5b on feat/library-v1, and t
 untracked .vscode/settings.json SHA-256 is unchanged. No L3, migration/DB-contract,
 actions/data/contracts/model or dependency change, commit, push, merge, rebase or
 deployment occurred. Stop for Product Owner review.
+
+## 12. L3 complete Library UI (2026-10-08)
+
+Task contract: implement only L3 under the Product Owner's attached instruction,
+after approved L0/L1/L2 checkpoint 67a070d. Initial status is feat/library-v1,
+ahead 5/behind 0; read-only remote main verification matches c7f1e72. The only
+untracked item is user-owned .vscode/settings.json; preserve it unchanged.
+
+Scope: private collection/new/detail routes, fourth shell destination and proxy
+matcher, typed EN/VI copy, responsive BookCards/covers/forms, explicit stable-ID
+recovery and revision-conflict review, feature CSS and focused Node/desktop/mobile
+tests. Reuse the approved requirements, architecture and existing L2 boundary.
+No L1/L2 redesign or migration change, dependency, extra product feature, L4,
+staging, commit, push, merge, rebase or deployment. Stop on a genuine L1/L2 defect.
+Validation includes focused Library and shared regressions, lint, TypeScript,
+diff review, isolated production build and visual QA at all six requested sizes.
+Append actual results below before the Product Owner artifact-review handoff.
+
+### L3 implementation and resumed validation (2026-10-09)
+
+Resumed the existing working tree at 67a070d on feat/library-v1 without restarting
+or replacing it. The interrupted accessibility correction was absent. Required/
+Optional indicators now sit beside, outside, each native label; title retains its
+native required attribute. Exact accessible field names work in EN and VI. No
+existing L1/L2 source, tests, migration, DB contract or dependency was changed.
+
+Delivered behavior:
+
+- Private, force-dynamic /library, /library/new and /library/[id], plus localized
+  loading/error boundaries, reuse the existing verified-owner/Profile gate.
+  Library is the fourth shell destination and /library/:path* is proxy-protected.
+  Existing Dashboard shortcuts, Calendar selected-date links and locale behavior
+  are retained. Library copy is typed and complete in both EN and VI.
+- Collection reads metadata only, with active/archived scopes, all three reading
+  statuses, bounded pages and exact opaque cursor timestamps. Changing a filter
+  resets pagination. Semantic BookCards show title, optional author, status and
+  cover, without summaries/notes/lessons. Desktop uses a cover-led grid; phones
+  use horizontal cards. Native lazy images have no referrer, no server optimizer,
+  and stable missing/broken-cover fallbacks; there is no external book API.
+- Create/edit forms use the approved model's normalization and Unicode character
+  limits. Drafts stay in mounted memory and saves are explicit. Only the existing
+  userId/bookId/version identity metadata uses sessionStorage. Synchronous locks
+  prevent duplicate dispatch. Mount/reload checks an existing identity read-only;
+  uncertain keeps it, absence requires explicit same-attempt continuation or a
+  confirmed reset, and blocked metadata uses clearBlockedCreateIdentity explicitly.
+  A ready identity cannot be cleared by that blocked-state flow.
+- Existing-create results display authoritative content and explicitly state that
+  newly submitted fields were not applied. Unavailable existing detail retains
+  identity and offers another read. Cleanup failure remains actionable. A saved
+  result with refreshRequired stays saved and never invites blind resubmission.
+- Detail exposes a plain-text reading view, explicit editor and status-only action.
+  Revision conflicts retain the draft/base, read the latest version separately and
+  require explicit keep-draft/rebase or discard/use-saved review. No auto-replay.
+  Archive is confirmed, archived content stays readable and read-only, and explicit
+  restore preserves content/status. There is no hard delete or autosave.
+- Sanitized shared notices use status/alert semantics. Labels, validation hints,
+  keyboard focus, reduced motion and 44px controls use shared primitives/tokens.
+  Styling stays in feature-local library.css with one globals.css import.
+
+Final validation actually run after the resumed correction:
+
+| Check | Result |
+| --- | --- |
+| npm run lint | Passed, zero warnings. Repeated after final E2E assertion edits. |
+| npx --no-install tsc --noEmit | Passed after final source/test edits. |
+| git diff --check | Passed; only LF-to-CRLF advisories. |
+| node --test tests/library-ui.test.mjs tests/library.test.mjs tests/library-application.test.mjs tests/library-identity.test.mjs | 64/64 passed: 17 L3, 9 L1, 23 L2 application and 15 identity tests. |
+| node --test tests/*.test.mjs | 408/408 passed; none skipped. |
+| Library desktop Playwright | 5/5 passed, final run 1.8m. |
+| Library mobile Playwright | 2/2 passed, final run 2.0m. |
+| Targeted shared Playwright | 11/11 passed, 4.9m. |
+| Production build | Passed through fresh isolated Next production builds in each successful E2E run. |
+
+Exact successful Playwright commands (single worker, zero configured retries):
+
+```text
+npx --no-install playwright test tests/e2e/library.desktop.spec.ts --project=desktop-chromium --workers=1 --max-failures=1
+npx --no-install playwright test tests/e2e/library.mobile.spec.ts --project=mobile-chromium --workers=1 --max-failures=1
+npx --no-install playwright test tests/e2e/auth.desktop.spec.ts tests/e2e/auth.mobile.spec.ts tests/e2e/visual-foundation.desktop.spec.ts tests/e2e/visual-foundation.mobile.spec.ts tests/e2e/dashboard-v2.desktop.spec.ts tests/e2e/calendar.desktop.spec.ts tests/e2e/goals.desktop.spec.ts --workers=1 --max-failures=1
+```
+
+Desktop covers real create/edit/all status transitions/filter/archive/restore,
+anonymous route protection, uniform missing/malformed detail, concurrent revision
+review, duplicate submit/lost committed response, blocked/absent identity recovery,
+and exact bounded pagination. Mobile covers create/edit with long title and 100
+lines of notes, keyboard save, archive/restore, EN/VI and all three phone widths.
+Shared checks cover login/refresh/logout, bilingual SSR/cookie persistence and
+hydration, all four shell routes, retained unsent Quest draft, focus/reduced motion,
+Calendar projections/recovery, Goals lifecycle/conflicts/recovery and the real
+Dashboard Goals/EXP/Quest/Calendar journey.
+
+Earlier resumed desktop runs exposed two test setup issues after the label fix:
+an unscoped alert also matched Next's route announcer, and programmatic mouse-mode
+focus did not trigger focus-visible. Assertions now target main-content feedback
+and exercise actual Tab/Shift+Tab navigation. Exact field-name selectors and the
+focus outline assertion were preserved. All final browser runs passed.
+
+The fixture invokes Next's production build on a fresh isolated source copy with
+synthetic configuration and disposable Auth/PostgREST/tmpfs PostgreSQL. It reports
+legacy RPC signature/security/ACL preservation and tears down its resources. No
+separate npm run build, full SQL/wire acceptance rerun, developer Local database,
+Cloud operation or deployment is claimed. Commands used the approved escalated
+runner because the sandbox process launcher failed before execution.
+
+### L3 visual QA evidence
+
+78 full-page screenshots were generated: 45 desktop-suite and 33 mobile-suite.
+Actual screenshots and derived contact sheets were opened for visual inspection,
+including top/bottom crops of long reading/editor pages. Every viewport covered
+collection, filtered/archived/empty views, create, long-note detail, editor,
+archived detail, broken cover, blocked recovery, Vietnamese create, conflict and
+uncertain create. Conflict/uncertain phone captures use desktop Chromium resized
+to those widths; the other phone captures use the mobile Chromium project.
+
+| Viewport | Actual findings |
+| --- | --- |
+| 1280x800 | Three-column collection with desktop rail; long titles wrap within cards; two-column short form fields; long notes and review actions stay contained. |
+| 1024x768 | Two-column collection with desktop rail; form labels/hints and recovery actions wrap cleanly; no overlap in detail or review. |
+| 820x900 | Compact top shell and three-column collection; reading pages retain usable width; long notes, editor and notices remain contained. |
+| 412x915 | Horizontal cards and single-column forms; long titles/notes wrap; status controls can share a row; save/restore/review actions remain reachable. |
+| 390x844 | Horizontal cards, wrapped navigation/filter rows and single-column forms; status action wraps safely; EN/VI labels and notices remain readable. |
+| 360x800 | Narrowest cards/forms remain contained; recovery/review buttons stack safely; long content has no clipping; save and restore are reachable by scrolling/keyboard. |
+
+No visible overlap, unintended horizontal overflow or clipped controls was found.
+Automated layout checks also verified document/element bounds and at least 44px
+height for visible main controls and shell links. Missing/broken covers reserve
+space, archived pages keep content readable, and unsaved text survives locale
+refresh in memory. Keyboard focus and zero reduced-motion transition durations
+passed. This is Chromium desktop/mobile emulation, not physical-device, native
+mobile-keyboard, screen-reader or cross-browser acceptance.
+
+Ignored local artifacts: test-results/library-desktop, test-results/library-mobile,
+test-results/library-shared-regressions and test-results/library-visual-review;
+HTML reports are in the corresponding playwright-report subdirectories.
+
+### L3 review state and limits
+
+22 new L3 files comprise five route/boundary files, twelve feature-local UI/workflow
+files, one stylesheet, three E2E files and one Node/static test file. Eight tracked
+files are modified: this handoff, globals.css, app-header.tsx, system-shell.tsx,
+dictionaries.ts, proxy.ts, visual-foundation-helpers.ts and visual-foundation.test.mjs.
+All new files were inspected separately from tracked diffs. Nothing is staged.
+HEAD remains 67a070d on feat/library-v1, ahead 5 of its existing origin/main upstream.
+The only unrelated untracked file is .vscode/settings.json; its SHA-256 remains
+91D3C12E9D23D4C34D6E3CBFA3D3277C4ADC33290615913D9F2F91667B752C08.
+
+No L0/L1/L2 deviation or unresolved L3 defect was found. Broader L4 acceptance,
+cross-browser/physical-device checks and rollout remain separate future work;
+none was started or claimed here. No dependency, migration/DB-contract change,
+out-of-scope product feature, stage, commit, push, merge, rebase or deployment occurred.
+L3 is READY FOR PRODUCT OWNER REVIEW of the uncommitted working-tree artifacts.
+Stop here; do not begin L4.
+
+### L3 Product Owner follow-up: collision state and source Unicode (2026-10-09)
+
+Preserve an existing mounted collision notice during status resolution and when
+that read returns not_found. This two-line create-workflow.ts correction adds no
+flag, persistence, UUID generation or L2 change. Mount/uncertain reconciliation
+can still become absent. The extended direct-not_found regression first reproduced
+the defect, then passed: repeated checks retain collision and identical stored
+identity, dispatch no create retry and generate no UUID; only explicit reset
+permits another attempt. Existing mount/uncertain tests remain unchanged and pass.
+
+Actual source bytes were decoded with fatal UTF-8 validation, inspected through
+ASCII-escaped output and compared with git show HEAD:src/lib/localization/dictionaries.ts.
+All six requested UI phrases contain their intended Unicode, including U+2026
+ellipses. New Library dictionary additions and the EN/VI E2E fixture literals are
+intact; the desktop fixture is ASCII-only. No source mojibake was found in the
+inspected content, so no localization or fixture edit was made. The reported
+review-bundle rendering does not reflect these repository source strings.
+
+Validation: node --test tests/library-ui.test.mjs passed 17/17; the combined
+library-ui, library, library-application and library-identity Node run passed
+64/64. npm run lint, npx --no-install tsc --noEmit and git diff --check passed
+(the latter emits only LF-to-CRLF advisories). No UI markup, styles or localization
+content changed, so browser/visual suites were not repeated for this follow-up.
+Only create-workflow.ts, library-ui.test.mjs and this appended record changed in
+this follow-up. HEAD remains 67a070d; .vscode/settings.json retains its recorded
+SHA-256 and stays untracked. No migrations, L1/L2 contracts, dependencies, staging,
+commit, push, merge, rebase or deployment. Stop for Product Owner review.

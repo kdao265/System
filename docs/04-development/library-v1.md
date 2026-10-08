@@ -2,10 +2,16 @@
 
 ## 1. Task and current state
 
-Date: 2026-10-07. Branch: `feat/library-v1`. Owner: Product Owner.
-Task: L0 requirements and architecture contract only. Product decisions are
-approved by the L0 request; the completed detailed contract awaits L0 sign-off.
-No Library functionality, migration or tests have been implemented.
+Date: 2026-10-08. Branch: `feat/library-v1`. Owner: Product Owner.
+Current task: resume and complete the in-progress L1 database/domain foundation
+under the Product Owner's explicit takeover instruction and approved L0 contract.
+The foundation and its tests are implemented; final validation is recorded below.
+L2/application adapters, routes, UI, localization and navigation remain unstarted.
+No commit, push, merge, dependency change or environment rollout is authorized.
+
+Sections 2-9 retain the L0 baseline and tranche plan as history. The requirements,
+architecture and ADR-023 remain the approved contract; their implementation-absent
+statements describe L0, not the current working tree. See section 10 for L1 evidence.
 
 Sources of truth:
 
@@ -237,3 +243,142 @@ detail; both must satisfy the approved no-server-fetch/fallback contract.
 L0 readiness does not authorize L1. Stop after the documentation report; do not
 create migration/code/tests or commit/push. Subsequent agents must use these
 artifacts and the approved task instruction, not conversational memory.
+
+## 10. L1 takeover and implementation record (2026-10-08)
+
+### Authorization and initial inspection
+
+The Product Owner explicitly authorized completing the existing L1 work only,
+without restarting/reverting it, beginning L2, committing or pushing. The initial
+status was feat/library-v1 tracking origin/main, ahead by the L0 documentation
+commit 0551fa2. A successful fresh fetch confirmed divergence 1/0 against c7f1e72
+(PR #54). Tracked diff/name-status/stat were empty. Separate untracked inspection
+found the model, migration, domain tests and two SQL fragments, plus unrelated
+.vscode/settings.json. Every partial Library file was read before editing.
+
+| Inherited artifact | Finding and disposition |
+| --- | --- |
+| src/features/library/model.ts | Substantial pure domain implementation: normalization, field validation, HTTPS syntax, code-point limits, exact revision strings, archive predicate and strict response parsers. All eight inherited Node tests passed. Preserved the model unchanged. |
+| supabase/migrations/20261007120000_create_books_v1.sql | Substantial additive table/RLS/five-RPC implementation retained. Real SQL exposed a missing is_owner EXECUTE grant: managed ADMIN-only membership had been mistaken for usable inherited authority. Changed the grant predicate from MEMBER to USAGE and verified membership restoration. Review also found SQL accepted an empty DNS host after removing the final dot; now rejects it, with shared regression fixtures. |
+| tests/library.test.mjs | Eight useful tests retained and extended to nine; shared normalization/URL corpus extracted so Node and actual PostgreSQL receive the same cases. Added Unicode URL boundary coverage. |
+| supabase/tests/library-books.sql | Unfinished/malformed fragment: wrong helper arities, invalid JSON operators, no authenticated fixture context and no completed DO/transaction. Replaced with executable lifecycle/normalization/concurrency-guard/query-plan assertions. |
+| supabase/tests/library-books-catalog.sql | Tiny incomplete fragment, no executable suite. Completed schema, grant, policy, role and runtime isolation tests. |
+| Wire/checkpoint registration | Absent. Added the Library wire helper and explicit post-activation migration/test checkpoint in the existing disposable harness. No duplicate Library endpoints, tables or competing implementation were introduced. |
+
+### Implemented boundary and access-control review
+
+One public.books table has the approved plain-text fields, immutable UUID/owner/
+created_at, positive bigint revision, status CHECK, restrictive owner FK and unique
+(id,user_id) key. Active and archived owner-leading created_at/id partial indexes
+support bounded metadata-only list pages; detail alone includes long text.
+
+The five public entries are create_book_v1, update_book_v1,
+set_book_archived_v1, get_book_v1 and list_books_v1. Updates accept only explicit
+editable keys; null clears nullable text, omitted fields are preserved, and empty
+updates reject. Both revision and archived-edit guards precede no-op acceptance.
+Actual changes increment revision once and use database timestamps. Archive/restore
+preserve content/status. Revision exhaustion rejects actual changes; no-ops remain
+valid. Create uses caller-retained UUID plus INSERT ON CONFLICT DO NOTHING, returns
+created/existing identity, and never overwrites even after editing or archival.
+Foreign collisions return the same unavailable response as absent detail IDs.
+
+The dedicated library_command_owner is NOLOGIN/NOBYPASSRLS and owns only the three
+write routines, never books. It receives SELECT, column-limited INSERT/UPDATE and
+necessary identity/owner/value helper privileges, with no DELETE/TRUNCATE, schema
+CREATE, client membership or other-domain grants. Authenticated gets RLS-bound
+SELECT and the five RPC EXECUTEs only. Reads are SECURITY INVOKER; writes are
+SECURITY DEFINER with fixed pg_catalog search_path. Each RPC checks configured
+owner and request identity. Owner policies plus the restrictive system_single_owner
+policy protect both runtime roles. Anonymous, service-role and other-domain
+executor privileges are revoked. Missing identity/configuration fails closed.
+
+URL validation is syntax-only, with no fetch, DNS lookup or external service. The
+shared subset accepts ASCII DNS/punycode, canonical IPv4 and bracketed IPv6,
+optional ports 0..65535 and Unicode paths/query/fragment. It rejects credentials,
+empty userinfo, empty/invalid hosts, repairable slash/backslash/whitespace forms,
+unsupported schemes and over-limit values. Unicode DNS can be entered as punycode.
+The approved explicit whitespace set, LF normalization and code-point counting are
+identical across TypeScript and SQL. PostgreSQL/PostgREST reject NUL/lone-surrogate
+encoding before storage; the application rejects it before dispatch.
+
+### Validation coverage and checkpoint order
+
+The harness excludes the new migration from its early filename loop. With normal
+owner activation it applies Library after recurring schedule defaults. The private-
+owner runner applies it explicitly after the historical ADR-015 catalog/security
+checks. The frozen 19-policy assertion and all historical suite registrations stay
+unchanged. The Library checkpoint adds its own catalog and behavior suites, checks
+that every existing public RPC body/identity/ACL is unchanged, and checks borrowed
+membership restoration. No historical migration/checksum is modified.
+
+SQL tests cover create/defaults, every text cap, Unicode/line endings, malformed
+fields/encoding, all status transitions, nullable clearing, stable creates after
+edit/archive, stale-equal writes, no-op full-row preservation, archive/restore,
+foreign collisions, filtered cursor pages, invalid list input and bigint exhaustion.
+Actual EXPLAIN ANALYZE queries under owner RLS, with 4,000 rollback-only synthetic
+rows, select the expected active/archive index with and without a status filter.
+This is representative query-plan evidence, not a production benchmark.
+
+Catalog/runtime tests check exact columns, constraints/indexes, RLS predicates,
+helper/RPC ACLs, restricted role attributes, nonownership, immutable-column grants,
+no unrelated data privileges, forged writes, missing identity/configuration and
+non-vacuous own/foreign rows. The real Auth/PostgREST helper adds simultaneous
+same-ID creates, differing revision writes, edit/archive races, 50/100-row bounds,
+page traversal, exact bigint transport above Number.MAX_SAFE_INTEGER and shared
+Node/SQL normalization/URL cases. A transport wrapper consumes a successful actual
+HTTP response before discarding it: committed create/edit/archive state is read
+back and stale retries cannot overwrite later changes. Unrelated Quest/EXP/Goal/
+reward state is compared before/after. Private-owner unbootstrap repeats all five
+Library RPC denials and table invisibility.
+
+### Final checks
+
+All L1 gates below passed. Docker Desktop was initially stopped and was started
+for the disposable harness. Initial database failures found the missing helper
+grant and test-fixture defects; those were corrected before the successful final
+SQL/wire run. No unavailable security gate or unresolved L1 defect remains.
+
+| Executed command/check | Result |
+| --- | --- |
+| git -c credential.interactive=false fetch origin; git rev-list --left-right --count HEAD...origin/main | Successful fetch; 1/0, existing L0 commit only. |
+| npm run lint | Passed with zero warnings; rerun after final test refinements. |
+| npx --no-install tsc --noEmit | Passed. The domain model was unchanged afterward. |
+| node --test tests/*.test.mjs | 353/353 passed. |
+| node --test tests/library.test.mjs | Final focused rerun: 9/9 passed after URL corpus/boundary refinements. |
+| node supabase/tests/private-owner-wire.mjs | Final run passed all 25 SQL checkpoint suites and 13 database/security groups; own disposable resources removed. |
+| node tests/auth-smoke.mjs | Passed existing Auth/application smoke, normal full migration order and isolated production build; own disposable app/containers/network removed. |
+| git diff --check; tracked diff review; separate untracked review | Passed; no whitespace errors. New files also checked for trailing whitespace, NUL/BOM and updated document links. |
+| Scope/preservation audit | No historical migration, package/lockfile, route/UI/CSS/localization/proxy changes; no staged changes. Unrelated .vscode/settings.json SHA-256 unchanged. |
+
+No separate npm run build is claimed: the auth-smoke command built an isolated copy
+of the final application using synthetic disposable configuration. Playwright was
+not run for this foundation-only tranche; there is no Library UI to exercise.
+Browser/mobile/locale coverage remains an explicit later-tranche gate.
+
+### Files delivered in the working tree
+
+| File | L1 disposition |
+| --- | --- |
+| [model.ts](../../src/features/library/model.ts) | Inherited untracked domain model retained unchanged. |
+| [books migration](../../supabase/migrations/20261007120000_create_books_v1.sql) | Inherited additive migration corrected in place, never deployed. |
+| [domain tests](../../tests/library.test.mjs) | Retained and extended. |
+| [shared fixtures](../../tests/helpers/library-fixtures.mjs) | Added for identical Node/wire acceptance cases. |
+| [SQL behavior](../../supabase/tests/library-books.sql) | Completed malformed partial suite. |
+| [SQL catalog/security](../../supabase/tests/library-books-catalog.sql) | Completed partial suite and runtime role matrix. |
+| [Library wire helper](../../supabase/tests/helpers/library-wire.mjs) | Added real transport/concurrency/security coverage. |
+| [disposable harness](../../tests/helpers/auth-environment.mjs) | Deferred Library migration/checkpoint and legacy privilege/RPC preservation checks. |
+| [private-owner runner](../../supabase/tests/private-owner-wire.mjs) | Invokes Library after frozen checks and repeats fail-closed tests. |
+| [project context](../PROJECT_CONTEXT.md), [testing guide](testing.md), this handoff | Current status, validation and next-tranche boundaries. |
+
+Final state remains uncommitted on feat/library-v1. No commit, push, merge, rebase,
+application deployment, Local database change or Cloud operation was performed.
+
+### Delivery limits and next tranche
+
+Only disposable synthetic Auth/PostgREST/tmpfs PostgreSQL resources are authorized
+for validation; no developer Local or Cloud database was contacted. There is no
+Library UI or application data/action adapter yet. L2 must implement the approved
+auth/profile gates, typed errors, identity-only pending-create metadata and saved/
+refresh-required outcomes; those are not claimed as L1 behavior. Mobile, EN/VI and
+Library end-to-end UI acceptance belong to L3/L4. Migration rollout and any later
+commit/push require separate authorization. Preserve book data on rollback.

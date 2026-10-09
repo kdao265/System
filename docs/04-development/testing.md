@@ -64,3 +64,23 @@ action boundaries, with the Calendar action added to existing owner-auth checks.
 timed create/edit/remove, existing one-off/recurring Quest projection, uncertain
 response recovery, duplicate submits and all-day/mobile usability at 360/390/412 px.
 See [Calendar handoff and final results](calendar-schedule-v1.md).
+
+## Library V1 L1 validation
+
+Library foundation checks are registered without changing historical migration
+checkpoints or the frozen ADR-015 policy count. Run:
+
+- `node --test tests/library.test.mjs`: domain validation/parsing and the shared
+  Unicode/URL corpus (also included in `node --test tests/*.test.mjs`).
+- `node supabase/tests/private-owner-wire.mjs`: 25 SQL checkpoint suites, including
+  Library catalog/behavior after owner activation, then 13 database/security groups.
+  Library covers non-vacuous RLS/owner isolation, restricted grants, no-op/revision
+  behavior, same-ID/concurrent writes, committed-response loss, normalization parity
+  and metadata pagination. Its query-plan fixtures roll back.
+- `node tests/auth-smoke.mjs`: the ordinary all-migration order, isolated production
+  build and existing Auth/application regression, with disposable configuration.
+
+The normal harness applies Library after recurring schedule defaults; the private-
+owner runner explicitly applies it after its frozen historical assertions. No live
+Local/Cloud target or persisted fixture is used. Library application/UI/browser
+journeys are still L2-L4 work. See the [L1 report](library-v1.md#10-l1-takeover-and-implementation-record-2026-10-08).

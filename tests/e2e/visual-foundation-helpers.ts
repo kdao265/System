@@ -32,7 +32,7 @@ export async function visualFoundationJourney(page: Page, context: BrowserContex
       await page.getByRole("button", { name: "Apply language", exact: true }).click();
       await expect(page.locator("html")).toHaveAttribute("lang", "vi");
     }
-    for (const route of ["dashboard", "calendar", "goals"] as const) {
+    for (const route of ["dashboard", "calendar", "goals", "library"] as const) {
       await page.goto(`/${route}`);
       const navigation = page.getByRole("navigation", { name: language === "vi" ? "Điều hướng SYSTEM" : "SYSTEM navigation", exact: true });
       await expect(navigation.locator('[aria-current="page"]')).toHaveAttribute("href", `/${route}`);

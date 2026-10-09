@@ -530,3 +530,81 @@ source provenance and independent acceptance gates. The frontend adds recurring 
 schedule defaults, Quest-ID series management, base-revision schedule edit recovery and the
 materialization warning surface; Calendar stays write-free. See the
 [resolver handoff](../04-development/recurring-schedule-resolver-v2.md). Deployment remains unauthorized.
+
+## ADR-023 - Library books with private ownership and revision-guarded edits
+
+**Date:** 2026-10-07. **Status:** Product decisions accepted by the Product Owner's
+Library V1 L0 request; detailed contract recorded for L0 sign-off. Not implemented.
+This documentation task does not authorize L1, migration, code or deployment.
+
+**Context:** The repository has conceptual Knowledge/books intent but no Library
+implementation. PR #54 supplies the SYSTEM shell and presentation foundation.
+Goals and Calendar supply owner-guarded command/security precedents, while Quest
+recovery exists for progression and exact historical-command semantics that books
+do not need. The Product Owner explicitly includes manual covers, summary and
+responsive BookCards, superseding the earlier discovery audit's deferral/list-row
+recommendations.
+
+**Decision:** Introduce one future `public.books` table. Use immutable UUID identity
+and verified request-derived user_id; required trimmed title, optional author and
+manual optional HTTPS cover_url; text + CHECK status with want_to_read, reading and
+finished; summary/content_notes/lessons as nullable bounded plain-text columns.
+No note child tables, ISBN or title/author uniqueness. Preserve book identity and
+readability independently of cover loading; missing/broken covers use local/CSS
+fallback. Never fetch/proxy covers server-side or integrate an external book API.
+
+Use archived_at independently of status: archive preserves all content/status;
+restore clears archival and preserves content. Archived books remain readable but
+require restore before editing. Finished does not imply archived; any valid status
+can transition to any other. V1 is archive-only, with no hard-delete API/UI/runtime
+grant. Database-owned revision starts at 1 and advances with updated_at only on
+actual mutations. Edit/status/archive/restore check expected revision atomically,
+rejecting stale writes before no-op handling.
+
+Create uses a stable UUID retained across uncertain transport retries. Repeated
+create cannot duplicate or overwrite an existing book; no upsert update. There is
+no Quest command ledger, durable receipt, cycle, alias, EXP/progression lock or
+generic recovery coordinator. Recovery reads current state and preserves in-memory
+drafts for explicit review; any pending-create reload storage contains minimum
+identity metadata only. No autosave, persistent note drafts or offline editing.
+Confirmed database success with failed UI invalidation means saved/refresh-required.
+
+Follow ADR-014/015 and the Goals/Calendar security boundary: both row ownership and
+configured-single-owner restriction, guarded public RPCs with fixed safe search_path,
+RLS-bound reads and a dedicated NOLOGIN/NOBYPASSRLS Library write executor that does
+not own books. Do not reuse the Quest executor. Install new policies/guards in a
+new additive migration; historical migrations remain immutable.
+
+Use `/library`, `/library/new` and a separate `/library/[id]` detail/edit route.
+Library becomes the real fourth SystemShell destination, including nested active
+state, EN/VI copy and proxy coverage while preserving Dashboard's Calendar/date
+behavior. One semantic responsive cover-led BookCard uses a desktop/tablet grid
+and compact mobile layout. Long text is detail-only, excluded from collection
+payloads. Reuse PR #54 primitives/tokens/reduced motion; L3 includes mobile and
+accessibility. Add no alternate routes, dependencies or second visual system.
+
+**Alternatives:** Status enums add no benefit over the existing CHECK convention.
+Normalized notes, provider catalogs and social/analytics features exceed the
+approved small knowledge-capture scope. Last-write-wins can erase long notes;
+revision guards prevent that without the complexity of historical receipts.
+Hard deletion breaks retention and complicates late create retries. Modal or
+split-only long-form editing is weaker on mobile than the approved detail route.
+Direct authenticated writes and reused Quest permissions weaken the focused
+new-domain boundary. A list-only collection does not meet the approved cover-led
+BookCard direction.
+
+**Consequences:** One future domain table and focused list/detail/create/update/
+set-archived commands, independent of Quest and EXP. Reads stay bounded; long text
+and external-image failures cannot burden the collection contract. An uncertain
+write is resolved from current state, not claimed as historical replay. Revision
+conflicts require explicit review. Owner RLS and privilege/catalog tests, Unicode/
+URL validation, response-loss tests, EN/VI and desktop/mobile journeys are required.
+Future quotes/tags/notes/sessions/providers can reference stable book/owner identity
+without being implemented now. Database rollout precedes UI rollout under separate
+authorization; frontend rollback retains book data.
+
+**Related:** [Requirements](../01-requirements/library-v1.md),
+[architecture and technical refinements](library-v1.md),
+[L0-L4 handoff and validation plan](../04-development/library-v1.md), ADR-010,
+ADR-014, ADR-015, ADR-017, ADR-019 and ADR-020. Text/URL limits and detailed
+command/pagination/reload parameters are recorded in the L0 contract for sign-off.

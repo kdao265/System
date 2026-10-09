@@ -1,0 +1,9 @@
+// Shared Node/real-PostgreSQL corpus. Synthetic text and reserved hosts only.
+export const whitespace = "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
+export const validCovers = ["https://example.invalid/cover.jpg", "HTTPS://Example.Invalid:443/path?q=one#two", "https://127.0.0.1:65535/a", "https://[::1]/a", "https://[::ffff:192.0.2.1]/a", "https://example.invalid/Việt😀?x=%20", "https://example.invalid./a", "https://example.invalid/?email=a@b", "https://xn--bcher-kva.invalid/a", "https://example.invalid:0/a"];
+export const invalidCovers = ["https://./", "https://.", "http://example.invalid/a", "//example.invalid/a", "/cover.jpg", "data:image/png,a", "javascript:alert(1)", "https://", "https:///example.invalid", "https://user@example.invalid", "https://:pass@example.invalid", "https://@example.invalid", "https://example.invalid:65536/a", "https://example.invalid:/a", "https://example.invalid/a b", "https://example.invalid/a\nb", "https://example.invalid/a\\b", "https://example.invalid/\u0085", "https://-bad.invalid", "https://bad..invalid", "https://256.1.1.1", "https://127.1", "https://0x7f000001", "https://0177.0.0.1", "https://[not-ip]/", "https://[1:2:3]/", "https://[::ffff:192.000.2.1]/", "https://example.invalid/\ud800", "https://example.invalid/\0", "https://example.invalid/a\ufeffb", "https://%65xample.invalid", "https://example.0x1", "https://example.invalid:000000/a", "https://[::1%25eth0]/"];
+export const normalizationCases = [
+  { title: whitespace + "Tiếng Việt 😀" + whitespace, author: whitespace, cover_url: whitespace, summary: whitespace, content_notes: whitespace, lessons: whitespace },
+  { title: " e\u0301 ", author: " Writer ", summary: " a\r\nb\rc ", content_notes: "\n 😀\r\n", lessons: " lesson " },
+  { title: "<plain text>", summary: "<script>text only</script>", content_notes: "a\u200bb", lessons: null },
+];

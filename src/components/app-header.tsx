@@ -5,13 +5,14 @@ import { useLocale } from "@/lib/localization/provider";
 import { resolveLocale } from "@/lib/localization/dictionaries";
 import { Button } from "./ui/primitives";
 
-export function AppHeader({ current, selectedDate, compact = false }: { current: "dashboard" | "calendar" | "goals"; selectedDate?: string; compact?: boolean }) {
+export function AppHeader({ current, selectedDate, compact = false }: { current: "dashboard" | "calendar" | "goals" | "library"; selectedDate?: string; compact?: boolean }) {
   const { locale, messages: t, pending, changeLocale } = useLocale();
   const [error, setError] = useState(false);
   const links = [
     { key: "dashboard", href: "/dashboard" },
     { key: "calendar", href: selectedDate ? `/calendar?date=${selectedDate}` : "/calendar" },
     { key: "goals", href: "/goals" },
+    { key: "library", href: "/library" },
   ] as const;
   // The root class marks this header as the shell's navigation rail; system-shell.css
   // turns it into a vertical rail, a split top shell or a compact stack per tier.

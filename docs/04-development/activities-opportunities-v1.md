@@ -1,8 +1,8 @@
 # SYSTEM V1 — Activities & Opportunities: L0 Handoff & Task Contract
 
-**Status:** APPROVED L0 TASK CONTRACT — PO approved the four-document L0 package and separately authorized the docs branch and one docs-only commit. PR, merge, code, migration and deployment are not authorized.
+**Status:** APPROVED L0 TASK CONTRACT — PO approved the four-document L0 package, separately authorized its documentation branch/commit and the opening of PR #56. PR #56 is open for review; merge, code, migration, database changes and deployment remain unauthorized.
 **Prepared/approved:** 2026-10-10 · **Repository location:** `docs/04-development/activities-opportunities-v1.md`.  
-**Companion contracts:** [Requirements](../01-requirements/activities-opportunities-v1.md) · [Proposed ADR-024](../02-architecture/decisions.md) · [Architecture](../02-architecture/activities-opportunities-v1.md).
+**Companion contracts:** [Requirements](../01-requirements/activities-opportunities-v1.md) · [ADR-024](../02-architecture/decisions.md) · [Architecture](../02-architecture/activities-opportunities-v1.md).
 
 ## 1. Mission, business success and owner authority
 
@@ -10,7 +10,7 @@
 
 **Success:** (a) save an Opportunity quickly, record meaningful deadlines and application states; (b) create/track/import an Activity with its own participation lifecycle; (c) connect AO to Goal/one-off Quest context and provenance without affecting other domain state; (d) preserve history and private data under concurrent editing, lost responses and archive/delete races; (e) usable EN/VI desktop/mobile experience with nonregressive Quest/Goal/Calendar/Auth/Library behavior.
 
-**Authority hierarchy:** PO-approved decisions AO-01–09, G-01–06 → this four-file contract when finally approved → additive implementation tasks each separately authorized. Future repo main and accepted ADRs supersede stale observations; do not silently reinterpret PO business rules. For any conflict or missing behavioral contract, **stop, report exact conflict and seek PO direction**.
+**Authority hierarchy:** PO-approved decisions AO-01–09, G-01–06 → this PO-approved four-file contract → additive implementation tasks each separately authorized. Future repo main and accepted ADRs supersede stale observations; do not silently reinterpret PO business rules. For any conflict or missing behavioral contract, **stop, report exact conflict and seek PO direction**.
 
 ## 2. Scope freeze and explicit prohibitions
 
@@ -18,7 +18,7 @@
 
 **Excluded:** automatic Opportunity→Activity status synchronization; Quest/Goal/EXP event mutations, Goal membership/progress changes, Calendar Schedule Event creation/sync, recurring Quest contextual target, notifications/reminders, AI/chatbot, scraping/metadata fetching, Criteria/Evidence verification, Portfolio/CV generator, hard delete AO, offline action queue, cross-owner collaboration, direct production/local database access, privileged credentials in browser. No unauthorized dependency, schema rewrite, historical migration edits or broad unrelated refactor.
 
-**Current authorization:** add the four approved documents and create one docs-only commit. Still prohibited: PR, merge, code, migration, unit/SQL/E2E, database operations and deployment.
+**Current authorization:** documentation branch, original docs-only commit and PR #56 were approved and completed; one documentation-only correction commit is separately authorized. PR #56 remains open. Merge, implementation, code, migration, manual unit/SQL/E2E execution, database operations and deployment still require separate permission.
 
 ## 3. Baseline, inputs and required future preflight
 
@@ -30,7 +30,7 @@ Before any separately authorized repository task: read `docs/PROJECT_CONTEXT.md`
 
 | Role | Responsibility | Must not do |
 | --- | --- | --- |
-| Product Owner | Approve four final L0 docs, then separately authorize docs promotion and implementation tranches; resolve contract deviations | Need not write code or infer implementation status |
+| Product Owner | Approved final L0 docs; separately authorized documentation branch/commits and PR #56; must independently approve merge and each implementation tranche; resolves contract deviations | Need not write code or infer implementation status |
 | Orchestrator/Architect | Trace decisions→requirements→ADR→schema/RPC→tests; resolve dependencies, maintain explicit file ownership | Auto-authorize coding or hide design conflicts |
 | Backend/database agent | Add additive AO-owned tables, role/RLS/FKs/indexes/RPCs and real disposable SQL/concurrency tests | Write Quest/Goal/EXP/Calendar data, change old migrations, access live DB |
 | Application agent | Typed model/contracts/data/actions; verified owner reads/actions; response validation and recovery | Trust client owner IDs, swallow unknown responses as rejection |
@@ -43,8 +43,8 @@ Agents coordinate ownership of shared files: `SystemShell`, `AppHeader`, `dictio
 
 | Tranche | Planned deliverables | Completion gate / authority |
 | --- | --- | --- |
-| **L0 — Final documentation review (completed)** | Four external files, mapping AO/G decisions, review notes, final QA consistency check and ZIP | **PO signs off these exact final drafts**; does NOT authorize repo edits |
-| **L0D — Documentation promotion (docs-only commit authorized)** | After explicit permission, create docs branch, place Requirements/Architecture/Task Contract and proposed ADR entry in repo, validate links/diff, docs PR | Separate PO authorization for branch/repo writes; review PR before merge |
+| **L0 — Final documentation review (completed)** | Four PO-approved files, decision mapping, review notes, QA consistency check and ZIP | PO approval recorded; repo writes and PR required their own later permissions |
+| **L0D — Documentation promotion (PR #56 open)** | Docs branch created, four approved documents committed, ADR-024 appended and PR #56 opened for review; small approval-status correction authorized | PR #56 is not merged; merge requires independent PO authorization |
 | **L1 — Domain and database foundation (future)** | New additive AO migration for approved 10 tables, SQL validators, role/RLS, FK/indexes, command/read RPCs, durable receipts, history; pure TS model and disposable SQL/catalog/race tests | Separate PO authorization and SQL/security/domain QA signoff |
 | **L2 — Core application and UX (future)** | AO protected routes, create/list/detail/edit, Opportunity Stage/Outcome/Entry mode, Activity lifecycle/import, dates, Resource Links, Archive/Restore, History UI, EN/VI responsive | Separate PO authorization; unit/action/E2E acceptance |
 | **L3 — Relationships UX/recovery (future)** | Source Opportunity link management, four Contextual Link pickers, candidate search, archived/deleted projection, exact replay UI and command resolution | Separate PO authorization; concurrency and deleted-content privacy signoff |
@@ -111,6 +111,6 @@ At each handoff, supply: (a) exact approved scope/task ID; (b) branch/head vs ma
 
 ## 9. Completion of this L0 preparation task
 
-**Deliverable:** four externally generated Markdown files (Requirements, Proposed ADR-024, Architecture Design, Task Contract), plus optional README/ZIP; cross-checked against approved AO/G decisions and read-only repository evidence. **Still awaiting:** separate PR/merge approval and implementation authorization for each tranche. 
+**Deliverable:** four PO-approved Markdown contracts (Requirements, ADR-024, Architecture Design, Task Contract), first assembled outside the repository and now included in the open documentation-only PR #56. **Still awaiting:** separate merge approval and implementation authorization for each tranche. 
 
-**Not done / not claimed:** PR, merge, migration, SQL/RPC/UI implementation, running test commands, DB operations, Cloud sync, deploying or confirming product works. Baseline `main` was inspected read-only; local repository working-tree status was **not** checked because no checkout/worktree was modified.
+**Not done / not claimed:** merge, migration, SQL/RPC/UI implementation, manually running test commands, DB operations, Cloud sync, deploying or confirming product works. Baseline `main` was inspected read-only; local repository working-tree status was **not** checked because no checkout/worktree was modified.

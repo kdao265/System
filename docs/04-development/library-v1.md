@@ -612,3 +612,110 @@ Only create-workflow.ts, library-ui.test.mjs and this appended record changed in
 this follow-up. HEAD remains 67a070d; .vscode/settings.json retains its recorded
 SHA-256 and stays untracked. No migrations, L1/L2 contracts, dependencies, staging,
 commit, push, merge, rebase or deployment. Stop for Product Owner review.
+
+## 13. Library V1 L4 release verification
+
+Date: 2026-10-09. Resumed at `de27549` on `feat/library-v1`, ahead 6/behind 0
+against the existing `origin/main` reference; no remote fetch was performed.
+The tracked worktree and index were clean; only `.vscode/` was untracked.
+Scope: focused release audit and this appended record only. Completed heavy
+verification supplied in the Product Owner's continuation handoff is accepted
+as prior evidence from this L4 run, not newly executed in this continuation.
+Earlier L0/L1 implementation-absent and L3 stop statements are tranche history;
+this section records the current release-review state.
+
+### Focused docs/code audit
+
+The approved requirements and ADR-023/architecture agree with committed code on
+all requested release-critical contracts; no production-code mismatch or release
+blocker was found. Inspected source evidence:
+
+- `src/app/library/{page.tsx,new/page.tsx,[id]/page.tsx}`, Library page/data context,
+  auth/Profile gates, `system-shell.tsx`, `app-header.tsx` and `src/proxy.ts`:
+  `/library`, `/library/new` and `/library/[id]` are private, force-dynamic routes;
+  Library is the fourth navigation entry, active on nested routes, with
+  `/library/:path*` proxy coverage and private/no-store response headers.
+- Library `model.ts` and `20261007120000_create_books_v1.sql`: statuses remain
+  `want_to_read` / `reading` / `finished`; finished is independent of archive.
+  Archive/restore retain content and status. No hard-delete UI, RPC or runtime
+  DELETE grant exists. Mutations check `expected_revision` before no-op handling.
+- Library `create-identity.ts`, `create-workflow.ts`, `create-form.tsx` and
+  `actions.ts`: create retains one stable UUID across uncertainty, persists only
+  identity metadata, and requires explicit blocked-identity cleanup. An existing
+  result does not mean the latest submitted payload was applied; authoritative
+  content is read for review, and unavailable detail retains the identity.
+- Library `actions.ts`, `detail-workflow.ts` and feedback: no conflict replay or
+  automatic revision replacement; drafts survive for explicit review/save.
+  `refreshRequired` means the mutation is already saved, even if refresh fails.
+- SQL list projection, Library `model.ts`, `data.ts` and `navigation.ts`: collection
+  payload is metadata-only, excluding summary/notes/lessons; PostgreSQL microsecond
+  cursor strings are preserved through validation, links and RPC arguments.
+- Library cover/form/workflow code and typed EN/VI dictionaries: manual HTTPS
+  covers only, browser loading without server fetching/proxying, explicit saves,
+  no autosave, external Books API, AI, EXP or Quest integration; both UI languages
+  retain the same stored statuses and user content.
+
+### Completed evidence reused; no heavy reruns
+
+The first four rows are the completed L4 results supplied in the continuation
+handoff (including the user's manual runs after interruption). Browser evidence
+is the approved prior L3 record above, not an L4 rerun.
+
+| Evidence | Recorded result |
+| --- | --- |
+| Disposable production-like migration/security acceptance | Full migration path, 25 SQL checkpoints and 13 database/security wire groups passed; all five Library RPCs callable through already-running PostgREST after migration; no release blocker. |
+| Manual Node/lint/TypeScript/whitespace | `node --test tests/*.test.mjs`: 408/408 passed, 0 failed/skipped/todo. `npm run lint`, `npx --no-install tsc --noEmit` and `git diff --check` passed without error output. |
+| Manual `node tests/library-application-wire.mjs` | 10 application/database integration groups passed: legacy RPC identity/signature/default/security/ACL preservation; isolated Auth/PostgREST/PostgreSQL with migrations/fixtures in tmpfs; owner/onboarding/forged-account gates; create/existing/list/detail; revision/no-op/conflict/content retention; foreign-ID privacy; committed HTTP response loss without replay; later restore protected from old archive intent; saved state after invalidation failure; unchanged L1 SQL/catalog/wire suites. |
+| Manual fresh `npm run build` | Next.js 16.3.5 optimized build, TypeScript, page data/static generation and final optimization passed; `/library`, `/library/[id]` and `/library/new` each reported dynamic (`ƒ`), server-rendered on demand. |
+| Prior L3 browser/visual acceptance | Library desktop 5/5, mobile 2/2 and targeted shared regressions 11/11 passed. Six viewport visual QA completed: 1280x800, 1024x768, 820x900, 412x915, 390x844 and 360x800. The 78 screenshots were not regenerated or re-reviewed in this continuation. |
+
+### F3 closure and rollout gate
+
+F3 is closed for release review. The committed Library migration contains
+`NOTIFY pgrst, 'reload schema'` before `COMMIT`. The completed disposable
+production-like run established that `create_book_v1`, `update_book_v1`,
+`set_book_archived_v1`, `get_book_v1` and `list_books_v1` were visible and callable
+through an already-running PostgREST instance after migration. No application-side
+missing-RPC retry/workaround is required. This is not production deployment or
+production migration verification; target-environment schema/RPC visibility
+remains a mandatory deployment gate.
+
+Planned rollout, under separate environment authorization:
+
+1. Apply the database migration `20261007120000_create_books_v1.sql` after its
+   required predecessors.
+2. Verify migration success and the intended schema/security contract.
+3. Verify all five Library RPCs are visible/callable through target PostgREST.
+4. Run production-like smoke against the migrated backend, covering authorized
+   create/read/edit/status/archive/restore and privacy/conflict behavior.
+5. Release the reviewed application commit.
+6. Verify the three private Library routes, owner/onboarding gates and private
+   dynamic responses in the released application.
+
+Application-before-migration is forbidden. If target schema cache is stale, use
+the supported operational schema reload or PostgREST restart mechanism and
+reverify all five RPCs before application release.
+
+Failure policy: migration failure stops application release. A DB/schema defect
+requires a reviewed NEW forward migration; never edit the historical migration.
+Migration success with stale PostgREST schema requires reload/restart and renewed
+visibility checks. An app-only failure after DB success permits independent
+application-commit rollback while retaining the additive Library schema and data.
+Never perform destructive rollback of books data.
+
+### Continuation validation and review limits
+
+Newly performed: focused read-only docs/code audit and repository-state inspection,
+then documentation-only `git diff --check` (passed; only Git's LF-to-CRLF advisory),
+status/name-status/stat and full diff review. No Node, lint, TypeScript, build,
+SQL/wire or Playwright rerun was needed.
+Local shell startup failed in the sandbox; the approved escalated runner was used.
+Only this document changed; `.vscode/settings.json` remains untracked with its
+previously recorded SHA-256 unchanged. No staging, commit, push, merge, rebase,
+deployment, source/test/migration or dependency change occurred.
+
+This evidence covers disposable production-like verification and reused L3
+Chromium desktop/mobile emulation. It does NOT establish production deployment,
+production migration verification, target schema-cache readiness, physical-device,
+native mobile-keyboard, screen-reader or cross-browser acceptance. Those operational
+gates remain for an authorized rollout. Verdict: READY FOR PRODUCT OWNER REVIEW.

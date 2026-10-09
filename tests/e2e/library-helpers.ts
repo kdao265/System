@@ -41,11 +41,12 @@ export async function libraryVisualJourney(page: Page, environment: Parameters<t
   const title = "The Art of Paying Attention — Sách và những điều cần nhớ " + "LongTitle".repeat(13);
   const notes = "A quiet space to understand what you read.\nGiữ lại điều bạn hiểu, bằng lời của chính mình.\n\n".repeat(16) + "LongNote".repeat(40);
   const id = await seedBook(client, { title, author: "Synthetic author with a long name for wrapping", status: "reading", summary: "An example of a short, considered summary.", content_notes: notes, lessons: "Return to one idea and put it into practice." });
-  const broken = await seedBook(client, { title: "A book with an unavailable cover", cover_url: "https://library-cover.invalid/missing.png", status: "finished" });
-  await page.route("https://library-cover.invalid/**", route => route.abort("failed"));
-  const archived = await seedBook(client, { title: "A retained chapter", summary: "Archived content stays readable.", content_notes: notes, status: "finished" });
-  if ((await client.rpc("set_book_archived_v1", { p_book_id: archived, p_expected_revision: "1", p_archived: true })).error) throw new Error("Archive fixture failed");
+  let broken: string | undefined;
   try {
+    broken = await seedBook(client, { title: "A book with an unavailable cover", cover_url: "https://library-cover.invalid/missing.png", status: "finished" });
+    await page.route("https://library-cover.invalid/**", route => route.abort("failed"));
+    const archived = await seedBook(client, { title: "A retained chapter", summary: "Archived content stays readable.", content_notes: notes, status: "finished" });
+    if ((await client.rpc("set_book_archived_v1", { p_book_id: archived, p_expected_revision: "1", p_archived: true })).error) throw new Error("Archive fixture failed");
     for (const size of sizes) {
       await page.setViewportSize(size);
       const shot = async (state: string) => { await assertLibraryLayout(page); await page.screenshot({ path: info.outputPath(`library-${size.width}x${size.height}-${state}.png`), fullPage: true }); };
@@ -82,5 +83,22 @@ export async function libraryVisualJourney(page: Page, environment: Parameters<t
     await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab"); await expect(submit).toBeFocused();
     expect(await submit.evaluate(e => getComputedStyle(e).outlineStyle)).toBe("solid");
     expect(await submit.evaluate(e => getComputedStyle(e).transitionDuration.split(",").every(s => Number.parseFloat(s) === 0))).toBe(true);
-  } finally { await client.auth.signOut({ scope: "local" }); }
+  } finally {
+    try {
+      // The worker DB outlives this page's route interception. Retain the book,
+      // but never leave its synthetic external URL for a fresh browser context.
+      if (broken) {
+        const current = await client.rpc("get_book_v1", { p_book_id: broken });
+        if (current.error) throw new Error("Broken-cover cleanup read failed");
+        const cleared = await client.rpc("update_book_v1", { p_book_id: broken,
+          p_expected_revision: current.data.book.revision, p_changes: { cover_url: null } });
+        if (cleared.error) throw new Error("Broken-cover cleanup update failed");
+        expect(cleared.data).toMatchObject({ book_id: broken, changed: true, outcome: "updated" });
+        const retained = await client.rpc("get_book_v1", { p_book_id: broken });
+        if (retained.error) throw new Error("Broken-cover cleanup verification failed");
+        expect(retained.data.book).toEqual({ ...current.data.book, cover_url: null,
+          revision: cleared.data.revision, updated_at: retained.data.book.updated_at });
+      }
+    } finally { await client.auth.signOut({ scope: "local" }); }
+  }
 }

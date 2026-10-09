@@ -719,3 +719,40 @@ Chromium desktop/mobile emulation. It does NOT establish production deployment,
 production migration verification, target schema-cache readiness, physical-device,
 native mobile-keyboard, screen-reader or cross-browser acceptance. Those operational
 gates remain for an authorized rollout. Verdict: READY FOR PRODUCT OWNER REVIEW.
+
+### PR #55 CI isolation follow-up (2026-10-09)
+
+Task contract: at `90499ec` on `feat/library-v1`, investigate the reported 67/68
+GitHub browser result with the ordered Library/visual-foundation mobile pair.
+Scope is test isolation under LIB-10/AC-04 and ADR-023; retain the strict network
+boundary and broken-cover assertion. No production behavior, architecture,
+migration or dependency changes, staging, commit, push, merge or deployment.
+Acceptance: confirm the blocked request, prevent leaked external-cover fixture
+state, then pass the ordered pair, relevant checks and one full browser run.
+
+The reported PR #55 run passed 67/68 browser tests. The ordered mobile pair
+reproduced 2 passed / 1 failed (3.5m): `visual-foundation.mobile.spec.ts` tripped
+`fixtures.ts`'s "Browser must contact only this run's app and Supabase gateway"
+teardown assertion. Temporary diagnostics confirmed two blocked requests to
+`https://library-cover.invalid/missing.png`. The Library visual journey retained
+that cover URL in the worker's shared disposable database after its page-scoped
+abort handler disappeared; the following fresh context rendered the retained row.
+
+The test-only correction in `tests/e2e/library-helpers.ts` puts broken-cover setup
+inside `try/finally`. Cleanup reads the current book via `get_book_v1`, passes its
+authoritative revision to `update_book_v1` with only `{ cover_url: null }`, then
+reads back and asserts the row is retained with all other fields preserved except
+the normal revision/update timestamp. Cleanup errors fail visibly; local sign-out
+still runs. Existing browser broken-cover assertions remain. Temporary diagnostics
+were removed; `tests/e2e/fixtures.ts` is unchanged from HEAD, with no new allowlist.
+
+Validation after the fix:
+
+- `npx --no-install playwright test tests/e2e/library.mobile.spec.ts tests/e2e/visual-foundation.mobile.spec.ts --project=mobile-chromium --workers=1 --max-failures=1`:
+  3/3 passed (2.3m), including broken-cover fallback, cleanup read-back assertions
+  and the subsequent fresh-context shell journey under the unchanged guard.
+- `node --test tests/e2e-boundary.test.mjs tests/library-ui.test.mjs tests/visual-foundation.test.mjs`:
+  25/25 passed, no failures/skips.
+- `npm run lint`: passed, zero warnings. `npx --no-install tsc --noEmit`: passed.
+  `git diff --check`: passed; only the existing LF-to-CRLF advisories.
+- Full `npm run test:e2e`: 68/68 passed; `test-results/.last-run.json` recorded `"status": "passed"` with an empty `failedTests` list.

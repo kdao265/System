@@ -608,3 +608,103 @@ authorization; frontend rollback retains book data.
 [L0-L4 handoff and validation plan](../04-development/library-v1.md), ADR-010,
 ADR-014, ADR-015, ADR-017, ADR-019 and ADR-020. Text/URL limits and detailed
 command/pagination/reload parameters are recorded in the L0 contract for sign-off.
+
+## ADR-024 - Independent Activities & Opportunities, Provenance, Contextual Links and Safe Commands
+
+**Date:** 2026-10-10  
+**Status:** ACCEPTED L0 — PO approved AO-01–09, G-01–06 and the final L0 packet. Implementation requires separate authorization.  
+**Details:** [Architecture](activities-opportunities-v1.md), [Requirements](../01-requirements/activities-opportunities-v1.md), [Task Contract](../04-development/activities-opportunities-v1.md).
+
+### Context
+
+SYSTEM needs to record *opportunities to pursue* and *plans/experiences actually participated in* without conflating two distinct realities. Current Quest/Goal/Calendar modules own execution, progress and scheduling. ADR-006 separates Quest, Activity, Criterion, Evidence; ADR-007 distinguishes proof from perceived progress. ADR-020 makes Main Quest progress solely a live projection from current `goal_quest_links` and Quest occurrence status, with a one-current-Goal limit per one-off Quest. Quest Delete stores a tombstone (`deleted_at`), with restrictive authenticated SELECT policies hiding deleted content; its existing goal-membership prerequisite remains authoritative. ADR-015 enforces one configured SYSTEM owner with RLS and guarded SQL entry points. ADR-022 scopes a versioned timezone resolver to recurring Quests; it is not automatically a public AO dependency. ADR-023 supplies Library text/revision/Archive conventions, but Library does not have immutable command receipts.
+
+Opportunity can be saved before application, accepted but declined, non-selective registration, or direct-access participation. Activity may be upcoming only after confirmed plan, ongoing or imported as historical completion. Relating these records to Goals/Quests must not create another completion, verification or EXP engine. Cross-domain attach must be safe against concurrent target Archive/Delete, and accepted requests must replay without overwriting later intent.
+
+### Decision — accepted product architecture
+
+#### D1. Separate aggregate roots and lifecycle ownership (AO-01, AO-04, AO-05, AO-09)
+
+`Opportunity` and `Activity` have separate identity, revision, stage/status and archival. Accepted Opportunity **never** auto-creates Activity; completed Activity **never** auto-changes Opportunity. Opportunity has `tracking_stage` saved/preparing/submitted/closed and `selection_outcome` unknown/pending/shortlisted/waitlisted/accepted/rejected. Neither is inferred from the other, nor deadline. Activity has upcoming/ongoing/paused/completed/ended_early/cancelled_before_start with explicitly confirmed participation; historical imports start directly in their factual state without fake transitions. Terminal corrections require an explicit audited command. Archive is orthogonal to both lifecycles.
+
+#### D2. Non-application semantics (G-05)
+
+Store `entry_mode` (unknown/application/registration/invitation/direct_access/other) and `selection_applicability` (unknown/applicable/not_applicable), both default unknown. Not-applicable requires outcome unknown but displays **N/A**, not **Unknown**. `submitted` requires a real form/registration/acknowledgement action; direct access needs none. Unusual pairs (Saved+Accepted, Direct Access+Submitted) normally trigger **UI warnings** and remain valid after confirmation; only normative invariant violations are hard rejected. Closed is not Rejected; reason values are not_interested/withdrawn/declined_offer/deadline_missed/program_cancelled/process_finished/other. Closed metadata is cleared from current state on explicit Reopen Tracking while kept in history; Closed can receive outcome updates without reopening.
+
+#### D3. Provenance separate from contextual references (AO-05, AO-06)
+
+Optional source provenance: one Opportunity→many Activities; each Activity has at most one **current** source, with historical attachment intervals. Source can be unset/replaced/reattached atomically. **Do not** duplicate an authoritative current `source_opportunity_id` column alongside an interval table; derive detail projection from intervals. Source provenance is different from contextual N:N links and does not imply them.
+
+Exactly four Contextual Link relations: Opportunity↔Goal, Activity↔Goal, Opportunity↔**one-off Quest**, Activity↔**one-off Quest**. References are **non-transitive** and do not grant EXP, Quest completion, Goal membership/progress or Calendar events. A Quest can have context links to several AO records without changing its at-most-one-current-Goal membership contract. One current link per pair; attach/detach intervals retained; reattach creates a new link identity. Archived sources block new mutations; archived Goal/Quest or archived Source Opportunity block new attachments but do not destroy historical/current already-established links. A completed, not archived Activity may still edit contextual links.
+
+#### D4. Archive, deletion and protected tombstones (AO-06 Quest Delete A, AO-08, G-04)
+
+AO roots support Archive/Restore only; no hard-delete API or UI. Archived root is readable and otherwise read-only until restored; exact replay of an already committed command is allowed without effects. Contextual Links do **not** become a new Quest Delete prerequisite. Existing Quest Engine guards — including current Goal membership — remain unchanged. Because Quest Delete is tombstone-based, AO retains references but returns only a neutral placeholder for deleted Quest, with **no Quest title/description/status/reward in AO snapshots, history, receipts or privileged projections**. New links to deleted, archived or recurring Quest are rejected. No automatic unlinking on target Archive/Delete.
+
+#### D5. Time fidelity (AO-07, G-01)
+
+Use tagged, strictly validated JSONB `PartialDate` for unknown/year/month/day and `DeadlineSpec` for deadlines. An exact deadline has source local wall time, IANA timezone or explicit offset (including DST fold disambiguation), resolved offset, and a **server-verified** UTC instant stored separately (`timestamptz`) in the same transaction. Clock with missing timezone remains unresolved; no guessed UTC instant. Dates without full day precision do not invent a day or timezone; changing Profile timezone never rewrites authoritative source data. DST gaps reject; ambiguous folds require disambiguation. Deadline past is informational, not business state. Planned dates, actual dates and history timestamps are distinct. Temporal changes retain immutable before/after events. The recurring Quest ADR-022 resolver remains unchanged.
+
+#### D6. Resource Links and data fidelity (AO-09, G-02)
+
+Use strict structured JSONB value collection on the domain root: at most 30 Resource Links, each with UUID, nonblank label ≤120 Unicode code points, and absolute HTTPS URL ≤2048 without userinfo. Preserve display order and permit repeated URLs; do not fetch, proxy, execute or certify external documents. Use plain-text Unicode normalization (same app/SQL); text limits are in Requirements. `closed_note` and `confirmation_note` ≤2000. Resource Links share root revision/command/history; no independent table/lifecycle. URLs and notes do not become Evidence.
+
+#### D7. Persistence model and command reliability (G-03)
+
+Design consists of **10 new tables**: two roots (`opportunities`, `activities`), one source interval relation, four typed contextual relations, two immutable domain history tables, and `system_internal.ao_commands`. Use same-owner composite FKs and partial unique indexes for current links. Each root owns one positive bigint optimistic revision, incremented once per effective accepted mutation (including link edits); current-revision no-op leaves revision/updated_at unchanged. Every accepted command, including no-op, retains an immutable canonical request/result receipt under `(user_id, command_id)` scoped to AO; replay compares operation/subject/expected revision/normalized payload and returns historical receipt before fresh-state checks. Reject collisions, stale unrecorded edits and invalid references. Record domain edits/history/receipt atomically. Typed public RPC and projection surfaces only; no generic arbitrary SQL command interface. Source replacement is one transaction.
+
+#### D8. Shared locking and least privilege (G-04)
+
+All AO mutations call existing `progression_internal.lock_owner(actor)` **before taking row locks**, matching Quest/Goal mutation order. This synchronizes target attach eligibility against existing owner-lock-compliant Quest Archive/Delete and Goal Archive. No Quest/Goal row `FOR UPDATE` needed for AO eligibility reads under the shared lock. The guarantee is for compliant entry points; unsupported privileged out-of-band writes are not authorized. Introduce a dedicated NOLOGIN/NOBYPASSRLS AO executor with narrowly scoped AO writes and owner-scoped read of eligible Goal/Quest fields, **no** Quest/EXP/Goal/Calendar mutations. Extend permissive + restrictive RLS to the new executor as needed; existing authenticated deleted-Quest restriction does **not** automatically constrain the executor. Privileged AO reads of deleted Quest are minimized and sanitized before output. No historical migrations rewritten.
+
+#### D9. UX integration and recovery (AO-08, G-06)
+
+Add six routes: `/opportunities`, `/opportunities/new`, `/opportunities/[id]`, `/activities`, `/activities/new`, `/activities/[id]`. Extend existing `SystemShell`, `AppHeader`, locale dictionaries and Auth/Profile owner gate; navigation groups Activities/Opportunities under Growth without needing `/growth`. EN/VI, responsive, accessible, read-only archived detail, bounded list/history, safe externally opened resource URLs. Mutations expose **confirmed/rejected/unknown**; keep editable draft in mounted memory. Browser `sessionStorage` stores only minimum owner/subject/command identities; not text/URLs/payload. On reload, look up receipt read-only, **never reconstruct/retry an absent command without its original payload**. A committed command with failed UI invalidation remains confirmed, refresh needed. No private HTML/JSON/RPC caching by PWA. Integrate AO tests after Library in disposable Auth/PostgREST/PostgreSQL harness, preserving existing frozen checkpoints.
+
+### Consequences
+
+1. **Domain correctness:** acceptance, participation, task execution, progress and verified evidence remain independently meaningful. Source and contextual links can be added after the fact without awarding historical EXP.
+2. **Data retention:** archived AO data and detached intervals remain available; temporal/status/source history and accepted command receipts are immutable. Resource URLs may become obsolete but are not automatically scraped/validated against the live network.
+3. **Privacy:** richer data means controlled projections and no privileged leakage via deleted Quest or receipt history. `system_private` single-owner and row ownership checks apply at all AO RPC boundaries.
+4. **Operational complexity:** 10 tables, composite FKs, specialized RPCs, one AO receipt ledger, strict JSONB validators, timezone resolution and multi-session SQL tests create deliberate engineering cost. This is approved because exact replay/history and no-cross-domain-regression are essential.
+5. **Concurrency trade-off:** owner-wide advisory lock serializes AO mutations (including unrelated metadata changes); acceptable in private V1. Changing granularity later requires a separate lock-order review.
+6. **Extensibility:** future Evidence Vault, Criteria Engine, AI chatbot and Calendar projection can reference AO through separately approved contracts, not automatic side effects today.
+
+### Alternatives considered and rejected
+
+| Alternative | Reason for rejection |
+| --- | --- |
+| Collapse Opportunity into Activity | Destroys distinction between application and confirmed participation. |
+| Automatically create Activity from Accepted | Acceptance does not prove plan/attendance. |
+| Make Upcoming a mere application/interest state | Contradicts confirmed-plan definition. |
+| Single combined status (Stage+Outcome) | Cannot express Submitted/Pending, Closed/Accepted or N/A reliably. |
+| Add a seventh Selection Outcome `not_applicable` | G-05 chose applicability axis while preserving six outcome values. |
+| Model AO context with `goal_quest_links` | Would alter ownership and derived Goal Progress. |
+| Allow recurring Quest context links in V1 | Explicit product boundary excludes them. |
+| Store arbitrary target UUID in polymorphic link without FK | No database-enforced same-owner references. |
+| Both Activity source FK and source interval as authorities | Can diverge; use interval as one authority. |
+| Hard delete AO | Violates AO-08 historical retention. |
+| Make AO context block Quest Delete | Violates AO-06 Quest Delete A and Quest Engine boundary. |
+| Date/month/year converted to invented date/time instant | Loses source precision and may shift with timezone. |
+| Assume Profile timezone for source deadline | Violates approved no-guess policy. |
+| Share ADR-022 recurring resolver as undocumented AO API | Unreviewed widening of specialized Quest implementation. |
+| Resource Link child table in V1 | Greater query/locking complexity without current independent domain lifecycle. |
+| AO commands with Library-only revision, no durable ledger | Cannot prove exact historical replay after later edits/detach. |
+| Independent AO advisory lock | Risks races and inconsistent lock ordering vs Quest/Goal. |
+| LocalStorage/private drafts or offline write queue | Privacy and command-replay complexity outside V1. |
+| Rewrite Quest/Goal/Calendar/Library migrations/contracts | Unauthorized domain coupling and historical checkpoint drift. |
+
+### Technical obligations before implementation
+
+- Translate decisions into exact SQL columns, function signatures, JSON schema validators, typed command envelopes and read DTOs; verify on **fresh `main`**. This ADR **fixes architectural invariants**, not every implementation token/constraint statement.
+- Prove via catalog/wire tests that `ao_command_owner` lacks Quest/EXP write privileges, cannot bypass deleted Quest privacy, and has no retained role memberships or CREATE privileges beyond approved migration setup.
+- Prove actual concurrent transactions for AO Attach vs Quest Delete/Archive/Goal Archive, same-pair duplicates, replay after detach/reattach and Source Opportunity Archive.
+- Ensure command history never snapshots protected Quest content and versioned reading does not reveal it through alternate DTOs.
+- Validate exact UTC instant with source local time, zone/offset and DST; fail closed on ambiguity. Preserve version/provenance choices required by final time-validation implementation.
+- Preserve full test matrix and restore regression coverage for Auth/Quest/Goal/EXP/Calendar/Library/PWA.
+
+### References and gates
+
+Accompanying [Requirements](../01-requirements/activities-opportunities-v1.md), [Architecture Design](activities-opportunities-v1.md), [Task Contract](../04-development/activities-opportunities-v1.md). Repository anchors: [ADR decisions](https://github.com/kdao265/System/blob/main/docs/02-architecture/decisions.md), [Goals migration](https://github.com/kdao265/System/blob/main/supabase/migrations/20260930120000_create_goals_main_quest.sql), [Quest Delete migration](https://github.com/kdao265/System/blob/main/supabase/migrations/20261002013000_quest_archive_delete_v1.sql), [Library migration](https://github.com/kdao265/System/blob/main/supabase/migrations/20261007120000_create_books_v1.sql), [Timezone ADR-022](https://github.com/kdao265/System/blob/main/docs/02-architecture/adr-022-transition-derived-timezone-catalog.md).
+
+**Gate 1:** L0 was approved by PO. **Gate 2:** Branch and one docs-only commit were separately authorized, but PR/merge are not. **Gate 3:** Implementation and disposable database tests need separate approval. **Gate 4:** Deployment requires separate approval.

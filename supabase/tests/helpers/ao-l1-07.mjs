@@ -7,13 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const uuid = () => randomUUID();
 const questSecret = "L107_PRIVATE_DELETED_QUEST_TITLE";
-const snapshotSql = `SELECT jsonb_build_object(
-  'quest_events',(SELECT count(*) FROM public.quest_events),
-  'exp_ledger',(SELECT count(*) FROM public.exp_ledger),
-  'goal_quest_links',(SELECT count(*) FROM public.goal_quest_links),
-  'schedule_events',(SELECT count(*) FROM public.schedule_events),
-  'books',(SELECT count(*) FROM public.books)
-)::text;`;
 function ok(response, label) {
   assert.equal(response.error, null, label + ": " +
     (response.error?.code ?? "unknown") + " " + (response.error?.message ?? ""));

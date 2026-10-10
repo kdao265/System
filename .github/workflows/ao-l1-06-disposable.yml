@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - .github/workflows/ao-l1-06-disposable.yml
+      - supabase/tests/helpers/ao-l1-07.mjs
+      - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:
   contents: read
@@ -85,5 +87,5 @@ jobs:
         if: success()
         run: |
           echo 'PASS only the existing L1-06 Phase A runner and its actual outputs.'
-          echo 'NOT COVERED: full two-session races, exhaustive deleted-Quest privacy, full migration readiness.'
+          echo 'NOT COVERED: full two-session lock-order races, exhaustive deleted-Quest privacy, full migration readiness.'
           echo 'NO AO MIGRATION MAY BE DEPLOYED OR ENABLED FROM THIS RESULT.'

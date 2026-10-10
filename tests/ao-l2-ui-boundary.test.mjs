@@ -95,3 +95,15 @@ test('disposable Auth integration covers every AO route and owner gate',()=>{
     assert.ok(authSmoke.includes(`await assertAoGate("${gate}")`));
   }
 });
+
+test('both AO segment layouts authenticate before their loading boundaries can stream',()=>{
+  const access=read(p+'access-layout.tsx');
+  assert.match(access,/getProfileContext\(\)/);
+  assert.match(access,/redirect\("\/onboarding"\)/);
+  assert.match(access,/isOnboardingComplete\(profile\)/);
+  for(const slug of slugs){
+    const layout=read(`src/app/${slug}/layout.tsx`);
+    assert.match(layout,/AoAccessLayout/);
+    assert.match(layout,/return <AoAccessLayout>/);
+  }
+});

@@ -105,7 +105,7 @@ export async function exerciseAoL107(env, owner, other, anon) {
   assert.equal(failures.length,1,"two-session stale revision: exactly one rejected");
   assert.equal(failures[0].error.code,"23514","race loser must be stale revision");
   const root=await call(owner,"get_opportunity_v1",{p_opportunity_id:oppId});
-  assert.equal(root.root.revision,"2","two-session race must increment revision once");
+  assert.equal(String(root.root.revision),"2","two-session race must increment revision once");
   const acceptedId=writes[0].error===null?first:second;
   const rejectedId=writes[0].error===null?second:first;
   assert.equal((await call(owner,"resolve_ao_command_v1",{p_command_id:acceptedId})).outcome,"recorded");

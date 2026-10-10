@@ -424,7 +424,8 @@ function canonical(raw:unknown,depth:number):unknown {
 }
 export function canonicalAoIntent(value:unknown):string|null {
   if(!isRecord(value)||!exactKeys(value,["command_id","subject_kind","subject_id","operation","expected_revision","request"]))return null;
-  const {request,...identity}=value;
+  const identity = { ...value };
+  delete identity.request;
   if(!isCommandIdentity(identity))return null;
   try { return JSON.stringify(canonical(value,0)); } catch { return null; }
 }

@@ -1649,7 +1649,7 @@ BEGIN
     AND (filters->>'tracking_stage' IS NULL OR o.tracking_stage=filters->>'tracking_stage')
     AND (filters->>'selection_outcome' IS NULL OR o.selection_outcome=filters->>'selection_outcome')
     AND (filters->>'deadline_known' IS NULL OR COALESCE(o.application_deadline->>'precision' NOT IN ('unknown'),false)=(filters->>'deadline_known')::boolean)
-    AND (filters->>'search' IS NULL OR o.title ILIKE '%'||filters->>'search'||'%' OR o.organization ILIKE '%'||filters->>'search'||'%')
+    AND (filters->>'search' IS NULL OR o.title ILIKE '%' || (filters->>'search') || '%' OR o.organization ILIKE '%' || (filters->>'search') || '%')
     AND (p_cursor IS NULL OR (o.created_at,o.id)<((p_cursor->>'created_at')::timestamptz,(p_cursor->>'id')::uuid))
    ORDER BY o.created_at DESC,o.id DESC LIMIT p_limit+1 LOOP
     IF emitted=p_limit THEN v_has_extra:=true; EXIT; END IF;
@@ -1674,7 +1674,7 @@ BEGIN
        SELECT 1 FROM public.activity_source_links sl WHERE sl.activity_id=a.id
        AND sl.user_id=actor AND sl.opportunity_id=(filters->>'source_opportunity_id')::uuid
        AND sl.detached_at IS NULL))
-    AND (filters->>'search' IS NULL OR a.title ILIKE '%'||filters->>'search'||'%' OR a.organization ILIKE '%'||filters->>'search'||'%')
+    AND (filters->>'search' IS NULL OR a.title ILIKE '%' || (filters->>'search') || '%' OR a.organization ILIKE '%' || (filters->>'search') || '%')
     AND (p_cursor IS NULL OR (a.created_at,a.id)<((p_cursor->>'created_at')::timestamptz,(p_cursor->>'id')::uuid))
    ORDER BY a.created_at DESC,a.id DESC LIMIT p_limit+1 LOOP
     IF emitted=p_limit THEN v_has_extra:=true; EXIT; END IF;

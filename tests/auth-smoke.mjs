@@ -9,6 +9,7 @@ const { url, key, owner, other: outsider } = env;
 // Existing feature-copy assertions run in an explicit supported locale.
 const jar = new Map([["system-locale", "en"]]);
 const { email, password } = owner;
+const aoPaths = ["/opportunities", "/opportunities/new", "/opportunities/00000000-0000-4000-8000-000000000001", "/activities", "/activities/new", "/activities/00000000-0000-4000-8000-000000000001"];
 const check = (condition, message) => assert(condition, message);
 
 async function request(path, options = {}) {
@@ -48,8 +49,27 @@ async function submit(path, fields, logout = false) {
   return request(path, { method: "POST", body: await actionBody(path, fields, logout) });
 }
 
-function redirectTo(result, path) {
-  check([303, 307].includes(result.response.status) && result.response.headers.get("location") === path, `Expected redirect to ${path}`);
+function redirectTo(result, path, source = "protected route") {
+  const status = result.response.status;
+  const location = result.response.headers.get("location");
+  // Only log a path, never tokens, cookies, response bodies or URL query strings.
+  const actualPath = location ? new URL(location, "http://localhost").pathname : "(none)";
+  check([303, 307].includes(status) && location === path,
+    `Expected redirect to ${path} for ${source}; got HTTP ${status}, location path ${actualPath}`);
+}
+
+// Only the disposable app is used; AO schema is intentionally not activated.
+async function assertAoGate(expected) {
+  for (const path of aoPaths) {
+    const result = await request(path);
+    if (expected === "owner") {
+      check(result.response.status === 200 && result.html.includes("This feature is awaiting database and security verification"), "AO disabled preview unavailable: " + path);
+      check(result.response.headers.get("cache-control")?.includes("no-store"), "AO private caching: " + path);
+      check(result.response.headers.get("pragma") === "no-cache", "AO Proxy headers missing: " + path);
+    } else {
+      redirectTo(result, expected === "login" ? "/login" : "/onboarding", path);
+    }
+  }
 }
 
 try {
@@ -59,6 +79,7 @@ try {
   redirectTo(await request("/calendar"), "/login");
   redirectTo(await request("/goals"), "/login");
   redirectTo(await request("/onboarding"), "/login");
+  await assertAoGate("login");
   check((await request("/login")).response.status === 200, "Login unavailable");
   redirectTo(await request("/signup"), "/login");
   check(!(await request("/login")).html.includes('href="/signup"'), "Login exposes signup");
@@ -89,6 +110,7 @@ try {
   redirectTo(await request("/goals"), "/onboarding");
   redirectTo(await request("/login"), "/onboarding");
   redirectTo(await request("/signup"), "/login");
+  await assertAoGate("onboarding");
   const setup = await request("/onboarding");
   check(setup.html.includes("Profile Setup") && setup.html.includes('value="Asia/Ho_Chi_Minh"'), "Setup or required timezone option missing");
   check(/<option[^>]*value=""[^>]*selected/.test(setup.html), "Timezone must start with an explicit empty selection");
@@ -132,6 +154,7 @@ try {
   redirectTo(await request("/goals"), "/login");
   redirectTo(await request("/onboarding"), "/login");
   redirectTo(await request("/onboarding", { method: "POST", body: forgedAction }), "/login");
+  await assertAoGate("login");
   const rejectedAgain = await submit("/login", { email: outsider.email, password: outsider.password });
   check(rejectedAgain.html.includes("Unable to sign in."), "Existing non-owner session bypassed login");
   check(![...jar.keys()].some((key) => /auth-token(?:\.\d+)?$/.test(key)), "Rejected login retained existing non-owner cookies");
@@ -162,7 +185,9 @@ try {
   redirectTo(await request("/dashboard"), "/onboarding");
   redirectTo(await request("/calendar"), "/onboarding");
   redirectTo(await request("/goals"), "/onboarding");
+  await assertAoGate("onboarding");
   redirectTo(await submit("/onboarding", { display_name: "  Profile Tester  ", timezone: "Asia/Ho_Chi_Minh" }), "/dashboard");
+  await assertAoGate("owner");
   const named = await client.from("profiles").select("display_name").single();
   check(named.data?.display_name === "Profile Tester", "Display name was not trimmed");
   const dashboard = await request("/dashboard");

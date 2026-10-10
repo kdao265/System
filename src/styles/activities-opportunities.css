@@ -1,0 +1,24 @@
+/* L2-02: scoped to AO. Global SYSTEM HUD tokens and shared components own color/style. */
+.ao-page { padding-bottom: max(3rem, env(safe-area-inset-bottom)); }
+.ao-workspace { width: 100%; max-width: 74rem; margin-inline: auto; min-width: 0; display: grid; gap: 1.5rem; }
+.ao-back { justify-self: start; }
+.ao-heading { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between; min-width: 0; }
+.ao-heading > div { min-width: 0; }
+.ao-filter-controls { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
+.ao-filter-controls > label { min-width: 0; display: grid; gap: .4rem; font-weight: 600; }
+.ao-view-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; }
+.ao-page fieldset { min-width: 0; }
+.ao-page a, .ao-page button, .ao-page input, .ao-page select { touch-action: manipulation; }
+.ao-page p, .ao-page a, .ao-page h2 { overflow-wrap: anywhere; }
+.ao-page :focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
+@media (max-width: 639px) { .ao-filter-controls { grid-template-columns: minmax(0, 1fr); } .ao-heading > a { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .ao-page *, .ao-page *::before, .ao-page *::after { scroll-behavior: auto; transition-duration: 0ms !important; animation-duration: 0ms !important; } }
+/* Nested Growth destinations reuse the existing shell nav layout at every tier. */
+.system-nav-growth { display: grid; min-width: 0; gap: .45rem; }
+.system-nav-growth-title { color: var(--text-secondary); letter-spacing: .08em; }
+.system-nav-growth-links { display: flex; min-width: 0; flex-wrap: wrap; gap: .5rem; }
+.system-nav-growth-links > .ui-nav-link { flex: 1 1 8rem; }
+@media (min-width: 900px) {
+  .system-nav-growth-links { display: grid; grid-template-columns: minmax(0, 1fr); gap: .375rem; }
+  .system-nav-growth-links > .ui-nav-link { flex: unset; justify-content: flex-start; }
+}

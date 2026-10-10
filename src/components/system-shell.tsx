@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
 import { AppHeader } from "./app-header";
 
-// One application shell for the four real routes: the SYSTEM navigation rail
-// (a compact top shell below the desktop tier) beside a content column whose
-// width the route chooses. Structure only — layout lives in
-// src/styles/system-shell.css so the pages cannot drift apart.
+// One shared SYSTEM shell. AO extends its route vocabulary but creates no second shell.
+export type SystemSection = "dashboard" | "calendar" | "goals" | "library" | "opportunities" | "activities";
 export function SystemShell({ current, lang, selectedDate, compact = false, width = "narrow", pageClassName, children }: {
-  current: "dashboard" | "calendar" | "goals" | "library";
+  current: SystemSection;
   lang: string;
   selectedDate?: string;
   compact?: boolean;

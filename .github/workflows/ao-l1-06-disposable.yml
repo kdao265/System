@@ -42,9 +42,34 @@ jobs:
       - name: Cache fixture-only service images
         shell: bash
         run: |
-          docker pull public.ecr.aws/supabase/postgres:17.6.1.166
-          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
-          docker pull public.ecr.aws/supabase/postgrest:v16.2
+          set -euo pipefail
+          pull_image() {
+            local image="$1" attempt=1 delay=15 output
+            while true; do
+              if output="$(docker pull "$image" 2>&1)"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              if ! grep -Eiq 'toomanyrequests|rate exceeded|too many requests|(^|[[:space:]])429([[:space:]]|$)' <<< "$output"; then
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              if (( attempt >= 4 )); then
+                echo "::error::Docker rate limit persisted after 4 attempts for $image"
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              echo "::warning::Docker rate limited $image (attempt $attempt/4); retrying in $delay seconds"
+              sleep "$delay"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+          pull_image public.ecr.aws/supabase/postgres:17.6.1.166
+          sleep 5
+          pull_image public.ecr.aws/supabase/gotrue:v2.197.0
+          sleep 5
+          pull_image public.ecr.aws/supabase/postgrest:v16.2
       - name: Offline AO source-level preflight (not runtime evidence)
         shell: bash
         run: |

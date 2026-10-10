@@ -1,19 +1,16 @@
 import type { NextConfig } from "next";
 import { getSupabaseConfig } from "./src/lib/supabase/config";
 
-// Validate at configuration load (dev, build and start), without making requests.
 getSupabaseConfig();
 
 const nextConfig: NextConfig = {
-  // The service worker script itself must never be served stale, otherwise an installed
-  // app could keep an old revision of the static-asset cache. Everything else keeps
-  // Next.js default caching.
   async headers() {
     return [
-      {
-        source: "/sw.js",
-        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
-      },
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] },
+      // AO routes may contain private owner data once L1 passes runtime acceptance.
+      // Prevent browser/proxy persistence even in the current UI-only gate.
+      { source: "/opportunities/:path*", headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }] },
+      { source: "/activities/:path*", headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }] },
     ];
   },
 };

@@ -478,3 +478,94 @@ export function parseAoIdentityPage(raw:unknown):AoPage<AoRootDto>|null {
   if(next!==null&&(!previous||!isRecord(next)||!isUuid(next.id)||next.id.toLowerCase()!==previous.id.toLowerCase()||instantMicros(next.created_at)!==instantMicros(previous.created_at)))return null;
   return {version:1,items,next_cursor:next as {created_at:string;id:string}|null};
 }
+
+// F-01: typed, allowlisted list-card DTOs. Keep parseAoRootDto/parseAoIdentityPage
+// strict for legacy identity projections; list cards have their own exact contract.
+export type AoOpportunityListItem = AoRootDto & {
+  subject_kind: "opportunity"; title: string; category: OpportunityCategory | null;
+  organization: string | null; tracking_stage: OpportunityStage;
+  selection_outcome: SelectionOutcome;
+};
+export type AoActivityListItem = AoRootDto & {
+  subject_kind: "activity"; title: string; category: ActivityCategory | null;
+  organization: string | null; status: ActivityStatus;
+};
+export type AoListItem = AoOpportunityListItem | AoActivityListItem;
+const rootDtoKeys = ["version","subject_kind","id","revision","archived_at","created_at","updated_at"] as const;
+export function parseAoListItem(value: unknown): AoListItem | null {
+  if (!isRecord(value) || !isEnum(SUBJECT_KINDS,value.subject_kind)) return null;
+  const kind = value.subject_kind;
+  const extras = kind === "opportunity"
+    ? ["title","category","organization","tracking_stage","selection_outcome"]
+    : ["title","category","organization","status"];
+  if (!exactKeys(value,[...rootDtoKeys,...extras])) return null;
+  const base:Record<string,unknown>={};
+  for (const key of rootDtoKeys) base[key]=value[key];
+  if (parseAoRootDto(base)===null) return null;
+  if (!isPostgresText(value.title) || value.title!==trimBoundaryWhitespace(value.title) ||
+      unicodeCodePoints(value.title)>240 || value.title.length===0 ||
+      (value.organization!==null && (!isPostgresText(value.organization) ||
+        value.organization!==trimBoundaryWhitespace(value.organization) ||
+        unicodeCodePoints(value.organization)>240 || value.organization.length===0))) return null;
+  if (kind==="opportunity") {
+    if ((value.category!==null && !isEnum(OPPORTUNITY_CATEGORIES,value.category)) ||
+        !isEnum(OPPORTUNITY_STAGES,value.tracking_stage) ||
+        !isEnum(SELECTION_OUTCOMES,value.selection_outcome)) return null;
+  } else if ((value.category!==null && !isEnum(ACTIVITY_CATEGORIES,value.category)) ||
+             !isEnum(ACTIVITY_STATUSES,value.status)) return null;
+  return value as AoListItem;
+}
+export function parseAoListPage(value:unknown):AoPage<AoListItem>|null {
+  if (!isRecord(value) || !exactKeys(value,["version","items","next_cursor"]) ||
+      value.version!==1 || !Array.isArray(value.items) || value.items.length>MAX_PAGE_SIZE) return null;
+  const next=value.next_cursor;
+  if (next!==null && (!isRecord(next)||!exactKeys(next,["created_at","id"])||
+      instantMicros(next.created_at)===null||!isUuid(next.id))) return null;
+  const items:AoListItem[]=[],seen=new Set<string>();let previous:AoListItem|null=null;
+  for (const raw of value.items) {
+    const item=parseAoListItem(raw);
+    if (item===null || seen.has(item.id.toLowerCase()) || previous &&
+       (instantMicros(previous.created_at)!<instantMicros(item.created_at)! ||
+       instantMicros(previous.created_at)===instantMicros(item.created_at) &&
+       previous.id.toLowerCase()<=item.id.toLowerCase())) return null;
+    items.push(item);seen.add(item.id.toLowerCase());previous=item;
+  }
+  if (next!==null && (!previous || !isRecord(next) ||
+       !isUuid(next.id) || next.id.toLowerCase()!==previous.id.toLowerCase() ||
+       instantMicros(next.created_at)!==instantMicros(previous.created_at))) return null;
+  return {version:1,items,next_cursor:next as {created_at:string;id:string}|null};
+}
+
+// R-03: Opportunity detail contains a mixed active+archived preview of at most
+// 50 currently derived Activities. When truncated, continue via TWO independent
+// list_activities_v1 searches (active/archived) using the source filter. There
+// is deliberately no single cursor for the mixed preview.
+export type AoDerivedActivityItem = {id:string;title:string;status:ActivityStatus;archived:boolean};
+export type AoDerivedActivityPreview = {
+  items:AoDerivedActivityItem[];has_more:boolean;
+  continuation:{rpc:"list_activities_v1";filters:{source_opportunity_id:string};scopes:["active","archived"]}|null;
+};
+export function parseAoDerivedActivityPreview(raw:unknown,opportunityId:string):AoDerivedActivityPreview|null {
+  if(!isUuid(opportunityId)||!isRecord(raw)||!exactKeys(raw,["items","has_more","continuation"])||
+     !Array.isArray(raw.items)||raw.items.length>50||typeof raw.has_more!=="boolean")return null;
+  const continuation=raw.continuation;
+  if(raw.has_more){
+    if(raw.items.length!==50||!isRecord(continuation)||!exactKeys(continuation,["rpc","filters","scopes"])||
+       continuation.rpc!=="list_activities_v1"||!isRecord(continuation.filters)||
+       !exactKeys(continuation.filters,["source_opportunity_id"])||
+       !isUuid(continuation.filters.source_opportunity_id)||
+       continuation.filters.source_opportunity_id.toLowerCase()!==opportunityId.toLowerCase()||
+       !Array.isArray(continuation.scopes)||continuation.scopes.length!==2||
+       continuation.scopes[0]!=="active"||continuation.scopes[1]!=="archived")return null;
+  } else if(continuation!==null)return null;
+  const seen=new Set<string>();
+  for(const item of raw.items){
+    if(!isRecord(item)||!exactKeys(item,["id","title","status","archived"])||
+       !isUuid(item.id)||seen.has(item.id.toLowerCase())||
+       typeof item.archived!=="boolean"||!isEnum(ACTIVITY_STATUSES,item.status)||
+       !isPostgresText(item.title)||trimBoundaryWhitespace(item.title)!==item.title||
+       item.title.length===0||unicodeCodePoints(item.title)>240)return null;
+    seen.add(item.id.toLowerCase());
+  }
+  return raw as AoDerivedActivityPreview;
+}

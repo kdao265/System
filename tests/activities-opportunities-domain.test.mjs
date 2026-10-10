@@ -189,3 +189,52 @@ test("Root DTO and list envelope are closed, owner-safe and bounded",()=>{
   assert.ok(c.parseAoIdentityPage({version:1,items:[a,b],next_cursor:{created_at:b.created_at,id:b.id}}));
   assert.equal(c.parseAoIdentityPage({version:1,items:[b,a],next_cursor:{created_at:a.created_at,id:a.id}}),null);
 });
+
+test("F-01: list cards include exact metadata and exclude private fields", () => {
+  const base={version:1,subject_kind:"opportunity",id:"11111111-1111-4111-8111-111111111111",
+    revision:"1",archived_at:null,created_at:"2026-10-10T01:00:00.000001Z",updated_at:"2026-10-10T01:00:00.000001Z"};
+  const opportunity={...base,title:"Học bổng",category:"scholarship",organization:"Trường ABC",tracking_stage:"saved",selection_outcome:"unknown"};
+  const activity={...base,id:"22222222-2222-4222-8222-222222222222",subject_kind:"activity",
+    title:"Dự án",category:"project",organization:null,status:"ongoing"};
+  assert.equal(c.parseAoRootDto(opportunity),null,"minimal identity DTO still rejects extra fields");
+  assert.deepEqual(c.parseAoListItem(opportunity),opportunity);
+  assert.deepEqual(c.parseAoListItem(activity),activity);
+  for(const bad of [{...opportunity,description:"private"},{...activity,notes:"private"},
+    {...opportunity,tracking_stage:"bad"},{...activity,status:"bad"},
+    {...opportunity,title:" "},{...activity,organization:"  padded "}])
+    assert.equal(c.parseAoListItem(bad),null);
+  assert.deepEqual(c.parseAoListPage({version:1,items:[opportunity],next_cursor:null})?.items,[opportunity]);
+  assert.equal(c.parseAoListPage({version:1,items:[opportunity,opportunity],next_cursor:null}),null);
+  assert.equal(c.parseAoListPage({version:1,items:[opportunity,activity],next_cursor:null}),null,
+    "reject out-of-order identical timestamps and UUIDs");
+});
+
+
+test("R-01/R-02: multiline notes share canonical LF and Unicode length boundaries",()=>{
+  const closed=v.normalizeOpportunity({title:"Closed",tracking_stage:"closed",closed_reason:"other",closed_note:"Vòng 1\r\nVòng 2\rKết thúc"},"create");
+  ok(closed);assert.equal(closed.value.closed_note,"Vòng 1\nVòng 2\nKết thúc");
+  const blank=v.normalizeOpportunity({title:"Closed",tracking_stage:"closed",closed_reason:"other",closed_note:" \r\n "},"create");
+  bad(blank,"required");
+  const confirmed=v.normalizeActivityCreate({intent:"confirmed_plan",title:"Study",confirmation_note:"Đi học\r\nTrực tuyến"});
+  ok(confirmed);assert.equal(confirmed.value.fields.confirmation_note,"Đi học\nTrực tuyến");
+  const cap=v.normalizeActivityCreate({intent:"confirmed_plan",title:"Study",confirmation_note:"😀".repeat(2000)});
+  ok(cap);bad(v.normalizeActivityCreate({intent:"confirmed_plan",title:"Study",confirmation_note:"😀".repeat(2001)}),"limit");
+  bad(v.normalizeOpportunity({title:"Closed",tracking_stage:"closed",closed_reason:"other",closed_note:"a".repeat(2001)},"create"),"limit");
+});
+
+test("R-03: bounded derived preview is explicitly incomplete when more than 50 items",()=>{
+  const id="11111111-1111-4111-8111-111111111111";
+  const item=(n)=>({id:`${n.toString(16).padStart(8,"0")}-1111-4111-8111-111111111111`,title:`Activity ${n}`,status:"ongoing",archived:n%2===0});
+  const empty={items:[],has_more:false,continuation:null};
+  assert.deepEqual(m.parseAoDerivedActivityPreview(empty,id),empty);
+  const complete={items:[item(1),item(2)],has_more:false,continuation:null};
+  assert(m.parseAoDerivedActivityPreview(complete,id));
+  const continuation={rpc:"list_activities_v1",filters:{source_opportunity_id:id},scopes:["active","archived"]};
+  const truncated={items:Array.from({length:50},(_,i)=>item(i+1)),has_more:true,continuation};
+  assert(m.parseAoDerivedActivityPreview(truncated,id));
+  assert.equal(m.parseAoDerivedActivityPreview({...truncated,items:truncated.items.slice(1)},id),null);
+  assert.equal(m.parseAoDerivedActivityPreview({...truncated,continuation:{...continuation,scopes:["active"]}},id),null);
+  assert.equal(m.parseAoDerivedActivityPreview({...truncated,continuation:{...continuation,filters:{source_opportunity_id:item(1).id}}},id),null);
+  assert.equal(m.parseAoDerivedActivityPreview({...complete,continuation},id),null);
+  assert.equal(m.parseAoDerivedActivityPreview({...complete,items:[item(1),item(1)]},id),null);
+});

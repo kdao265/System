@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { startAuthEnvironment } from '../../tests/helpers/auth-environment.mjs';
 import { exerciseAoWire } from './helpers/ao-wire.mjs';
+import { exerciseAoL107 } from './helpers/ao-l1-07.mjs';
 
 assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
@@ -51,7 +52,9 @@ try {
   assert(!(await outsider.auth.signInWithPassword({ email: env.other.email,
     password: env.other.password })).error, 'Disposable other-user login failed');
   await exerciseAoWire(env, owner, outsider, anon);
-  console.log('PASS: AO disposable SQL/catalog/value/G-01/wire smoke (not full two-session QA)');
+  console.log('PASS: AO disposable SQL/catalog/value/G-01/wire smoke');
+  await exerciseAoL107(env, owner, outsider, anon);
+  console.log('PASS: L1-07 disposable security, owner race and deleted Quest privacy subset; remaining full QA gates NOT closed');
 } finally {
   await env.close();
 }

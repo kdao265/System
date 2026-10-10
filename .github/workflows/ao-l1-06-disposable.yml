@@ -1,0 +1,64 @@
+# SYSTEM AO L1-06 — temporary CI-only validation, not a release workflow.
+# Run exclusively for the approved first-party test/ao-l1-06-disposable-qa PR.
+# Do not merge without a separate Product Owner approval.
+name: AO L1-06 disposable QA (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ao-l1-06-disposable.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ao-disposable-preflight:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'test/ao-l1-06-disposable-qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_CONTEXT: ''
+    steps:
+      - name: Read approved PR source (no repository write)
+        uses: actions/checkout@v4
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install exact locked dependencies
+        run: npm ci
+      - name: Confirm no external Docker host
+        shell: bash
+        run: |
+          test "$GITHUB_EVENT_NAME" = "pull_request"
+          test "$GITHUB_BASE_REF" = "main"
+          test "$GITHUB_HEAD_REF" = "test/ao-l1-06-disposable-qa"
+          test "$DOCKER_HOST" = "unix:///var/run/docker.sock"
+          test -z "$DOCKER_CONTEXT"
+      - name: Cache fixture-only service images
+        shell: bash
+        run: |
+          docker pull public.ecr.aws/supabase/postgres:17.6.1.166
+          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
+          docker pull public.ecr.aws/supabase/postgrest:v16.2
+      - name: Offline AO source-level preflight (not runtime evidence)
+        shell: bash
+        run: |
+          node --test review/static-preflight.test.mjs
+          python3 review/g01-static-audit.py
+          node --experimental-strip-types --test tests/activities-opportunities-domain.test.mjs
+      - name: Execute pinned review-only AO SQL in disposable database memory only
+        shell: bash
+        env:
+          AO_DISPOSABLE_QA_APPROVED: 'YES'
+        run: node supabase/tests/ao-review-disposable-wire.mjs
+      - name: State scope and remaining tests
+        if: success()
+        run: |
+          echo 'PASS only the existing L1-06 Phase A runner and its actual outputs.'
+          echo 'NOT COVERED: full two-session races, exhaustive deleted-Quest privacy, full migration readiness.'
+          echo 'NO AO MIGRATION MAY BE DEPLOYED OR ENABLED FROM THIS RESULT.'

@@ -7,6 +7,7 @@ const ui=read(p+'presentation.tsx'),copy=read(p+'ui-copy.ts');
 const route=read(p+'route-page.tsx'),guard=read(p+'page-context.ts');
 const header=read('src/components/app-header.tsx'),shell=read('src/components/system-shell.tsx');
 const config=read('next.config.ts'),css=read('src/styles/activities-opportunities.css');
+const proxy=read('src/proxy.ts'),authSmoke=read('tests/auth-smoke.mjs');
 const slugs=['opportunities','activities'];
 const modes=['page.tsx','new/page.tsx','[id]/page.tsx'];
 test('six real Next App Router entry points use protected shared AO route',()=>{
@@ -74,4 +75,23 @@ test('route-local error/loading UI, clear preview-only accessible labels',()=>{
   assert.match(ui,/name="tracking_stage"/);
   assert.match(ui,/name="selection_outcome"/);
   assert.match(css,/prefers-reduced-motion/);
+});
+
+test('AO routes use existing private session-refresh Proxy and preserve older matchers',()=>{
+  for(const slug of [...slugs,'dashboard','calendar','goals','library']){
+    assert.ok(proxy.includes(`"/${slug}/:path*"`), `Missing protected matcher: ${slug}`);
+  }
+  assert.match(proxy,/await supabase\.auth\.getClaims\(\)/);
+  assert.match(proxy,/Cache-Control", "private, no-store"/);
+  assert.match(proxy,/Pragma", "no-cache"/);
+  assert.match(proxy,/Expires", "0"/);
+});
+test('disposable Auth integration covers every AO route and owner gate',()=>{
+  assert.match(authSmoke,/const aoPaths = \[/);
+  for(const slug of slugs) for(const suffix of ['', '/new', '/00000000-0000-4000-8000-000000000001']){
+    assert.ok(authSmoke.includes(`"/${slug}${suffix}"`));
+  }
+  for(const gate of ['login','onboarding','owner']){
+    assert.ok(authSmoke.includes(`await assertAoGate("${gate}")`));
+  }
 });

@@ -196,3 +196,41 @@ test('R-05 negative mutation: IMMUTABLE cursor rejected',()=>{
   assert.throws(()=>checkCursorVolatility(source.replace('CREATE FUNCTION system_internal.ao_cursor_v1(p_cursor jsonb,p_date_field text)\nRETURNS void LANGUAGE plpgsql STABLE SECURITY INVOKER',
     'CREATE FUNCTION system_internal.ao_cursor_v1(p_cursor jsonb,p_date_field text)\nRETURNS void LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER')));
 });
+
+// AO-R06–R10 regression guards added during the read-only review repair.
+// Structure-only; runtime semantics still require separate disposable PostgreSQL approval.
+test('R-06: corrective reason is stored on immutable Activity history event and projected', () => {
+  const run=source.slice(source.indexOf('CREATE FUNCTION system_internal.ao_run_v1('),source.indexOf('CREATE FUNCTION system_internal.ao_require_context_target_v1('));
+  assert.match(run,/INSERT INTO public\.activity_history\(user_id,activity_id,command_id,event_seq,event_type,before_value,after_value,reason\)/);
+  assert.match(run,/CASE WHEN p_op='correct_activity_status_v1' THEN v_detail->>'reason' ELSE NULL END/);
+  const history=source.slice(source.indexOf('CREATE FUNCTION public.list_ao_history_v1('),source.indexOf('CREATE FUNCTION public.search_ao_link_candidates_v1('));
+  assert.match(history,/to_jsonb\(h\)-'user_id'/,'history must retain the reason column');
+});
+test('R-07: Closed notes share normalization and canonical receipt intent before owner lock', () => {
+  const run=source.slice(source.indexOf('CREATE FUNCTION system_internal.ao_run_v1('),source.indexOf('CREATE FUNCTION system_internal.ao_require_context_target_v1('));
+  const normalize=run.indexOf("ELSIF p_op='set_opportunity_stage_v1' THEN");
+  const normalizedWrite=run.indexOf("v_intent:=jsonb_set(v_intent,'{details,closed_note}'");
+  const lock=run.indexOf('PERFORM progression_internal.lock_owner(v_actor)');
+  assert(normalize>0 && normalizedWrite>normalize && normalizedWrite<lock);
+  assert.match(run,/v_detail:=v_intent->'details'/);
+  assert.match(run,/v_prior\.canonical_request IS DISTINCT FROM jsonb_build_object/);
+});
+test('R-08: TypeScript rejects UTC years outside SQL 0001..9999', () => {
+  const model=readFileSync(new URL('../src/features/activities-opportunities/model.ts',import.meta.url),'utf8');
+  assert.match(model,/const utcYear = new Date\(epoch\)\.getUTCFullYear\(\)/);
+  assert.match(model,/utcYear < 1 \|\| utcYear > 9999/);
+  assert.match(source,/extract\(year FROM \(candidate AT TIME ZONE 'UTC'\)\) NOT BETWEEN 1 AND 9999/);
+});
+test('R-09: disposable runner is explicitly gated and never targets external databases', () => {
+  const runner=readFileSync(new URL('../supabase/tests/ao-review-disposable-wire.mjs',import.meta.url),'utf8');
+  assert.match(runner,/AO_DISPOSABLE_QA_APPROVED/);
+  assert.match(runner,/startAuthEnvironment\(\{ buildApp: false, activateOwner: true, testMigrationHistory: true \}\)/);
+  assert.match(runner,/const executableInMemory = candidate\.replace\(blocker,/);
+  assert.doesNotMatch(runner,/DATABASE_URL|SUPABASE_DB_URL|--db-url/);
+  assert.match(runner,/await env\.close\(\)/);
+});
+test('R-10: QA-10 no longer incorrectly says all instant deadlines are rejected', () => {
+  const matrix=readFileSync(new URL('./qa-matrix.md',import.meta.url),'utf8');
+  assert.match(matrix,/QA-10.*draft includes instant resolver/);
+  assert.doesNotMatch(matrix,/present SQL deliberately rejects all instants/);
+});

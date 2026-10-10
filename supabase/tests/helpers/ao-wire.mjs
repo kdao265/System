@@ -40,13 +40,24 @@ export async function exerciseAoWire(env, owner, other, anon) {
   good(await invoke('create_opportunity_v1',{
     p_command_id:randomUUID(),p_opportunity_id:stageOpp,p_fields:{title:'Stage multiline'}}),
     'create stage multiline');
-  const stageReceipt=good(await invoke('set_opportunity_stage_v1',{
-    p_command_id:randomUUID(),p_opportunity_id:stageOpp,p_expected_revision:'1',
+  const stageCmd=randomUUID();
+  const stageParams={p_command_id:stageCmd,p_opportunity_id:stageOpp,p_expected_revision:'1',
     p_stage:'closed',p_kind:'advance',
-    p_details:{closed_reason:'other',closed_note:'Step 1\r\nStep 2'}}),'Closed stage multiline');
+    p_details:{closed_reason:'other',closed_note:'Step 1\r\nStep 2'}};
+  const stageReceipt=good(await invoke('set_opportunity_stage_v1',stageParams),'Closed stage multiline');
   assert.equal(stageReceipt.changed,true);
   assert.equal(good(await invoke('get_opportunity_v1',{p_opportunity_id:stageOpp}),
     'Closed stage read').root.closed_note,'Step 1\nStep 2');
+  // R-07: equivalent normalized intent with identical command identity is replay,
+  // not a 23505 collision or a second accepted domain transition.
+  const stageReplay=good(await invoke('set_opportunity_stage_v1',{
+    ...stageParams,p_details:{...stageParams.p_details,closed_note:'Step 1\nStep 2'}
+  }),'canonicalized Closed stage replay');
+  assert.equal(stageReplay.replay,true);
+  assert.equal(stageReplay.revision_after,stageReceipt.revision_after);
+  assert.equal((await invoke('set_opportunity_stage_v1',{
+    ...stageParams,p_details:{...stageParams.p_details,closed_note:'Different meaning'}
+  })).error?.code,'23505','different canonical note must collide');
 
 
   const editCmd=randomUUID();
@@ -163,12 +174,19 @@ export async function exerciseAoWire(env, owner, other, anon) {
   }),'set actual dates');
   const clearActual=good(await invoke('correct_activity_status_v1',{
     p_command_id:randomUUID(),p_activity_id:correctionId,p_expected_revision:'2',
-    p_target_status:'upcoming',p_correction:{actual_start:null,actual_end:null}
+    p_target_status:'upcoming',p_correction:{actual_start:null,actual_end:null,reason:'Sửa trạng thái đã nhập nhầm'}
   }),'clear both actual dates');
   assert.equal(clearActual.changed,true);revision(clearActual.revision_after,3);
   const actualRoot=good(await invoke('get_activity_v1',{p_activity_id:correctionId}),'read actual dates clear');
   assert.equal(actualRoot.root.actual_start,null);
   assert.equal(actualRoot.root.actual_end,null);
+  // R-06: correction reason must be visible through owner-scoped history API.
+  const correctionHistory=good(await invoke('list_ao_history_v1',{
+    p_subject_kind:'activity',p_subject_id:correctionId,p_cursor:null,p_limit:50
+  }),'list correction history');
+  assert(correctionHistory.items.some(item => item.event_type==='correct_activity_status_v1'
+    && item.reason==='Sửa trạng thái đã nhập nhầm'),'correction reason missing from immutable history');
+  privateBoundary(correctionHistory,'correction history');
   const repeatActual=good(await invoke('correct_activity_status_v1',{
     p_command_id:randomUUID(),p_activity_id:correctionId,p_expected_revision:'3',
     p_target_status:'upcoming',p_correction:{actual_start:null,actual_end:null}

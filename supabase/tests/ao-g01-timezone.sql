@@ -66,6 +66,25 @@ BEGIN
         RAISE EXCEPTION 'wrong offset falsely accepted';
     EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
     END;
+    -- R-08: valid source years can still resolve outside the approved UTC range.
+    BEGIN
+        PERFORM system_internal.ao_deadline_resolve_v1(
+          '{"precision":"instant","source_date":"0001-01-01","source_time":"00:00","source_offset_minutes":840}'::jsonb);
+        RAISE EXCEPTION 'UTC underflow falsely accepted';
+    EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+    END;
+    BEGIN
+        PERFORM system_internal.ao_deadline_resolve_v1(
+          '{"precision":"instant","source_date":"9999-12-31","source_time":"23:59","source_offset_minutes":-840}'::jsonb);
+        RAISE EXCEPTION 'UTC overflow falsely accepted';
+    EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+    END;
+    PERFORM pg_temp.ao_assert_g01(system_internal.ao_deadline_resolve_v1(
+      '{"precision":"instant","source_date":"0001-01-01","source_time":"14:00","source_offset_minutes":840}'::jsonb)
+      = '0001-01-01 00:00+00'::timestamptz, 'first UTC minute allowed');
+    PERFORM pg_temp.ao_assert_g01(system_internal.ao_deadline_resolve_v1(
+      '{"precision":"instant","source_date":"9999-12-31","source_time":"09:59","source_offset_minutes":-840}'::jsonb)
+      = '9999-12-31 23:59+00'::timestamptz, 'last UTC minute allowed');
     -- DB checkpoint: status update does not automatically reinterpret prior UTC.
     -- Integration suite must add a real owner-authenticated Opportunity and prove
     -- that unrelated UPDATE preserves deadline_at_utc and history snapshots.

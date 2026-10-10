@@ -238,3 +238,29 @@ test("R-03: bounded derived preview is explicitly incomplete when more than 50 i
   assert.equal(m.parseAoDerivedActivityPreview({...complete,continuation},id),null);
   assert.equal(m.parseAoDerivedActivityPreview({...complete,items:[item(1),item(1)]},id),null);
 });
+
+
+test("R-08: source civil year may be valid while derived UTC civil year is out of bounds", () => {
+  const firstUTC={precision:"instant",source_date:"0001-01-01",source_time:"00:00",source_offset_minutes:0};
+  const lastUTC={precision:"instant",source_date:"9999-12-31",source_time:"23:59",source_offset_minutes:0};
+  ok(v.parseDeadline(firstUTC));ok(v.parseDeadline(lastUTC));
+  bad(v.parseDeadline({...firstUTC,source_offset_minutes:840}),"date");
+  bad(v.parseDeadline({...lastUTC,source_offset_minutes:-840}),"date");
+  ok(v.parseDeadline({...firstUTC,source_time:"14:00",source_offset_minutes:840}));
+  ok(v.parseDeadline({...lastUTC,source_time:"09:59",source_offset_minutes:-840}));
+});
+
+test('R-06: correction history DTO retains reason and validates owner-scoped pagination',()=>{
+  const id='11111111-1111-4111-8111-111111111111';
+  const row={id:'22222222-2222-4222-8222-222222222222',activity_id:id,
+    command_id:'33333333-3333-4333-8333-333333333333',event_seq:1,
+    event_type:'correct_activity_status_v1',before_value:{status:'ongoing'},
+    after_value:{status:'completed'},reason:'Sửa trạng thái đã nhập nhầm',
+    recorded_at:'2026-10-10T10:30:00.000123Z'};
+  const page={version:1,items:[row],next_cursor:{recorded_at:row.recorded_at,id:row.id}};
+  assert.equal(m.parseAoHistoryPage(page,'activity',id)?.items[0].reason,row.reason);
+  assert.equal(m.parseAoHistoryPage({...page,items:[{...row,reason:'  invalid  '}]},'activity',id),null);
+  assert.equal(m.parseAoHistoryPage({...page,items:[{...row,opportunity_id:id}]},'activity',id),null);
+  assert.equal(m.parseAoHistoryPage(page,'opportunity',id),null);
+  assert.equal(m.parseAoHistoryPage({...page,next_cursor:{recorded_at:row.recorded_at,id}},'activity',id),null);
+});

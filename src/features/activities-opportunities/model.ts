@@ -228,6 +228,11 @@ export function parseDeadline(raw: unknown, field = "application_deadline"): Val
   if (Object.hasOwn(raw,"source_zone") && (typeof raw.source_zone !== "string" || !/^[A-Za-z0-9_+./-]{1,120}$/.test(raw.source_zone))) return invalid(field,"timezone");
   const epoch = utcMillis(day,Number(time[1]),Number(time[2])) - offset*60000;
   if (!Number.isFinite(epoch)) return invalid(field,"date");
+  // R-08: PostgreSQL rejects an offset-derived UTC instant outside civil years
+  // 0001..9999 even when the source calendar day itself lies inside that range.
+  // Date.getUTCFullYear() avoids Date.UTC's special treatment of years 00..99.
+  const utcYear = new Date(epoch).getUTCFullYear();
+  if (utcYear < 1 || utcYear > 9999) return invalid(field,"date");
   if (typeof raw.source_zone === "string") {
     const expected = `${raw.source_date}T${raw.source_time}`;
     if (ianaWall(epoch,raw.source_zone) !== expected) return invalid(field,"timezone"); // gap or wrong offset; fold needs explicit offset
@@ -568,4 +573,52 @@ export function parseAoDerivedActivityPreview(raw:unknown,opportunityId:string):
     seen.add(item.id.toLowerCase());
   }
   return raw as AoDerivedActivityPreview;
+}
+
+// R-06: explicit owner-scoped History read DTO. `reason` is retained for
+// effective Activity status corrections; full JSON snapshots remain untrusted
+// until the server's allowlisted privacy contract passes disposable wire QA.
+export type AoHistoryEvent = {
+  id: string; command_id: string; event_seq: number; event_type: string;
+  before_value: unknown; after_value: unknown; reason: string | null;
+  recorded_at: string;
+} & ({ opportunity_id: string } | { activity_id: string });
+export type AoHistoryPage = {
+  version: 1; items: AoHistoryEvent[];
+  next_cursor: { recorded_at: string; id: string } | null;
+};
+export function parseAoHistoryPage(raw: unknown, kind: SubjectKind, subjectId: string): AoHistoryPage | null {
+  if (!isEnum(SUBJECT_KINDS,kind) || !isUuid(subjectId) || !isRecord(raw) ||
+      !exactKeys(raw,["version","items","next_cursor"]) || raw.version !== 1 ||
+      !Array.isArray(raw.items) || raw.items.length > MAX_PAGE_SIZE) return null;
+  const cursor=raw.next_cursor;
+  if (cursor!==null && (!isRecord(cursor) || !exactKeys(cursor,["recorded_at","id"]) ||
+      !isUuid(cursor.id) || instantMicros(cursor.recorded_at)===null)) return null;
+  const subjectKey=kind==="opportunity"?"opportunity_id":"activity_id";
+  let previous:AoHistoryEvent|null=null;
+  const seen=new Set<string>();
+  const items:AoHistoryEvent[]=[];
+  for (const v of raw.items) {
+    if (!isRecord(v) || !exactKeys(v,["id",subjectKey,"command_id","event_seq",
+          "event_type","before_value","after_value","reason","recorded_at"]) ||
+        !isUuid(v.id) || !isUuid(v[subjectKey]) ||
+        v[subjectKey].toLowerCase()!==subjectId.toLowerCase() || !isUuid(v.command_id) ||
+        !Number.isSafeInteger(v.event_seq) || (v.event_seq as number)<1 ||
+        !isPostgresText(v.event_type) || unicodeCodePoints(v.event_type)>80 ||
+        trimBoundaryWhitespace(v.event_type)!==v.event_type || !v.event_type ||
+        (v.reason!==null && (!isPostgresText(v.reason) ||
+          unicodeCodePoints(v.reason)>2000 || trimBoundaryWhitespace(v.reason)!==v.reason || !v.reason)) ||
+        instantMicros(v.recorded_at)===null || seen.has(v.id.toLowerCase())) return null;
+    if (previous) {
+      const before=instantMicros(previous.recorded_at)!;
+      const current=instantMicros(v.recorded_at)!;
+      if (before<current || (before===current && previous.id.toLowerCase()<=v.id.toLowerCase())) return null;
+    }
+    const event=v as AoHistoryEvent;
+    seen.add(event.id.toLowerCase());items.push(event);previous=event;
+  }
+  if (cursor!==null && (!previous || !isRecord(cursor) || !isUuid(cursor.id) ||
+      cursor.id.toLowerCase()!==previous.id.toLowerCase() ||
+      instantMicros(cursor.recorded_at)!==instantMicros(previous.recorded_at))) return null;
+  return {version:1,items,next_cursor:cursor as AoHistoryPage["next_cursor"]};
 }

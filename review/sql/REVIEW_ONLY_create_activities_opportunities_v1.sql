@@ -1106,6 +1106,19 @@ BEGIN
  ELSIF p_op IN ('create_activity_v1','update_activity_v1') THEN
   v_fields:=system_internal.ao_fields_v1('activity',p_req,p_op='create_activity_v1');
   v_intent:=v_fields;
+ ELSIF p_op='set_opportunity_stage_v1' THEN
+  -- R-07: canonicalize before receipt lookup, not after the source is locked.
+  -- Preserve omitted keys; explicit null and whitespace-only note normalize to JSON null.
+  v_intent:=p_req;
+  IF jsonb_typeof(p_req->'details')='object' AND p_req->'details' ? 'closed_note'
+     AND jsonb_typeof(p_req->'details'->'closed_note') IN ('string','null') THEN
+   v_stage_note:=p_req#>>'{details,closed_note}';
+   IF v_stage_note IS NOT NULL THEN
+    v_stage_note:=replace(replace(v_stage_note,E'\r\n',E'\n'),E'\r',E'\n');
+    IF system_internal.ao_trim_v1(v_stage_note)='' THEN v_stage_note:=NULL; END IF;
+   END IF;
+   v_intent:=jsonb_set(v_intent,'{details,closed_note}',to_jsonb(v_stage_note),false);
+  END IF;
  ELSE
   v_intent:=p_req;
  END IF;
@@ -1200,7 +1213,7 @@ BEGIN
       p_req->>'kind' NOT IN ('advance','reopen','correction') OR
       jsonb_typeof(p_req->'details')<>'object' THEN
      RAISE EXCEPTION 'Invalid opportunity stage intent' USING ERRCODE='22023'; END IF;
-   v_stage:=p_req->>'stage';v_rule:=p_req->>'kind'; v_detail:=p_req->'details';
+   v_stage:=p_req->>'stage';v_rule:=p_req->>'kind'; v_detail:=v_intent->'details';
    IF EXISTS(SELECT 1 FROM jsonb_object_keys(v_detail) k WHERE k NOT IN ('closed_reason','closed_note')) THEN
      RAISE EXCEPTION 'Invalid closed details' USING ERRCODE='22023'; END IF;
    IF v_rule='reopen' AND (v_opportunity.tracking_stage<>'closed' OR v_stage='closed') OR
@@ -1341,13 +1354,16 @@ BEGIN
            (SELECT to_jsonb(o)-'user_id' FROM public.opportunities o WHERE id=p_id AND user_id=v_actor), 'link_intent',p_req)
          ELSE (SELECT to_jsonb(o)-'user_id' FROM public.opportunities o WHERE id=p_id AND user_id=v_actor) END);
    ELSE
-    INSERT INTO public.activity_history(user_id,activity_id,command_id,event_seq,event_type,before_value,after_value)
+    -- R-06: retain the allowlisted correction reason in immutable Activity history.
+    -- A no-op correction retains its receipt only and does not invent a history event.
+    INSERT INTO public.activity_history(user_id,activity_id,command_id,event_seq,event_type,before_value,after_value,reason)
       VALUES (v_actor,p_id,p_cmd,1,p_op,
          CASE WHEN p_op IN ('set_activity_source_v1','attach_ao_context_v1','detach_ao_context_v1')
            THEN jsonb_build_object('root',v_data,'link_intent',p_req) ELSE v_data END,
          CASE WHEN p_op IN ('set_activity_source_v1','attach_ao_context_v1','detach_ao_context_v1')
            THEN jsonb_build_object('root',(SELECT to_jsonb(a)-'user_id' FROM public.activities a WHERE id=p_id AND user_id=v_actor),'link_intent',p_req)
-         ELSE (SELECT to_jsonb(a)-'user_id' FROM public.activities a WHERE id=p_id AND user_id=v_actor) END);
+         ELSE (SELECT to_jsonb(a)-'user_id' FROM public.activities a WHERE id=p_id AND user_id=v_actor) END,
+         CASE WHEN p_op='correct_activity_status_v1' THEN v_detail->>'reason' ELSE NULL END);
    END IF;
  END IF;
  INSERT INTO system_internal.ao_commands(user_id,command_id,command_type,subject_kind,opportunity_id,activity_id,

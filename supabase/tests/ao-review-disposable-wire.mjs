@@ -7,12 +7,13 @@ import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { startAuthEnvironment } from '../../tests/helpers/auth-environment.mjs';
 import { exerciseAoWire } from './helpers/ao-wire.mjs';
+import { exerciseAoL107 } from './helpers/ao-l1-07.mjs';
 
 assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
 // This runner has no external URL/password arguments. The harness constructs its
 // own loopback gateway and tmpfs-only Docker network with synthetic identities.
-const expectedSha256 = '257ebd9f45416b86552c54754c6dd206a83d8ba0a42817f6e5afd5e843ddbf65';
+const expectedSha256 = 'b03d59a69d320249509a926d5fa259f59eeff6e09133fed9c0feae19dc4d23eb';
 const candidate = readFileSync(new URL('../../review/sql/REVIEW_ONLY_create_activities_opportunities_v1.sql', import.meta.url), 'utf8');
 assert.equal(createHash('sha256').update(candidate).digest('hex'), expectedSha256,
   'Review candidate drifted; require a new review/approval before attempting runtime');
@@ -51,7 +52,9 @@ try {
   assert(!(await outsider.auth.signInWithPassword({ email: env.other.email,
     password: env.other.password })).error, 'Disposable other-user login failed');
   await exerciseAoWire(env, owner, outsider, anon);
-  console.log('PASS: AO disposable SQL/catalog/value/G-01/wire smoke (not full two-session QA)');
+  console.log('PASS: AO disposable SQL/catalog/value/G-01/wire smoke');
+  await exerciseAoL107(env, owner, outsider, anon);
+  console.log('PASS: L1-07 disposable security, owner race and deleted Quest privacy subset; remaining full QA gates NOT closed');
 } finally {
   await env.close();
 }

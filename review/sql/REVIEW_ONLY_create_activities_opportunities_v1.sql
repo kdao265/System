@@ -1006,7 +1006,7 @@ BEGIN
    normalized:=v #>> '{}';
    IF k=ANY(ARRAY['category','priority','closed_reason']) AND normalized IS NULL THEN
      o:=o||jsonb_build_object(k,NULL); CONTINUE; END IF;
-   IF NOT CASE k
+   IF NOT (CASE k
      WHEN 'category' THEN CASE WHEN p_kind='opportunity' THEN normalized=ANY(ARRAY['scholarship','internship','fellowship','competition','research','training','program','event','other'])
        ELSE normalized=ANY(ARRAY['research','project','club','volunteer','training','competition','internship','event','other']) END
      WHEN 'priority' THEN normalized=ANY(ARRAY['low','medium','high'])
@@ -1015,7 +1015,7 @@ BEGIN
      WHEN 'selection_outcome' THEN normalized=ANY(ARRAY['unknown','pending','shortlisted','waitlisted','accepted','rejected'])
      WHEN 'entry_mode' THEN normalized=ANY(ARRAY['unknown','application','registration','invitation','direct_access','other'])
      WHEN 'selection_applicability' THEN normalized=ANY(ARRAY['unknown','applicable','not_applicable'])
-     ELSE false END THEN RAISE EXCEPTION 'Invalid AO enum value' USING ERRCODE='22023'; END IF;
+     ELSE false END) THEN RAISE EXCEPTION 'Invalid AO enum value' USING ERRCODE='22023'; END IF;
    o:=o||jsonb_build_object(k,normalized);
  END LOOP;
  IF p_create AND o->>'title' IS NULL THEN

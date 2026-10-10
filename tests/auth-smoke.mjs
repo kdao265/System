@@ -49,8 +49,13 @@ async function submit(path, fields, logout = false) {
   return request(path, { method: "POST", body: await actionBody(path, fields, logout) });
 }
 
-function redirectTo(result, path) {
-  check([303, 307].includes(result.response.status) && result.response.headers.get("location") === path, `Expected redirect to ${path}`);
+function redirectTo(result, path, source = "protected route") {
+  const status = result.response.status;
+  const location = result.response.headers.get("location");
+  // Only log a path, never tokens, cookies, response bodies or URL query strings.
+  const actualPath = location ? new URL(location, "http://localhost").pathname : "(none)";
+  check([303, 307].includes(status) && location === path,
+    `Expected redirect to ${path} for ${source}; got HTTP ${status}, location path ${actualPath}`);
 }
 
 // Only the disposable app is used; AO schema is intentionally not activated.
@@ -62,7 +67,7 @@ async function assertAoGate(expected) {
       check(result.response.headers.get("cache-control")?.includes("no-store"), "AO private caching: " + path);
       check(result.response.headers.get("pragma") === "no-cache", "AO Proxy headers missing: " + path);
     } else {
-      redirectTo(result, expected === "login" ? "/login" : "/onboarding");
+      redirectTo(result, expected === "login" ? "/login" : "/onboarding", path);
     }
   }
 }

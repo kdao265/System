@@ -12,6 +12,7 @@ on:
       - supabase/tests/helpers/ao-l1-07-phase-b.mjs
       - supabase/tests/helpers/ao-l1-07-hardening.mjs
       - supabase/tests/helpers/ao-l1-08-gap-closure.mjs
+      - supabase/tests/helpers/ao-l1-09-final-acceptance.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:

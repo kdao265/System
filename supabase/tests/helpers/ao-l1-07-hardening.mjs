@@ -78,7 +78,7 @@ async function orderedOwnerLockRace(env,first,second,label){
   const [a,b]=await Promise.all([one,two]);
   return [a,b];
 }
-function request(client,name,args){return ()=>client.rpc(name,args,{signal:AbortSignal.timeout(30000)});}
+function request(client,name,args){return async ()=>await client.rpc(name,args,{signal:AbortSignal.timeout(30000)});}
 async function lockOrderRaces(env,owner){
   const other=await freshOwnerSession(env);
   for(const firstKind of ["attach","delete"]){

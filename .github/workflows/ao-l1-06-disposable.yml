@@ -11,6 +11,7 @@ on:
       - supabase/tests/helpers/ao-l1-07.mjs
       - supabase/tests/helpers/ao-l1-07-phase-b.mjs
       - supabase/tests/helpers/ao-l1-07-hardening.mjs
+      - supabase/tests/helpers/ao-l1-08-gap-closure.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:
@@ -88,6 +89,7 @@ jobs:
       - name: State scope and remaining tests
         if: success()
         run: |
-          echo 'PASS only the existing L1-06 Phase A runner and its actual outputs.'
-          echo 'NOT COVERED: full two-session lock-order races, exhaustive deleted-Quest privacy, full migration readiness.'
+          echo 'AO L1-06 + L1-07 Final Hardening + L1-08 gap-closure checks PASS only where their fixture assertions passed.'
+          echo 'COVERED: observed owner advisory lock wait-queue both orders; deleted-Quest privacy surfaces; owner fail-closed RPC matrix.'
+          echo 'NOT COVERED: exhaustive scheduling/model checking, full SQL/TS parity, all release acceptance cases, migration readiness.'
           echo 'NO AO MIGRATION MAY BE DEPLOYED OR ENABLED FROM THIS RESULT.'

@@ -10,6 +10,7 @@ import { exerciseAoWire } from './helpers/ao-wire.mjs';
 import { exerciseAoL107 } from './helpers/ao-l1-07.mjs';
 import { exerciseAoL107PhaseB } from './helpers/ao-l1-07-phase-b.mjs';
 import { exerciseAoL107Hardening } from './helpers/ao-l1-07-hardening.mjs';
+import { exerciseAoL108 } from './helpers/ao-l1-08-gap-closure.mjs';
 
 assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
@@ -58,7 +59,8 @@ try {
   await exerciseAoL107(env, owner, outsider, anon);
   await exerciseAoL107PhaseB(env, owner, outsider, anon);
   await exerciseAoL107Hardening(env, owner, outsider, anon);
-  console.log('PASS: L1-07 disposable security, owner race and deleted Quest privacy subset; remaining full QA gates NOT closed');
+  await exerciseAoL108(env, owner);
+  console.log('PASS: L1-07 Final Hardening and L1-08 gap closure subsets; release migration gate remains CLOSED');
 } finally {
   await env.close();
 }

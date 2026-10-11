@@ -88,7 +88,7 @@ async function archiveRestore(owner){
     const restored=await rpc(owner,name,{p_command_id:id(),[keyProp]:key,p_expected_revision:"2",p_archived:false});
     assert.equal(restored.changed,true);
     assert.equal((await read(owner,key)).archived_at,null,kind+": archived restoration failed");
-    assert.equal((await read(owner,key)).revision,"3");
+    assert.equal(String((await read(owner,key)).revision),"3");
   }
   console.log("PASS: L1-09 QA-18 both root types archive/read/no-op/stale/restore");
 }

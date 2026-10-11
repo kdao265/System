@@ -14,7 +14,7 @@ function snapshotSql(){
   return `SELECT jsonb_build_object(${tables.map(t=>`'${t}',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM public.${t} x)`).join(",")})::text;`;
 }
 async function snapshot(env){return env.sql(snapshotSql());}
-async function bounded(r,name,args,label){
+async function bounded(r,name,args){
   // A PostgreSQL deadlock should fail, not hang the GitHub job until timeout.
   const controller=new AbortController();
   const timeout=AbortSignal.timeout(12000);

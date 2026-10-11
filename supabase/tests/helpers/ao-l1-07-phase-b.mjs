@@ -190,7 +190,7 @@ async function testRaces(env,owner){
     ok(archived,"Goal Archive concurrent");
     if(link.error)assert(["23514","P0002"].includes(link.error.code),"invalid Goal attach error");
     else assert(link.data.changed,"accepted Goal attach no-op");
-    assert.equal(await env.sql(`SELECT (archived_at IS NOT NULL)::text FROM public.goals WHERE id='${goalId}'`),"t");
+    assert.equal(await env.sql(`SELECT (archived_at IS NOT NULL)::text FROM public.goals WHERE id='${goalId}'`),"true");
   }
   for(const aFirst of [true,false]){
     const source=await newOpp(owner,"L107B source/archive race");
@@ -204,7 +204,7 @@ async function testRaces(env,owner){
     ok(archived,"Source Opportunity Archive concurrent");
     if(link.error)assert(["23514","P0002"].includes(link.error.code),"invalid source attach error");
     else assert(link.data.changed,"source attach no-op");
-    assert.equal(await env.sql(`SELECT (archived_at IS NOT NULL)::text FROM public.opportunities WHERE id='${source}'`),"t");
+    assert.equal(await env.sql(`SELECT (archived_at IS NOT NULL)::text FROM public.opportunities WHERE id='${source}'`),"true");
     const late=await owner.rpc("set_activity_source_v1",{p_command_id:uuid(),p_activity_id:act,
       p_expected_revision:link.error?"1":"2",p_expected_source_link_id:null,p_desired_opportunity_id:source,p_note:null});
     reject(late,null,"cannot create new source link from archived Opportunity");

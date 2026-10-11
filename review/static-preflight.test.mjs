@@ -239,6 +239,9 @@ test('R-10: QA-10 retains UTC/DST evidence and closed release gate', () => {
   assert.match(status,/\bDST\b/,'QA-10 must record DST evidence');
   assert.match(status,/Profile timezone.*(?:invari|preserv|unchang|rewrite)/i,'QA-10 must record Profile timezone invariance');
   assert.match(status,/\btzdb\b.*\b(?:pending|open)\b/i,'QA-10 must retain unresolved timezone provenance review');
-  assert.match(matrix,/^\*\*Release gate:\*\* CLOSED/m);
+  const qa35=matrix.split('\n').find(line=>line.startsWith('| QA-35 |'));
+  assert.ok(qa35,'QA-35 deployment gate row must exist');
+  assert.equal(qa35.split('|')[5].trim(),'ENFORCED BY WORKFLOW','QA-35 deployment control must remain enforced');
+  assert.match(matrix,/^\s*(?:-\s*)?\*\*Release gate:\*\* CLOSED\b/m);
   assert.doesNotMatch(qa10,/present SQL deliberately rejects all instants/);
 });

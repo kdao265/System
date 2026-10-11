@@ -23,7 +23,7 @@ async function call(client, name, args, label = name) {
   return ok(await client.rpc(name, args), label);
 }
 
-function deniedCallMatrix(oppId, activityId) {
+export function deniedCallMatrix(oppId, activityId) {
   const id = uuid();
   return [
     ["create_opportunity_v1",{p_command_id:uuid(),p_opportunity_id:uuid(),p_fields:{title:"Not allowed"}}],

@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import { deniedCallMatrix } from "./ao-l1-07.mjs";
 
 const uuid=()=>randomUUID();
 const escaped=(s)=>s.replaceAll("'","''");
@@ -117,12 +118,8 @@ async function testHistory(env,owner){
 async function security(env,owner,other,anon){
   // This is a destructive *disposable-fixture-only* configuration toggle, with
   // mandatory finally restoration, never any real database.
-  const names=[
-    ["create_opportunity_v1",{p_command_id:uuid(),p_opportunity_id:uuid(),p_fields:{title:"Denied"}}],
-    ["list_opportunities_v1",{p_scope:"active",p_filters:{},p_cursor:null,p_limit:50}],
-    ["resolve_ao_command_v1",{p_command_id:uuid()}],
-    ["search_ao_link_candidates_v1",{p_source_kind:"opportunity",p_source_id:uuid(),p_target_kind:"quest",p_query:"x",p_after_id:null,p_limit:50}],
-  ];
+  const names=deniedCallMatrix(uuid(),uuid());
+  assert.equal(names.length,20,"exact 20 AO RPCs under missing owner");
   for(const client of [owner,other,anon]){
     for(const schema of ["system_internal","system_private"]){
       reject(await client.schema(schema).rpc("ao_assert_owner_v1"),null,"internal schema must not be exposed");
@@ -131,14 +128,18 @@ async function security(env,owner,other,anon){
   await env.sql("DELETE FROM system_private.owner_configuration WHERE singleton=true;");
   try {
     for(const [name,args] of names){
-      const r=await owner.rpc(name,args);reject(r,"42501","missing owner "+name);
+      for(const client of [owner,other,anon]){
+        const r=await client.rpc(name,args);
+        if(client===anon)reject(r,null,"missing owner anonymous "+name);
+        else reject(r,"42501","missing owner "+name);
+      }
     }
   }finally{
     await env.sql(`INSERT INTO system_private.owner_configuration(user_id) VALUES ('${env.owner.id}');`);
   }
   // Recovered owner must work; anon/nonowner continue fail closed.
   await rpc(owner,"list_opportunities_v1",{p_scope:"active",p_filters:{},p_cursor:null,p_limit:1});
-  console.log("PASS: L1-07B QA-28/34 missing owner configuration and internal schema isolation subset");
+  console.log("PASS: L1-07 Final QA-28/34 missing owner configuration denies all 20 AO RPCs across owner/nonowner/anon");
 }
 async function newQuest(owner,label){
   return rpc(owner,"create_one_off_quest",{command_id:uuid(),origin:"web_ui",

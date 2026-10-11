@@ -9,6 +9,8 @@ on:
     paths:
       - .github/workflows/ao-l1-06-disposable.yml
       - supabase/tests/helpers/ao-l1-07.mjs
+      - supabase/tests/helpers/ao-l1-07-phase-b.mjs
+      - supabase/tests/helpers/ao-l1-07-hardening.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:

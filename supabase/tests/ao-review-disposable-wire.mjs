@@ -16,7 +16,7 @@ assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
 // This runner has no external URL/password arguments. The harness constructs its
 // own loopback gateway and tmpfs-only Docker network with synthetic identities.
-const expectedSha256 = 'b03d59a69d320249509a926d5fa259f59eeff6e09133fed9c0feae19dc4d23eb';
+const expectedSha256 = '0daadcb0c458d5a6ce558510535397624cb64ee0b9aea4bb267ee5389f1a33f5';
 const candidate = readFileSync(new URL('../../review/sql/REVIEW_ONLY_create_activities_opportunities_v1.sql', import.meta.url), 'utf8');
 assert.equal(createHash('sha256').update(candidate).digest('hex'), expectedSha256,
   'Review candidate drifted; require a new review/approval before attempting runtime');

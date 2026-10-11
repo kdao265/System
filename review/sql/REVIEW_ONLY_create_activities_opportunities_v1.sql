@@ -1294,7 +1294,7 @@ BEGIN
    IF (SELECT count(*) FROM jsonb_object_keys(p_req))<>2 OR
       NOT(p_req ?& ARRAY['action','details']) OR jsonb_typeof(p_req->'details')<>'object' OR
       p_req->'details'<>'{}'::jsonb THEN RAISE EXCEPTION 'Invalid activity transition details' USING ERRCODE='22023'; END IF;
-   v_status:=CASE v_activity.status ||':'|| p_req->>'action'
+   v_status:=CASE v_activity.status ||':'|| (p_req->>'action')
       WHEN 'upcoming:start' THEN 'ongoing' WHEN 'upcoming:cancel_before_start' THEN 'cancelled_before_start'
       WHEN 'ongoing:pause' THEN 'paused' WHEN 'paused:resume' THEN 'ongoing'
       WHEN 'ongoing:complete' THEN 'completed' WHEN 'paused:complete' THEN 'completed'

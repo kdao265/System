@@ -229,10 +229,16 @@ test('R-09: disposable runner is explicitly gated and never targets external dat
   assert.doesNotMatch(runner,/DATABASE_URL|SUPABASE_DB_URL|--db-url/);
   assert.match(runner,/await env\.close\(\)/);
 });
-test('R-10: QA-10 no longer incorrectly says all instant deadlines are rejected', () => {
+test('R-10: QA-10 retains UTC/DST evidence and closed release gate', () => {
   const matrix=readFileSync(new URL('./qa-matrix.md',import.meta.url),'utf8');
-  assert.match(matrix,/QA-10.*PARTIAL — L1-08 real owner UTC trigger\/DST\/invalid input PASS/);
-  assert.match(matrix,/QA-10.*L1-09 real Profile timezone change preserved stored UTC/);
-  assert.match(matrix,/\*\*Release gate:\*\* CLOSED/);
-  assert.doesNotMatch(matrix,/present SQL deliberately rejects all instants/);
+  const qa10=matrix.split('\n').find(line=>line.startsWith('| QA-10 |'));
+  assert.ok(qa10,'QA-10 acceptance row must exist');
+  const status=qa10.split('|')[5].trim();
+  assert.match(status,/^PARTIAL\b/,'QA-10 must remain unapproved');
+  assert.match(status,/\bUTC\b/,'QA-10 must record UTC evidence');
+  assert.match(status,/\bDST\b/,'QA-10 must record DST evidence');
+  assert.match(status,/Profile timezone.*(?:invari|preserv|unchang|rewrite)/i,'QA-10 must record Profile timezone invariance');
+  assert.match(status,/\btzdb\b.*\b(?:pending|open)\b/i,'QA-10 must retain unresolved timezone provenance review');
+  assert.match(matrix,/^\*\*Release gate:\*\* CLOSED/m);
+  assert.doesNotMatch(qa10,/present SQL deliberately rejects all instants/);
 });

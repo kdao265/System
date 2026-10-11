@@ -13,6 +13,7 @@ import { exerciseAoL107Hardening } from './helpers/ao-l1-07-hardening.mjs';
 import { exerciseAoL108 } from './helpers/ao-l1-08-gap-closure.mjs';
 import { exerciseAoL109 } from './helpers/ao-l1-09-final-acceptance.mjs';
 import { exerciseAoL110 } from './helpers/ao-l1-10-p0-closure.mjs';
+import { exerciseAoL111 } from './helpers/ao-l1-11-tabs.mjs';
 
 assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
@@ -64,6 +65,7 @@ try {
   await exerciseAoL108(env, owner);
   await exerciseAoL109(env, owner);
   await exerciseAoL110(env, owner);
+  await exerciseAoL111(env, owner, outsider);
   console.log('PASS: L1-07 / L1-08 / L1-09 acceptance suites within tested scope; release migration gate remains CLOSED');
 } finally {
   await env.close();

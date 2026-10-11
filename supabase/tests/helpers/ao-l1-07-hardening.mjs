@@ -182,7 +182,7 @@ async function privacySurface(env,owner,other,anon){
     assert(link,kind+": retained Quest context missing");
     assert.deepEqual(link.target,expected,kind+": deleted Quest projection not neutral");
     await assertHistorySafe(owner,kind,id,secret);
-    const listed=await rpc(owner,"list_"+kind+"s_v1",{
+    const listed=await rpc(owner,kind==="opportunity"?"list_opportunities_v1":"list_activities_v1",{
       p_scope:"active",p_filters:{},p_cursor:null,p_limit:100});
     redacted(listed,secret,kind+" active list");
     assert(listed.items.some(item=>item.id===id),kind+" missing from list");

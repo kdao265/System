@@ -148,7 +148,7 @@ async function questEligibility(env,owner,other){
     p_expected_revision:"1",p_target_kind:"quest",p_target_id:target});
   assert(attempt.error,"nonowner Quest attach unexpectedly accepted");
   assert.equal(await domainSnapshot(env),foreignBefore);
-  assert.equal((await rpc(owner,"get_opportunity_v1",{p_opportunity_id:otherRoot})).root.revision,"1");
+  assert.equal(String((await rpc(owner,"get_opportunity_v1",{p_opportunity_id:otherRoot})).root.revision),"1");
   console.log("PASS: Batch A QA-23 "+(cases.length*2)+" Quest ineligible owner cases plus both eligible source types, nonowner and legacy bound fixture; archived/deleted/recurring privacy remains independently gated");
 }
 

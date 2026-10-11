@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { startAuthEnvironment } from '../../tests/helpers/auth-environment.mjs';
 import { exerciseAoWire } from './helpers/ao-wire.mjs';
 import { exerciseAoL107 } from './helpers/ao-l1-07.mjs';
+import { exerciseAoL107PhaseB } from './helpers/ao-l1-07-phase-b.mjs';
 
 assert.equal(process.env.AO_DISPOSABLE_QA_APPROVED, 'YES',
   'AO disposable runtime testing needs separate authorization');
@@ -54,6 +55,7 @@ try {
   await exerciseAoWire(env, owner, outsider, anon);
   console.log('PASS: AO disposable SQL/catalog/value/G-01/wire smoke');
   await exerciseAoL107(env, owner, outsider, anon);
+  await exerciseAoL107PhaseB(env, owner, outsider, anon);
   console.log('PASS: L1-07 disposable security, owner race and deleted Quest privacy subset; remaining full QA gates NOT closed');
 } finally {
   await env.close();

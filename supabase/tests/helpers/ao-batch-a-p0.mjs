@@ -100,6 +100,10 @@ async function questEligibility(env,owner,other){
   await rpc(owner,"set_one_off_quest_archived_v1",{p_command_id:id(),p_quest_id:archived,p_archived:true,p_origin:"web_ui"});
   const deleted=await quest(owner,"Batch A deleted synthetic Quest");
   await rpc(owner,"delete_one_off_quest_v1",{p_command_id:id(),p_quest_id:deleted,p_origin:"web_ui"});
+  // Recurring Quest domain requires an explicitly configured Profile timezone.
+  // Set this only on the fixture owner through authenticated RLS, never on real profiles.
+  const tzResult=await owner.from("profiles").update({timezone:"UTC"}).eq("user_id",env.owner.id);
+  assert.equal(tzResult.error,null,"Batch A disposable Profile timezone setup");
   const start=await env.sql("SELECT ((now() AT TIME ZONE 'UTC')::date + 7)::text;");
   const recurring=(await rpc(owner,"create_recurring_quest",{command_id:id(),origin:"web_ui",request:{
     title:"Batch A recurring synthetic Quest",recurrence_mode:"daily",start_date:start,default_reward_exp:0}})).quest_id;

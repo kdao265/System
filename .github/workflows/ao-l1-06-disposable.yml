@@ -15,6 +15,7 @@ on:
       - supabase/tests/helpers/ao-l1-09-final-acceptance.mjs
       - supabase/tests/helpers/ao-l1-10-p0-closure.mjs
       - supabase/tests/helpers/ao-l1-11-tabs.mjs
+      - supabase/tests/helpers/ao-residual-p0-closure.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:

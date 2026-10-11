@@ -231,6 +231,8 @@ test('R-09: disposable runner is explicitly gated and never targets external dat
 });
 test('R-10: QA-10 no longer incorrectly says all instant deadlines are rejected', () => {
   const matrix=readFileSync(new URL('./qa-matrix.md',import.meta.url),'utf8');
-  assert.match(matrix,/QA-10.*draft includes instant resolver/);
+  assert.match(matrix,/QA-10.*PARTIAL — L1-08 real owner UTC trigger\/DST\/invalid input PASS/);
+  assert.match(matrix,/QA-10.*Profile timezone-change scenario outstanding/);
+  assert.match(matrix,/\*\*Release gate:\*\* CLOSED/);
   assert.doesNotMatch(matrix,/present SQL deliberately rejects all instants/);
 });

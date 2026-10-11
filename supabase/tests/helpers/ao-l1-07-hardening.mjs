@@ -98,7 +98,7 @@ async function lockOrderRaces(env,owner){
     const links=await sqlCount(env,"public.opportunity_quest_links WHERE opportunity_id='"+source+
       "' AND quest_id='"+q.quest_id+"' AND detached_at IS NULL");
     assert.equal(links,firstKind==="attach"?1:0,"Quest delete order link invariant");
-    assert.equal(await env.sql("SELECT deleted_at IS NOT NULL FROM public.quests WHERE id='"+q.quest_id+"'"),"t",
+    assert.equal(await env.sql("SELECT deleted_at IS NOT NULL FROM public.quests WHERE id='"+q.quest_id+"'"),"true",
       "Quest delete outcome was not persisted");
   }
   console.log("PASS: L1-07 Final QA-24 advisory lock wait-queue attach/Quest Delete both orders");
@@ -118,7 +118,7 @@ async function lockOrderRaces(env,owner){
     good(first,"first Goal race "+firstKind);
     if(firstKind==="archive")denied(second,"23514","attach after Goal Archive");
     else good(second,"Goal Archive after attach");
-    assert.equal(await env.sql("SELECT archived_at IS NOT NULL FROM public.goals WHERE id='"+goal+"'"),"t");
+    assert.equal(await env.sql("SELECT archived_at IS NOT NULL FROM public.goals WHERE id='"+goal+"'"),"true");
     assert.equal(await sqlCount(env,"public.opportunity_goal_links WHERE opportunity_id='"+source+
       "' AND goal_id='"+goal+"' AND detached_at IS NULL"),firstKind==="attach"?1:0);
   }
@@ -138,7 +138,7 @@ async function lockOrderRaces(env,owner){
     good(first,"first Source race "+firstKind);
     if(firstKind==="archive")denied(second,"23514","new source after archived Opportunity");
     else good(second,"archive after source link");
-    assert.equal(await env.sql("SELECT archived_at IS NOT NULL FROM public.opportunities WHERE id='"+source+"'"),"t");
+    assert.equal(await env.sql("SELECT archived_at IS NOT NULL FROM public.opportunities WHERE id='"+source+"'"),"true");
     assert.equal(await sqlCount(env,"public.activity_source_links WHERE activity_id='"+activity+
       "' AND opportunity_id='"+source+"' AND detached_at IS NULL"),firstKind==="source"?1:0);
   }

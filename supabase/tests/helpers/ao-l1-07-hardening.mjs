@@ -48,13 +48,13 @@ async function waitForLocks(env,expected,label){
 }
 async function orderedOwnerLockRace(env,first,second,label){
   // A separate fixture-owned psql transaction occupies the exact advisory key
-  // used by progression_internal.lock_owner(uuid). It holds for 12s. Verify
+  // used by progression_internal.lock_owner(uuid). It holds for 4s, below the PostgREST statement timeout. Verify
   // PostgREST caller #1 is waiting before starting caller #2, then verify two
   // blocked advisory locks before releasing. Timing alone is NOT the proof.
   const ownerId=env.owner.id;
   assert.match(ownerId,/^[a-f0-9-]{36}$/);
   const key="hashtextextended('system.v1.progression.owner:"+ownerId+"',0)";
-  const holder=env.sql("BEGIN; SELECT pg_advisory_xact_lock("+key+"); SELECT pg_sleep(12); COMMIT;")
+  const holder=env.sql("BEGIN; SELECT pg_advisory_xact_lock("+key+"); SELECT pg_sleep(4); COMMIT;")
     .then(()=>null,error=>error);
   let one=null,two=null,checked=false;
   try{

@@ -2,9 +2,9 @@
 
 **Audit date:** 2026-10-11 (Asia/Ho_Chi_Minh)
 **Classification:** evidence audit / decision packet — **NOT** approval to merge, migrate, enable, or deploy.
-**Audited commit:** \`c29925e0c4e51bcee3c0ca8d29c4e6a16ab3462a\`
-**Repository:** \`kdao265/System\`, [Draft PR #59](https://github.com/kdao265/System/pull/59), branch \`test/ao-l1-06-disposable-qa\`.
-**Baseline main:** \`cc57912a0d9a6d99c448a802abd42c576c8c3e50\`.
+**Audited commit:** `c29925e0c4e51bcee3c0ca8d29c4e6a16ab3462a`
+**Repository:** `kdao265/System`, [Draft PR #59](https://github.com/kdao265/System/pull/59), branch `test/ao-l1-06-disposable-qa`.
+**Baseline main:** `cc57912a0d9a6d99c448a802abd42c576c8c3e50`.
 
 ## A. Independent verdict
 
@@ -22,7 +22,7 @@
 - [Quest Creation CI PASS — run 38140868674](https://github.com/kdao265/System/actions/runs/38140868674): existing Quest/migration regressions, **not an AO release migration test**.
 - [QA matrix](./qa-matrix.md) is the row authority. This audit does **not** edit row statuses.
 
-**Critical distinction:** the runner compares a pinned SHA-256 (\`0daadcb0c458d5a6ce558510535397624cb64ee0b9aea4bb267ee5389f1a33f5\`) against the guarded review-only SQL file and removes its abort **in memory solely within the throwaway test fixture**. The SQL file remains review-only, not a checked-in migration. A green run therefore cannot close QA-01 or authorize production.
+**Critical distinction:** the runner compares a pinned SHA-256 (`0daadcb0c458d5a6ce558510535397624cb64ee0b9aea4bb267ee5389f1a33f5`) against the guarded review-only SQL file and removes its abort **in memory solely within the throwaway test fixture**. The SQL file remains review-only, not a checked-in migration. A green run therefore cannot close QA-01 or authorize production.
 
 ## B. Audit method and provenance
 
@@ -37,7 +37,7 @@ Sources inspected at the audited branch:
 
 ## C. Fifteen PARTIAL rows — exact disposition
 
-**Disposition codes:** \`GATE\` = requires separate Product Owner authority or another delivery phase; \`TARGETED TEST\` = concrete fixture/browser cases needed; \`REVIEW + TEST\` = source/behavior review plus bounded evidence; \`CANDIDATE\` = mostly proven but not yet entitled to PASS by matrix wording.
+**Disposition codes:** `GATE` = requires separate Product Owner authority or another delivery phase; `TARGETED TEST` = concrete fixture/browser cases needed; `REVIEW + TEST` = source/behavior review plus bounded evidence; `CANDIDATE` = mostly proven but not yet entitled to PASS by matrix wording.
 
 | QA | Evidence already established | Precisely missing before full closure | Disposition |
 | --- | --- | --- | --- |
@@ -47,10 +47,10 @@ Sources inspected at the audited branch:
 | **07** | Four Activity creation intents and **36/36** status/action combinations; mapping/status and sample actual fields matched TypeScript. | Historical imports with user-specified/missing actual dates, participation-confirmation provenance, and proof no intermediate fake events/timestamps are invented. | **TARGETED TEST** |
 | **08** | Unknown, year, month, day, leap and Gregorian boundaries (including years 0001/9999), extra-key and selected invalid cases. | A *bounded cross-field mutation* matrix for start/end uncertainty overlap vs certain reversal, explicit Unknown/NULL vs omitted field, and invalid JSON shapes in both Opportunity and Activity. Not a demand for infinite fuzzing. | **TARGETED TEST** |
 | **09** | Source-clock unresolved stored with UTC=NULL; changed Profile timezone did not rewrite a known instant. | Explicit **no precise countdown** / no guessed local time on unresolved or partial dates is a *presentation/UI* assertion; existing L1 database tests cannot prove it. | **GATE — L2 UI** |
-| **10** | SQL G-01 corpus (DST gap/fold, offset bounds, UTC year limits), owner trigger, UTC immutability after Profile timezone change PASS. | A paired TypeScript \`parseDeadline\` vs real PostgreSQL resolved-instant / reject corpus including two DST fold offsets, invalid IANA-offset combinations and year-boundary cases; verify timezone rules/tzdb fixture assumptions. | **REVIEW + TEST** |
+| **10** | SQL G-01 corpus (DST gap/fold, offset bounds, UTC year limits), owner trigger, UTC immutability after Profile timezone change PASS. | A paired TypeScript `parseDeadline` vs real PostgreSQL resolved-instant / reject corpus including two DST fold offsets, invalid IANA-offset combinations and year-boundary cases; verify timezone rules/tzdb fixture assumptions. | **REVIEW + TEST** |
 | **11** | Unicode/CRLF examples, 30/31 links, duplicate resource IDs, HTTP rejection, SQL code point checks. | Boundary parity for **label 120**, URL 2048, text field code points and whitespace families; HTTPS URL userinfo/control/backslash, accepted duplicate *URL* with distinct IDs, retained ordering and rejected update atomicity. | **TARGETED TEST** |
 | **12** | RPC invalid metadata/date/resource rejection and unchanged accepted root/history; SQL catalog constraints. | Direct disposable PostgreSQL root constraints for invalid combinations, explicit SQL/JSONB NULL and overflow, immutable/system-owned fields; compare stable SQLSTATE as relevant. Tests must not alter product SQL or active DB. | **TARGETED TEST** |
-| **19** | **48/48** stage-kind-target cases, Closed/Other LF note, Reopen clearing current reason/note, one outcome. | Seven Closed reasons (and invalid/missing Other note) across corrections; outcome after Closed with separate \`new_decision\` vs \`correction\` history, annotations and before/after retained. | **TARGETED TEST** |
+| **19** | **48/48** stage-kind-target cases, Closed/Other LF note, Reopen clearing current reason/note, one outcome. | Seven Closed reasons (and invalid/missing Other note) across corrections; outcome after Closed with separate `new_decision` vs `correction` history, annotations and before/after retained. | **TARGETED TEST** |
 | **20** | **36/36** Activity transitions; terminal correction and actual start set/clear/no-op; upcoming invariant. | Planned vs actual reverse/overlap PartialDate matrix; histories for corrected actual dates and no automatic actual start/end on transition, import or metadata edits. | **TARGETED TEST** |
 | **21** | For all five link tables: wrong-owner composite FK failure, current-uniqueness, attached-time immutable, DELETE denial, detached-interval guard. | Verify detached old interval *survives* reattachment with a **new identity** and correct chronology, and relationship lifecycle/revision/history via owner RPC. | **CANDIDATE — 1 bounded test** |
 | **22** | S1→S2 source replacement closes S1, stale-link and archived-source guard; archive race. | Test **S2→none→S1** with distinct new link identity; archived Opportunity retains already-attached source and source metadata/status never synchronizes to Activity. | **TARGETED TEST** |

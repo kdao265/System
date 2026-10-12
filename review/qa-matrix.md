@@ -152,3 +152,75 @@ These are supplemental to the 35 L1 acceptance scenarios, and do not replace the
 - **QA-12:** 29 additional direct PostgreSQL malformed JSONB/date/resource, SQL NULL, state/shape checks; SQLSTATE-specific failures; no AO root/history/external mutation. Cumulative evidence is strong but full constraint-to-fixture traceability is not yet signed off; remains PARTIAL.
 - **QA-23:** archived/deleted/recurring/direct-goal-bound synthetic Quest, each rejected for both Opportunity and Activity with retained root/history/no command receipt and no Quest/Goal/EXP/Calendar/Library mutations; eligible one-off succeeds in both kinds; nonowner denied. Project-bound and damaged occurrence metadata states not independently tested; remains PARTIAL.
 - **Important:** 23 PASS / 11 PARTIAL / QA-35 gate CLOSED; this evidence ledger does not silently promote any row. Quest Creation and Playwright on the documentation HEAD must be checked separately before 3/3 CI green claims.
+
+## Batch B preparation — STOPPED for QA-11 parity review, 2026-10-12
+
+**PENDING evidence, not PostgreSQL PASS.** Task: bounded test-only preparation for QA-06/08/11/19/20 under approved AO Requirements, ADR-024 and Architecture. Only the new Batch B helper, its runner import/invocation, workflow path trigger and this appended ledger are authorized. No product SQL, pin/guard, migration, permission, dependency, production access, commit, push, merge or deployment changes. Existing acceptance statuses and historical suites remain unchanged.
+
+### Workspace and baseline
+
+- Verified `origin`: `https://github.com/kdao265/System`; fetched `refs/heads/test/ao-l1-06-disposable-qa` and confirmed `1da8b3bf23e9ea1e8b5d4e610672d1f179eb7e30`.
+- Separate worktree: `D:/System-ao-batch-b`; local branch `codex/ao-batch-b`; HEAD is the same exact approved SHA. Clean before preparation. No remote branch modification.
+- Original `D:/System` remains detached at `d380133804704552e2ed8969570210663c486dce`; untracked `.vscode/settings.json` preserved and not read or edited.
+- Added, untracked: `supabase/tests/helpers/ao-batch-b-p0.mjs`. Modified: `supabase/tests/ao-review-disposable-wire.mjs` (import/invoke only), `.github/workflows/ao-l1-06-disposable.yml` (one path trigger only), `review/qa-matrix.md` (this append only).
+
+### Coverage inventory performed before implementation
+
+Existing evidence below is the baseline repository's recorded evidence, not rerun runtime evidence from this task. Helper locations are under `supabase/tests/helpers/`.
+
+| QA | Existing assertions (preserved) | Genuinely missing Batch B dimensions / disposition |
+| --- | --- | --- |
+| QA-06 | `ao-l1-09-final-acceptance.mjs:modelParity`: defaults/sample G-05 invalid state. `ao-l1-10-p0-closure.mjs:stageMatrix`: 48 stage/kind/target cases. `ao-l1-11-tabs.mjs:testA`: six outcomes, N/A+Unknown, N/A+Accepted rejection, Saved+Accepted and Declined+Unknown acceptance. | All five non-Unknown outcomes against N/A on create/outcome paths; invalid enum corpus on relevant mutation paths; Invitation/Direct Access+Submitted; warnings after mutations. **Not added: stopped for QA-11 review.** |
+| QA-08 | L1-09 Gregorian/year/leap/unknown cases; L1-10 min/max civil days/month/extra keys; L1-11 `testB` five Activity interval pairs and rejected reversed Opportunity update; `ao-wire.mjs` F-02 decision/actual JSON-null corrections; Batch A `directJsonConstraints` 22 direct partial-date rejects across two roots. | Complete finite mutation-field corpus for both roots; omitted/null/Unknown distinctions on each permitted date path; exact rejected-write root/history/receipt snapshots. **Not added.** Existing F-02 addendum distinguishes omitted preservation, JSON null to SQL NULL, and strict malformed-date rejection; do not collapse Unknown JSON into SQL NULL. |
+| QA-11 | L1-09 Vietnamese/emoji sample; L1-10 create 30/31 resources, duplicate UUID/insecure URL, multiline sample; L1-11 `testB` labels 120/121, duplicate URLs with distinct UUID/order, userinfo/space/control/overlong URL rejects. Domain tests cover pure normalization. | Complete per-field code-point limit-1/limit/limit+1; exact 2048/2049 URL; update rollback corpus; raw resource-label whitespace parity. **Only QA-11-B01 reproduction below added, then STOP.** |
+| QA-19 | L1-10 full 48 transitions; L1-11 seven Closed Reasons, Other note normalization/missing note, reopening to Saved with clearing, late new_decision/correction event-type presence; `ao-wire.mjs` R-07 normalized Closed-note replay/collision. | Rich before/after audit retention, invalid annotation combinations, exact SQLSTATE and atomic stale/invalid lifecycle snapshots. **Not added; no duplicate transition matrix.** |
+| QA-20 | L1-10 full 36 status/actions plus actual set/no-op/clear and Upcoming invariant; L1-11 direct terminal imports with one event/no invented dates; wire F-02/R-06 clears actual dates and retains correction reason. | Independent planned/actual field mutations with exact history; retained terminal before/after; incompatible actual dates for Cancelled Before Start; correction no-op/invalid/stale receipts and full atomic snapshots. **Not added; explicit creation intent retained in new fixtures.** |
+
+### QA-11-B01 source-level discrepancy and minimal reproduction
+
+Authority: Requirements AO-FR-19 and AO-AC-20; Architecture sections 3.3/3.4 require consistent app/SQL Unicode boundary normalization. TypeScript `parseResourceLinks` calls `normalizeText(..., required=true)` and returns the trimmed label. In the pinned SQL, `ao_fields_v1` passes the raw resource array directly to `ao_resources_valid_v1`; that function calls `ao_text_valid_v1(label_value,120,true,false)`. Its single-line branch requires `value = ao_trim_v1(value)`. It rejects a padded label rather than normalizing it.
+
+Minimal synthetic `p_changes` for owner-authenticated `update_opportunity_v1` or `update_activity_v1` (current revision 1, retained UUID and fresh command UUID):
+
+```json
+{"resource_links":[{"id":"11111111-1111-4111-8111-111111111111","label":"\u00a0Tài liệu 😀\u3000","url":"https://example.org/resource"}]}
+```
+
+Seed the root with the same resource ID/URL and label `Original`. For create, use the same raw collection plus title; Activity also requires `intent=confirmed_plan`.
+
+- **Expected:** both model and owner RPC accept, store label `Tài liệu 😀`, retain UUID/URL/order, and produce correct revision/history/receipt without external-domain changes.
+- **Observed offline:** TypeScript accepts and returns the trimmed label on all four root/create-update combinations under Node 24.18.1.
+- **SQL source inference:** raw input reaches the strict label validator and the `Invalid AO resource links` branch, predicting SQLSTATE **22023**. **No PostgreSQL response or SQLSTATE has been observed in this task.** Independent approved CI reproduction remains required.
+- **Prepared regression:** `exerciseAoBatchB` sends the raw input (never substitutes model-normalized data). All four create/update cases are evaluated independently, in sequence: Opportunity update/create, Activity update/create. Each case separately reports its actual RPC response and snapshot-check outcomes; setup failures explicitly identify cases whose target RPC was not reached. A case failure does not conceal the remaining case reports.
+- Rejected or uncertain responses retain strict comparisons of the full root (including resources/revision/timestamps), all subject history and command records, and exact Quest/occurrence/event/recurrence/Goal/membership/EXP/Calendar/Library snapshots. Accepted paths verify canonical stored collection, revision, before/after history and persisted receipt. Response evidence and invariant-check failures are reported separately.
+- **Diagnostic classification:** the predicted HTTP `400` / SQLSTATE `22023` / `Invalid AO resource links` response is classified as a suspected normalization divergence, never a successful acceptance test. Unrelated PostgreSQL/authorization/transport errors, uncertain RPC exceptions, harness failures and incomplete execution are distinguished. No classification implies observed PostgreSQL evidence before CI actually executes it.
+- **Overall result:** after collecting all four case reports, the diagnostic fails if any case diverges, any invariant check fails, or any case is incomplete. Acceptance still requires canonicalizing the raw boundary-whitespace label consistently with TypeScript; no expected-failure marker, skip or weakened assertion is used. PostgreSQL behavior remains unverified until isolated CI produces runtime evidence.
+- **Stop rule applied:** broader Batch B implementation stopped when this source-level discrepancy was identified. No SQL repair or new interpretation of the product contract was attempted. This is a reviewable blocker reproduction, **not a complete Batch B implementation**.
+
+### Per-QA result and verification
+
+| Case | Expected behavior | Observed result / evidence |
+| --- | --- | --- |
+| QA-06 additional G-05 corpus | Hard invariants reject; warning-only combinations accepted on relevant writes | NOT IMPLEMENTED / NOT RUN; existing evidence above preserved |
+| QA-08 additional mutation integrity | Preserve omission, distinguish null and Unknown, validate calendar/order atomically | NOT IMPLEMENTED / NOT RUN |
+| QA-11-B01 four model fixtures | Padded Vietnamese/emoji label accepted and trimmed | Offline 4/4 model fixtures passed; `verifyAoBatchBModelFixtures()` returns explicitly TypeScript-only evidence |
+| QA-11-B01 four SQL/RPC counterparts | Same acceptance/canonical value with audit and atomicity | PREPARED / NOT RUN; source predicts 22023 discrepancy, no runtime PASS claimed |
+| QA-11 remaining boundaries | Exact field/URL/array boundaries and rejected replacement rollback | NOT IMPLEMENTED / NOT RUN beyond preserved baseline cases |
+| QA-19 additional annotations/negatives | Correct audit types and immutable snapshots; stale/invalid writes atomic | NOT IMPLEMENTED / NOT RUN |
+| QA-20 additional temporal corrections | Correct independent dates/status/history/receipt behavior | NOT IMPLEMENTED / NOT RUN |
+
+Executed safe checks:
+
+- `node --test review/static-preflight.test.mjs`: **31 passed, 1 failed**. Existing `R-05 negative mutation: IMMUTABLE cursor rejected` fails with `Missing expected exception`. The mutation string uses literal LF, while `core.autocrlf=true` checked out the unchanged SQL as CRLF (`git ls-files --eol`: `i/lf w/crlf`). Read-only inspection confirmed the replacement matches the HEAD Git blob but not the working-tree string. Neither the existing test nor SQL was edited to hide the failure.
+- `node --experimental-strip-types --test tests/activities-opportunities-domain.test.mjs`: **15 passed, 0 failed**.
+- `node --check` on the new helper and existing runner: **passed**.
+- Offline import and `verifyAoBatchBModelFixtures()`: **4 model cases passed**, no database/client/harness started.
+- `python3 review/g01-static-audit.py`: **could not execute**, command not found; no Python dependency was installed.
+- Scoped ESLint attempted using the already installed `D:/System/node_modules/eslint/bin/eslint.js` and original repository configuration on the two changed JavaScript files; the bounded verification attempt **timed out after 45 seconds** (`ETIMEDOUT`/`SIGTERM`). No lint PASS claimed, no new dependencies installed. An earlier unbounded attempt was interrupted and is not acceptance evidence.
+- `git diff --check`: **passed**; tracked diff reviewed and new untracked helper inspected separately. Protected paths remain unchanged.
+
+Protected-artifact verification: `git diff --exit-code HEAD -- review/sql supabase/migrations src/features/activities-opportunities/model.ts review/static-preflight.test.mjs` passed. HEAD SQL blob SHA-256 still `0daadcb0c458d5a6ce558510535397624cb64ee0b9aea4bb267ee5389f1a33f5`, matching the unchanged runner pin. The Windows checkout raw-byte hash differs solely due to automatic CRLF conversion; this was verified read-only and not repaired or repinned. The local disposable runner was not launched.
+
+No runtime suite, database query, cloud access, AO/Quest/Playwright workflow or full application build/typecheck was run. The isolated worktree has no installed dependencies; no dependency files changed. Runtime acceptance, full Batch B coverage and all three workflows on one eventual final committed HEAD remain outstanding.
+
+**Recommended next decision:** independently review QA-11-B01 and authorize its diagnostic commit/push to the existing Draft PR if desired, so it can execute only in the already approved isolated CI environment. Any business SQL repair or revised normalization contract requires separate PO approval. Then resume remaining Batch B cases under an explicitly verified baseline. Existing QA statuses, migration gate and release/merge/deployment restrictions remain unchanged.

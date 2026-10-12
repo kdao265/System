@@ -1,4 +1,4 @@
-# L1-05 acceptance / regression matrix — prepared, NOT executed on PostgreSQL
+# AO V1 acceptance / regression matrix — scoped disposable runtime evidence; release gate CLOSED
 
 Source of authority: approved AO requirements AO-AC-01..24, ADR-024 G-01..06, architecture §9, L1 task contract. **Statuses below reflect scoped evidence from disposable runtime, not deployability.** A structural assertion or a partially executed scenario is never a full functional PASS. See the dated L1-08 execution ledger below.
 
@@ -14,7 +14,7 @@ Source of authority: approved AO requirements AO-AC-01..24, ADR-024 G-01..06, ar
 | QA-08 | P0 | SQL/TS parity | PartialDate unknown/year/month/day; leap years including 0001 and 9999; impossible dates and extraneous keys reject | PARTIAL — L1-09/10 Gregorian 0001/9999/leap/unknown/month/day and invalid shape tests; T-B partial interval overlap vs certain reverse owner wire parity PASS; full mutation-field/NULL matrix pending |
 | QA-09 | P0 | G-01 | Source-clock unresolved date remains non-UTC; no invented timezone, no countdown on partial dates | PARTIAL — L1-08 unresolved source clock persists UTC-null; L1-09 Profile timezone update preserves accepted UTC; rendering/countdown behavior not end-to-end asserted |
 | QA-10 | **BLOCKER** | G-01 | Instant deadline accepts exact supported UTC source; DST gap rejects; fold requires explicit offset; IANA offset contradiction rejects; no Profile timezone rewrite | PARTIAL — L1-08/09 and T-B support real owner UTC/DST and Profile timezone non-rewrite invariance; Batch A 12 paired SQL/TS cases PASS (Node 24.21.0/ICU 78.3/tzdb 2026c, PostgreSQL 17.6). PostgreSQL container tzdb release/cross-version reproducibility remains unverified; BLOCKER stays OPEN |
-| QA-11 | P0 | G-02 | Unicode code points, Vietnamese/emoji, CRLF/LF, whitespace, URL syntax, ≤30 links; SQL/TS exact equivalence | PARTIAL — T-B distinct IDs with duplicate HTTPS URL/order retained, label length 120/121, userinfo/whitespace/control/overlong URL rejection PASS; complete field-length/Unicode boundary matrix pending |
+| QA-11 | P0 | G-02 | Unicode code points, Vietnamese/emoji, CRLF/LF, whitespace, URL syntax, ≤30 links; SQL/TS exact equivalence | PARTIAL — QA-11-B01 resource-label normalization parity VERIFIED in disposable PostgreSQL on `7ee1ff2`: four owner Create/Update paths accept/canonicalize raw Unicode boundary whitespace; 140 boundary RPC fixtures pass (40 accepted, 100 rejected with state unchanged); four replay/collision/stale/no-op integrity sequences and two strict direct SQL CHECK rejections pass. Existing T-B coverage is retained. Exhaustive per-field code-point limit−1/limit/limit+1 and remaining SQL/TS field parity cases are not signed off. |
 | QA-12 | P0 | SQL | Direct invalid state and null/overflow JSONB rejects, constraints not merely client-side | PARTIAL — residual nine + Batch A 29 more direct disposable PostgreSQL root SQL CHECK/NOT NULL/JSONB wrong-shape/overflow negatives preserve roots, history and external-domain snapshots; independent complete constraints/field coverage review remains OPEN |
 | QA-13 | P0 | Wire | Command idempotency exact replay after newer revision; conflicting command ID rejects; receipt immutable | PASS — replay after newer revision and conflicting command identity via RPC |
 | QA-14 | P0 | Wire | Accepted no-op leaves root revision/updated_at unchanged but stores a recoverable command receipt | PASS — L1-09 Opportunity and Activity accepted no-ops preserve full root including updated_at/revision/history; accepted receipt, immutable replay confirmed |
@@ -224,3 +224,43 @@ Protected-artifact verification: `git diff --exit-code HEAD -- review/sql supaba
 No runtime suite, database query, cloud access, AO/Quest/Playwright workflow or full application build/typecheck was run. The isolated worktree has no installed dependencies; no dependency files changed. Runtime acceptance, full Batch B coverage and all three workflows on one eventual final committed HEAD remain outstanding.
 
 **Recommended next decision:** independently review QA-11-B01 and authorize its diagnostic commit/push to the existing Draft PR if desired, so it can execute only in the already approved isolated CI environment. Any business SQL repair or revised normalization contract requires separate PO approval. Then resume remaining Batch B cases under an explicitly verified baseline. Existing QA statuses, migration gate and release/merge/deployment restrictions remain unchanged.
+
+## Batch B — QA-11-B01 verified repair, 2026-10-12 (disposable CI Round 2)
+
+**Scope:** This ledger supersedes only the *then-pending* QA-11-B01 claims in the historical Batch B preparation notes. It verifies one TypeScript/PostgreSQL resource-label subcase, **not** the whole Batch B, QA-11, migration packaging, 35-row QA matrix or release readiness.
+
+**Diagnosis:** On commit `fcea57c8271e94a786c33df7468ccfcc7c5f4d74`, [AO disposable run 38261531018](https://github.com/kdao265/System/actions/runs/38261531018) observed HTTP `400` / SQLSTATE `22023` / `Invalid AO resource links` for all four Opportunity/Activity Create/Update owner RPCs with raw `\u00a0Tài liệu 😀\u3000` labels, while TypeScript accepted/trimmed them. Rejected-state snapshot checks passed; the former source-level prediction was confirmed in PostgreSQL.
+
+**Verified repair source:** [commit `7ee1ff24a9533471645966082f0054c6d69322c6`](https://github.com/kdao265/System/commit/7ee1ff24a9533471645966082f0054c6d69322c6) on Draft [PR #59](https://github.com/kdao265/System/pull/59). Only guarded review-only SQL, the Batch B helper and the pinned disposable runner checksum changed. Canonical-LF SQL SHA-256: `81c8823c1b0a24b2a34ca845fc22323114fb59b7d93a64b48dda526cb6eaa899`. Checked-in abort guard remains; its removal for execution occurs **only in memory** in the approved fixture-owned loopback/tmpfs CI. No migration, Cloud DB, merge or deploy.
+
+**Same-commit CI results:**
+
+| Workflow | Run | Verified result |
+| --- | --- | --- |
+| [AO L1-06 disposable QA](https://github.com/kdao265/System/actions/runs/38278904435) | `38278904435` | PASS |
+| [Quest Creation CI](https://github.com/kdao265/System/actions/runs/38278904430) | `38278904430` | PASS |
+| [Playwright E2E](https://github.com/kdao265/System/actions/runs/38278904298) | `38278904298` | PASS — 68/68 |
+
+**Observed owner RPC evidence:** The four original QA-11-B01 Opportunity Update/Create and Activity Update/Create cases returned HTTP `200`, stored canonical `Tài liệu 😀`, and passed revision, immutable before/after history, persisted receipt and external-domain snapshot assertions.
+
+**Boundary corpus:** All 140 PostgreSQL owner RPC cases were logged and passed: 35 fixtures × 4 operations, with 40 accepted and canonically persisted, 100 rejected with expected error and unchanged subject/external snapshots. Tested Unicode trim/code-point boundaries, URL length 2047/2048 vs 2049, 30 vs 31 links, invalid labels/IDs/URLs/JSON shapes, and link identity/order. Separate 144 TypeScript model cases passed offline but are not used as substitutes for SQL evidence.
+
+**Command integrity:** Four create/update replay/collision/stale/no-op sequences passed. Raw/canonical-equivalent command IDs return immutable historical receipts after newer writes; changed canonical label/URL/UUID/order collides, fresh stale revision rejects, equivalent fresh no-op keeps revision/timestamps/history unchanged and stores a receipt. Required complete root/history/commands and Quest/Goal/EXP/Calendar/Library snapshots were asserted.
+
+**Direct SQL CHECK:** Direct noncanonical resource-label storage rejected with SQLSTATE `23514` for both `public.opportunities` and `public.activities`; tests checked the catalog-identified constraint/table/schema plus identical complete snapshots after rejection. Normalizing owner RPC inputs did not weaken the stored-data constraint.
+
+**CI and local notes:** Linux static preflight and AO domain tests passed; Quest Creation passed; Playwright 68/68 includes the Library mobile visual case previously failed. Its prior failure did not reproduce, but root cause is not established. Windows checkout CRLF-sensitive R-05 static-test issue remains a separate historical local diagnostic.
+
+**Disposition:** QA-11-B01 is **VERIFIED REPAIR / PASS for the tested subcase**, while **QA-11 remains PARTIAL**. QA-06, QA-08, QA-19, QA-20 remain PARTIAL; QA-01/09/10/12/23/32 retain their documented gaps. QA-10 PostgreSQL tzdb/cross-version blocker remains open. QA-35 remains **ENFORCED BY WORKFLOW**; no migration, PR merge, release signoff or deploy.
+
+**Next scoped Batch B work — separate authorization required:**
+
+| Row | Remaining evidence, without duplicating passed QA-11-B01 |
+| --- | --- |
+| QA-06 | G-05 N/A vs non-Unknown outcome/invalid enums, Invitation/Direct Access + Submitted, warning-only cases |
+| QA-08 | PartialDate allowed mutation fields; omitted vs JSON `null` vs Unknown; malformed/reversed dates and exact rollback |
+| QA-11 | Other text fields' Unicode code-point limit−1/limit/limit+1, SQL/TS normalization, rejected multi-field rollback |
+| QA-19 | Opportunity Close/Reopen audit before/after, annotation negatives, stale/invalid lifecycle and exact SQLSTATE |
+| QA-20 | Planned/actual field changes, terminal/Cancelled Before Start invariants, correction receipts/no-op/stale/rollback |
+
+**Stop rule:** A scoped CI PASS cannot promote all QA rows or open migration/release gates. Further SQL changes, checksum updates, code work, runtime dispatch, commit/push, merge or deployment require fresh PO approval.

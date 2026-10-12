@@ -990,6 +990,20 @@ BEGIN
      o:=o||jsonb_build_object(k,normalized); CONTINUE;
    END IF;
    IF k='resource_links' THEN
+     -- QA-11-B01: normalize labels before validation and canonical command intent.
+     -- Preserve every other member/key and array order; malformed values remain
+     -- intact for the existing strict validator/CHECKs to reject.
+     IF jsonb_typeof(v)='array' THEN
+       -- Leave oversized arrays intact for the existing validator to reject.
+       IF jsonb_array_length(v)<=30 THEN
+         SELECT COALESCE(jsonb_agg(
+           CASE WHEN jsonb_typeof(item)='object' AND jsonb_typeof(item->'label')='string'
+             THEN jsonb_set(item,'{label}',to_jsonb(system_internal.ao_trim_v1(item->>'label')),false)
+             ELSE item END ORDER BY ordinal),'[]'::jsonb)
+           INTO v
+           FROM jsonb_array_elements(v) WITH ORDINALITY AS links(item,ordinal);
+       END IF;
+     END IF;
      IF NOT system_internal.ao_resources_valid_v1(v) THEN
       RAISE EXCEPTION 'Invalid AO resource links' USING ERRCODE='22023'; END IF;
      o:=o||jsonb_build_object(k,v); CONTINUE;

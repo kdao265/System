@@ -245,3 +245,41 @@ test('R-10: QA-10 retains UTC/DST evidence and closed release gate', () => {
   assert.match(matrix,/^\s*(?:-\s*)?\*\*Release gate:\*\* CLOSED\b/m);
   assert.doesNotMatch(qa10,/present SQL deliberately rejects all instants/);
 });
+
+
+// Closed-note NULL repair: source checks only, never PostgreSQL evidence.
+function checkClosedNoteNullIntent(sql) {
+  const start = sql.indexOf(" ELSIF p_op='set_opportunity_stage_v1' THEN");
+  const end = sql.indexOf(' PERFORM progression_internal.lock_owner(v_actor);', start);
+  assert(start >= 0 && end > start, 'canonicalization exists before the owner lock');
+  const canonical = sql.slice(start, end);
+  assert.match(canonical, /v_intent:=p_req;/);
+  assert.match(canonical, /p_req->'details' \? 'closed_note'/, 'omitted note is not inserted');
+  assert.match(canonical, /IF system_internal\.ao_trim_v1\(v_stage_note\)='' THEN v_stage_note:=NULL;/);
+  assert.match(canonical,
+    /v_intent:=jsonb_set\(v_intent,'\{details,closed_note\}',COALESCE\(to_jsonb\(v_stage_note\), 'null'::jsonb\),false\);/,
+    'SQL NULL must become JSON null without erasing request/details');
+  assert.match(sql, /v_detail:=v_intent->'details';/);
+  assert.match(sql, /CHECK \(closed_reason IS DISTINCT FROM 'other' OR closed_note IS NOT NULL\)/);
+  assert.match(sql, /closed_reason=CASE WHEN v_stage='closed' THEN v_detail->>'closed_reason' ELSE NULL END/);
+}
+
+test('closed-note NULL repair preserves details, omission and the required-note CHECK', () => {
+  checkClosedNoteNullIntent(source);
+});
+
+test('closed-note NULL repair rejects the old defect and non-null fallback mutations', () => {
+  const safe = "COALESCE(to_jsonb(v_stage_note), 'null'::jsonb)";
+  assert.equal(source.split(safe).length, 2, 'exactly one real mutation site');
+  for (const replacement of ["to_jsonb(v_stage_note)", "COALESCE(to_jsonb(v_stage_note), '{}'::jsonb)"]) {
+    const mutated = source.replace(safe, replacement);
+    assert.notEqual(mutated, source, 'negative control must actually change source');
+    assert.throws(() => checkClosedNoteNullIntent(mutated), { code: 'ERR_ASSERTION' });
+  }
+});
+
+test('closed-note NULL repair fixture expectations match the TypeScript model', async () => {
+  const { verifyAoClosedNoteModelFixtures } = await import('../supabase/tests/helpers/ao-batch-b-p0.mjs');
+  assert.deepEqual(verifyAoClosedNoteModelFixtures(),
+    { cases: 7, accepted: 4, rejected: 3, evidence: 'TypeScript only; PostgreSQL NOT RUN' });
+});

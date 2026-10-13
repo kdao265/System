@@ -1131,7 +1131,7 @@ BEGIN
     v_stage_note:=replace(replace(v_stage_note,E'\r\n',E'\n'),E'\r',E'\n');
     IF system_internal.ao_trim_v1(v_stage_note)='' THEN v_stage_note:=NULL; END IF;
    END IF;
-   v_intent:=jsonb_set(v_intent,'{details,closed_note}',to_jsonb(v_stage_note),false);
+   v_intent:=jsonb_set(v_intent,'{details,closed_note}',COALESCE(to_jsonb(v_stage_note), 'null'::jsonb),false);
   END IF;
  ELSE
   v_intent:=p_req;

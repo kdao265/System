@@ -34,27 +34,42 @@ export async function capture(id,name,start){
   const img=txt(await docker(['image','inspect','--format','{{.Id}}|{{.Os}}|{{.Architecture}}',imageId])).split('|');
   assert.equal(img[0],imageId);assert.equal(img[1],'linux');assert(img[2]);
   const repoDigests=JSON.parse(txt(await docker(['image','inspect','--format','{{json .RepoDigests}}',imageId])));
-  // pg_catalog.pg_config is PostgreSQL 17's own superuser-only SQL view of build flags.
-  // It is read through the actual running server, not an unrelated pg_config executable.
+  // Server SQL needs only normal GUC/catalog access; pg_config view can be
+  // superuser-only in PostgreSQL 17. Read installation flags from its CLI first.
   const sql=`SELECT jsonb_build_object('server_version',current_setting('server_version'),
-    'timezone',current_setting('TimeZone'),'zones',(SELECT count(*) FROM pg_catalog.pg_timezone_names),
-    'system_identifier',(SELECT system_identifier::text FROM pg_catalog.pg_control_system()),
-    'build_config',(SELECT setting FROM pg_catalog.pg_config WHERE name='CONFIGURE'),
-    'build_version',(SELECT setting FROM pg_catalog.pg_config WHERE name='VERSION'),
-    'build_bindir',(SELECT setting FROM pg_catalog.pg_config WHERE name='BINDIR'))::text;`;
+    'timezone',current_setting('TimeZone'),
+    'zones',(SELECT count(*) FROM pg_catalog.pg_timezone_names))::text;`;
   let pg;
   for(let i=0;i<60;i++){
-    try { pg=JSON.parse(txt(await docker(['exec',id,'env','-i','PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      'psql','-X','-Atq','-h','/var/run/postgresql','-p','5432','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',sql]))); break; }
-    catch(e){if(i===59)throw Error('PostgreSQL metadata unavailable: '+e.message);await sleep(500);}
+    try { pg=JSON.parse(txt(await docker(['exec',id,'env','-i',
+      'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      'psql','-X','-Atq','-h','/var/run/postgresql','-p','5432',
+      '-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',sql]))); break; }
+    catch(e){if(i===59)throw Error('PostgreSQL basic metadata unavailable: '+e.message);await sleep(500);}
   }
-  assert.match(pg.server_version,/^17\.6(?:\.|$)/);assert.equal(pg.timezone,'UTC');
-  // The previous /proc/PID shell probe returned exit=1 before emitting a manifest.
-  // PostgreSQL's own pg_config view removes the brittle /proc/postmaster PID path.
-  assert.match(pg.build_version??'',/PostgreSQL 17\.6\b/);
-  const z=(pg.build_config??'').match(/--with-system-tzdata=(?:'([^']+)'|"([^"]+)"|([^\s'";]+))/);
-  assert(z,'Missing system tzdata build configuration in server pg_config view');
-  const root=z[1]??z[2]??z[3];
+  assert.match(pg.server_version,/^17\.6(?:[.\s]|$)/);assert.equal(pg.timezone,'UTC');
+  const path='PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+  async function buildFlag(option,viewName){
+    try {
+      return {value:txt(await docker(['exec',id,'env','-i',path,'pg_config',option])),
+        source:'pg_config CLI in the same identified container'};
+    } catch {
+      // pg_catalog.pg_config may be restricted to superusers. Its rejection is
+      // never treated as proof of a build value; both failures block provenance.
+      const query="SELECT setting FROM pg_catalog.pg_config WHERE name='"+viewName+"';";
+      try {
+        return {value:txt(await docker(['exec',id,'env','-i',path,'psql','-X','-Atq',
+          '-h','/var/run/postgresql','-p','5432','-U','postgres','-d','postgres',
+          '-v','ON_ERROR_STOP=1','-c',query])),
+          source:'pg_catalog.pg_config view in the same identified container'};
+      } catch(e){throw Error('Build metadata unavailable ('+viewName+'): CLI and view rejected');}
+    }
+  }
+  const configure=await stage('postgres-build-flags',()=>buildFlag('--configure','CONFIGURE'));
+  const version=await stage('postgres-build-version',()=>buildFlag('--version','VERSION'));
+  assert.match(version.value,/PostgreSQL 17\.6\b/,'Build/client version differs from live PostgreSQL 17.6');
+  const z=configure.value.match(/--with-system-tzdata=(?:'([^']+)'|"([^"]+)"|([^\s'";]+))/);
+  assert(z,'Missing system tzdata build configuration');const root=z[1]??z[2]??z[3];
   assert.match(root,/^\/[a-zA-Z0-9_.+/-]+$/);assert(!root.includes('..'));
   const tzInfo=txt(await stage('tzdata-header',()=>docker(['exec',id,'/bin/sh','-c',`set -eu
     root="$1"; test -f "$root/tzdata.zi"
@@ -65,7 +80,7 @@ export async function capture(id,name,start){
     export LC_ALL=C; cd -- "$1"
     find -L . -type f -print0 | sort -z | xargs -0 -r sha256sum`,'sh',root],90000));
   const lines=manifest.toString('utf8').split('\n');
-  assert.equal(lines.at(-1),'','Missing LF');assert.equal(lines.length-1,1807,'TZ tree differs');
+  assert.equal(lines.at(-1),'','Missing LF');assert.equal(lines.length-1,1807,'Timezone tree entries differ from reviewed baseline');
   assert(lines.slice(0,-1).every(x=>/^[a-f0-9]{64}  \.\/[a-zA-Z0-9_.+/-]+$/.test(x)),'Unexpected manifest');
   for(const zone of ['America/New_York','Europe/Berlin','Asia/Ho_Chi_Minh','Pacific/Auckland','UTC'])
     assert(lines.some(x=>x.endsWith('  ./'+zone)),'Missing zone '+zone);
@@ -76,8 +91,9 @@ export async function capture(id,name,start){
     done`,'sh',root]));
   return {runId,manifest,aliases,identity:{cid,runId,network,startedAt,imageId,imageTag,
     image:{os:img[1],arch:img[2],repoDigests},postgres:pg,
-    serverBuildSource:'pg_catalog.pg_config via same running PostgreSQL connection',
-    activeExecutable:'NOT_INSPECTED; process-path check pending separate review',
+    buildVersion:version.value,buildVersionSource:version.source,
+    buildConfigureSource:configure.source,
+    activeExecutable:'NOT_INSPECTED; server binary path linkage pending separate review',
     serverVersion:pg.server_version,tzRoot:root,tzInfo,manifestSha256:digest(manifest),
     manifestVersion:1,entries:lines.length-1,aliasesSha256:digest(aliases)}};
 }

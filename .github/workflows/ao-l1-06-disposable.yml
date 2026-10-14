@@ -18,6 +18,8 @@ on:
       - supabase/tests/helpers/ao-residual-p0-closure.mjs
       - supabase/tests/helpers/ao-batch-a-p0.mjs
       - supabase/tests/helpers/ao-batch-b-p0.mjs
+      - supabase/tests/helpers/qa10-run.mjs
+      - supabase/tests/helpers/qa10-capture.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:
@@ -87,11 +89,20 @@ jobs:
           node --test review/static-preflight.test.mjs
           python3 review/g01-static-audit.py
           node --experimental-strip-types --test tests/activities-opportunities-domain.test.mjs
-      - name: Execute pinned review-only AO SQL in disposable database memory only
+      - name: Execute pinned AO SQL and capture same-run QA-10 provenance
         shell: bash
         env:
           AO_DISPOSABLE_QA_APPROVED: 'YES'
-        run: node supabase/tests/ao-review-disposable-wire.mjs
+          AO_EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node supabase/tests/helpers/qa10-run.mjs
+      - name: Retain scoped QA-10 provenance artifact (no environment or secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ao-qa10-same-run-provenance
+          path: ${{ runner.temp }}/ao-qa10-provenance/
+          if-no-files-found: warn
+          retention-days: 7
       - name: State scope and remaining tests
         if: success()
         run: |

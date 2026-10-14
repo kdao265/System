@@ -87,6 +87,38 @@ BEGIN
       WHERE c.conname IN ('fk_opportunity_history_command','fk_activity_history_command')
         AND c.contype='f' AND c.condeferrable AND c.condeferred),
        'history=>receipt deferred FK');
+  -- QA-12 residual: structural guarantees are separate from negative DML.
+  -- Exact root CHECK/NOT NULL inventory, including implicit PK NOT NULL.
+  FOREACH t IN ARRAY ARRAY['public.opportunities','public.activities'] LOOP
+    PERFORM pg_temp.ao_require((SELECT count(*)=CASE WHEN t='public.opportunities' THEN 26 ELSE 22 END
+      FROM pg_constraint WHERE conrelid=t::regclass AND contype='c'), t||' exact root CHECK count');
+    PERFORM pg_temp.ao_require(
+      (SELECT array_agg(attname::text ORDER BY attname::text)
+       FROM pg_attribute WHERE attrelid=t::regclass AND attnum>0 AND NOT attisdropped AND attnotnull)
+      = (SELECT array_agg(field ORDER BY field) FROM unnest(
+        CASE WHEN t='public.opportunities' THEN
+          ARRAY['id','user_id','revision','created_at','updated_at','title','tracking_stage',
+                'selection_outcome','entry_mode','selection_applicability','resource_links']
+        ELSE ARRAY['id','user_id','revision','created_at','updated_at','title','status','resource_links']
+        END) AS field), t||' exact required columns');
+    -- Protected root identity/creation fields use column ACLs, NOT an immutable
+    -- root trigger. Revision/timestamps defaults are not CHECK enforcement.
+    FOR p IN SELECT unnest(ARRAY['id','user_id','created_at']) AS field LOOP
+      PERFORM pg_temp.ao_require(NOT has_column_privilege('ao_command_owner',t,p.field,'UPDATE'),
+        t||'.'||p.field||' executor cannot update identity/creation time');
+    END LOOP;
+    FOR p IN SELECT unnest(ARRAY['revision','created_at','updated_at','archived_at']) AS field LOOP
+      PERFORM pg_temp.ao_require(NOT has_column_privilege('ao_command_owner',t,p.field,'INSERT'),
+        t||'.'||p.field||' executor cannot override creation defaults');
+    END LOOP;
+    FOR p IN SELECT a.attname::text AS field FROM pg_attribute a
+      WHERE a.attrelid=t::regclass AND a.attnum>0 AND NOT a.attisdropped LOOP
+      PERFORM pg_temp.ao_require(
+        NOT has_column_privilege('authenticated',t,p.field,'INSERT')
+        AND NOT has_column_privilege('authenticated',t,p.field,'UPDATE'),
+        t||'.'||p.field||' no hidden authenticated column-write grant');
+    END LOOP;
+  END LOOP;
   RAISE NOTICE 'AO catalog pass (disposable only). Legacy OIDs/ACLs and role memberships must also be compared externally.';
 END;
 $tests$;

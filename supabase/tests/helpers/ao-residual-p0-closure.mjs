@@ -3,24 +3,18 @@
 // AO review-only business SQL, migration order, and release gates are untouched.
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
+import { expectSqlRejection, expectRpcRejection, assertCandidate, exerciseRootStorageClosure } from "./ao-residual-evidence.mjs";
 const uid=()=>randomUUID();
 const q=s=>"'"+String(s).replaceAll("'","''")+"'";
 function ok(r,label){assert.equal(r.error,null,label+": "+(r.error?.code??"")+" "+(r.error?.message??""));return r.data;}
 const rpc=(c,name,args)=>c.rpc(name,args).then(r=>ok(r,name));
-function rejected(result,label,code){assert(result.error,label+" unexpectedly succeeded");if(code)assert.equal(result.error.code,code,label);}
 async function opportunity(owner,fields={}){const id=uid();await rpc(owner,"create_opportunity_v1",{p_command_id:uid(),p_opportunity_id:id,p_fields:{title:"P0 residual Opportunity "+id,...fields}});return id;}
 async function activity(owner,fields={}){const id=uid();await rpc(owner,"create_activity_v1",{p_command_id:uid(),p_activity_id:id,p_fields:{title:"P0 residual Activity "+id,intent:"confirmed_plan",...fields}});return id;}
 async function detail(owner,kind,id){return rpc(owner,kind==="opportunity"?"get_opportunity_v1":"get_activity_v1",{[kind==="opportunity"?"p_opportunity_id":"p_activity_id"]:id});}
 const domainTables=["quests","quest_occurrences","quest_events","goals","goal_quest_links","exp_ledger","schedule_events","books"];
 async function snapshot(env){return env.sql("SELECT jsonb_build_object("+domainTables.map(t=>q(t)+",(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM public."+t+" x)").join(",")+")::text;");}
-async function expectDbReject(env,dml,sqlstate){
-  assert.match(sqlstate,/^[0-9A-Z]{5}$/);
-  // Only catch the *specific* expected error; a different SQLSTATE or an
-  // unexpectedly successful DML causes this disposable test to fail.
-  const plsql="DO $check$ BEGIN BEGIN "+dml+
-    "; RAISE EXCEPTION 'EXPECTED PG CONSTRAINT REJECTION DID NOT OCCUR' USING ERRCODE='P9999';"+
-    " EXCEPTION WHEN SQLSTATE "+q(sqlstate)+" THEN NULL; END; END $check$;";
-  await env.sql(plsql);
+async function expectDbReject(env,dml,sqlstate,subjects,label){
+  await expectSqlRejection(env,dml,sqlstate,subjects,label);
 }
 async function catalogPrivileges(env){
   // Enumerate every non-AO ordinary/partitioned table in the public schema,
@@ -57,7 +51,7 @@ async function rootConstraints(env,owner){
     ["bigint revision overflow","UPDATE public.activities SET revision=9223372036854775807::bigint+1 WHERE id="+q(a),"22003"]
   ];
   for(const [label,dml,expected] of bad){
-    await expectDbReject(env,dml,expected);
+    await expectDbReject(env,dml,expected,[{kind:"opportunity",id:o},{kind:"activity",id:a}],label);
     assert.equal(await env.sql("SELECT to_jsonb(o)::text FROM public.opportunities o WHERE id="+q(o)),rowBefore,label+" changed Opportunity root");
     assert.equal(await env.sql("SELECT to_jsonb(a)::text FROM public.activities a WHERE id="+q(a)),actBefore,label+" changed Activity root");
   }
@@ -119,24 +113,49 @@ async function archivedEligibility(env,owner,other){
   await rpc(owner,"set_goal_archived_v1",{p_command_id:uid(),p_goal_id:goal,p_expected_revision:"1",p_archived:true});
   const o=await opportunity(owner);
   const base={p_source_kind:"opportunity",p_source_id:o,p_target_kind:"goal",p_expected_revision:"1"};
-  rejected(await owner.rpc("attach_ao_context_v1",{...base,p_command_id:uid(),p_target_id:goal}),"archived Goal attach","23514");
-  rejected(await owner.rpc("attach_ao_context_v1",{...base,p_command_id:uid(),p_target_id:uid()}),"missing Goal attach","23514");
-  rejected(await other.rpc("attach_ao_context_v1",{...base,p_command_id:uid(),p_target_id:goal}),"nonowner Goal attach");
+  const subjects=[{kind:"opportunity",id:o}];
+  for(const [label,target] of [["archived Goal",goal],["missing Goal",uid()]]) {
+    await expectRpcRejection(env,owner,"attach_ao_context_v1",
+      {...base,p_command_id:uid(),p_target_id:target},subjects,"23514",label,
+      "AO contextual target not eligible");
+  }
+  await expectRpcRejection(env,other,"attach_ao_context_v1",
+    {...base,p_command_id:uid(),p_target_id:goal},subjects,"42501","nonowner Goal attach");
+
+  // T23-08: reuse the already archived Goal, not another target fixture.
+  for(const kind of ["opportunity","activity"]) {
+    const source=kind==="opportunity"?o:await activity(owner);
+    await assertCandidate(env,owner,kind,source,"goal",goal,"P0 residual Archived Goal",false);
+  }
   const a=await activity(owner);
   await rpc(owner,"set_activity_archived_v1",{p_command_id:uid(),p_activity_id:a,p_expected_revision:"1",p_archived:true});
   const quest=(await rpc(owner,"create_one_off_quest",{command_id:uid(),origin:"web_ui",
     request:{title:"P0 residual Eligible",scheduled_at:"2032-02-12T10:30:00Z",default_reward_exp:0}})).quest_id;
-  rejected(await owner.rpc("attach_ao_context_v1",{p_command_id:uid(),p_source_kind:"activity",p_source_id:a,
-    p_expected_revision:"2",p_target_kind:"quest",p_target_id:quest}),"archived AO cannot edit contexts");
+  await expectRpcRejection(env,owner,"attach_ao_context_v1",{p_command_id:uid(),p_source_kind:"activity",p_source_id:a,
+    p_expected_revision:"2",p_target_kind:"quest",p_target_id:quest},
+    [{kind:"activity",id:a}],"23514","archived AO cannot edit contexts","AO subject archived");
+
   const root=await detail(owner,"opportunity",o);
   assert.equal(root.contexts.length,0);
   assert.equal(String(root.root.revision),"1");
-  console.log("PASS: Residual P0 QA-23 archived/missing Goal, nonowner and archived AO source denial");
+  // Search has separate source eligibility branches. Setup before snapshot.
+  await rpc(owner,"set_opportunity_archived_v1",{p_command_id:uid(),p_opportunity_id:o,p_expected_revision:"1",p_archived:true});
+  for(const [kind,source] of [["opportunity",o],["activity",a]]) {
+    for(const targetKind of ["goal","quest"]) {
+      await expectRpcRejection(env,owner,"search_ao_link_candidates_v1",{
+        p_source_kind:kind,p_source_id:source,p_target_kind:targetKind,
+        p_query:"Residual",p_after_id:null,p_limit:50,
+      },[{kind,id:source}],"P0002","T23-08 archived candidate source",
+      "AO candidate source unavailable");
+    }
+  }
+  console.log("PASS: Residual P0 QA-23 existing Goal/owner/source negatives with full snapshots; T23-08 archived search");
 }
 export async function exerciseAoResidualP0(env,owner,outsider){
   assert.match(env.url,/^http:\/\/127\.0\.0\.1:\d+$/);
   await catalogPrivileges(env);
   await rootConstraints(env,owner);
+  await exerciseRootStorageClosure(env,owner);
   await contextIntervals(env,owner);
   await archivedEligibility(env,owner,outsider);
   console.log("PASS: Residual P0 bounded SQL/relationship/ACL suite; QA-01 migration and QA-09 UI remain gated");

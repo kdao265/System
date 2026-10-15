@@ -90,20 +90,33 @@ export async function capture(id,name,start){
   assert.equal(pidDataDirectory,pg.data_directory,'PID file differs from live server data_directory');
   assert.match(epochText,/^[1-9][0-9]*$/);
   assert.equal(Number(epochText),pg.postmaster_start_epoch,'Live SQL server and postmaster start time differ');
-  const activePath=txt(await stage('postgres-active-executable',()=>docker([
-    'exec',id,'/bin/sh','-c',
-    'set -eu; test "$(cat "/proc/$1/comm")" = postgres; readlink -f "/proc/$1/exe"',
-    'sh',postmasterPid])));
+  // postmaster.pid + server-reported start epoch identify the live master.
+  // /proc/PID/comm is not an identity proof: PostgreSQL may rename processes.
+  // Read /proc/PID/exe directly, with a same-UID retry if procfs access is denied.
+  // Both paths fail closed; neither substitutes a guessed installation binary.
+  async function ownedProcRead(command,args,label){
+    const target=['exec',id,command,...args];
+    try {return {bytes:await stage(label,()=>docker(target)),reader:'container-default'};}
+    catch {
+      return {bytes:await stage(label+'-postgres-user',()=>docker([
+        'exec','--user','postgres',id,command,...args])),reader:'postgres-user'};
+    }
+  }
+  const procExe='/proc/'+postmasterPid+'/exe';
+  const active=await ownedProcRead('readlink',['-f',procExe],'postgres-active-executable');
+  const activePath=txt(active.bytes);
   const installedPath=txt(await stage('postgres-installed-executable',()=>docker([
     'exec',id,'readlink','-f',bindir.value+'/postgres'])));
   assert.match(activePath,/^\/[a-zA-Z0-9_.+/-]+$/);
   assert.equal(activePath,installedPath,'Active postmaster binary differs from pg_config installation');
-  const hashBinary=async(p,label)=>{
-    const output=txt(await stage(label,()=>docker(['exec',id,'sha256sum',p])));
+  const hashBinary=async(p,label,proc=false)=>{
+    const output=txt(proc?
+      (await ownedProcRead('sha256sum',[p],label)).bytes:
+      await stage(label,()=>docker(['exec',id,'sha256sum',p])));
     assert.match(output,/^[a-f0-9]{64}  \/[/a-zA-Z0-9_.+-]+$/);
     return output.slice(0,64);
   };
-  const liveBinaryHash=await hashBinary('/proc/'+postmasterPid+'/exe','postgres-active-executable-sha256');
+  const liveBinaryHash=await hashBinary(procExe,'postgres-active-executable-sha256',true);
   const installedBinaryHash=await hashBinary(bindir.value+'/postgres','postgres-installed-executable-sha256');
   assert.equal(liveBinaryHash,installedBinaryHash,'Live PostgreSQL binary SHA-256 mismatch');
   assert.deepEqual((await readPidfile()).toString('utf8').trim().split('\n'),
@@ -135,7 +148,7 @@ export async function capture(id,name,start){
     buildVersion:version.value,buildVersionSource:version.source,
     buildConfigureSource:configure.source,
     activeExecutable:{postmasterPid:Number(postmasterPid),startEpoch:pg.postmaster_start_epoch,
-      path:activePath,sha256:liveBinaryHash,installedPath,
+      path:activePath,sha256:liveBinaryHash,installedPath,reader:active.reader,
       installedSha256:installedBinaryHash,matchedPgConfigInstallation:true,
       identityMethod:'live SQL start time + postmaster.pid + /proc/PID/exe + SHA-256'},
     buildBindir:bindir.value,buildBindirSource:bindir.source,

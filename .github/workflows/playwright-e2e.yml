@@ -26,11 +26,34 @@ jobs:
         run: npm ci
       - name: Install Chromium and system libraries
         run: npx --no-install playwright install --with-deps chromium
-      - name: Cache required disposable service images
+      - name: Pull required disposable service images (bounded retry)
+        shell: bash
         run: |
-          docker pull public.ecr.aws/supabase/postgres:17.6.1.166
-          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
-          docker pull public.ecr.aws/supabase/postgrest:v16.2
+          set -euo pipefail
+          images=(
+            public.ecr.aws/supabase/postgres:17.6.1.166
+            public.ecr.aws/supabase/gotrue:v2.197.0
+            public.ecr.aws/supabase/postgrest:v16.2
+          )
+          for image in "${images[@]}"; do
+            pulled=false
+            for attempt in 1 2 3 4; do
+              if docker pull "$image"; then
+                docker image inspect "$image" >/dev/null
+                pulled=true
+                break
+              fi
+              if [ "$attempt" -lt 4 ]; then
+                delay=$((20 * attempt))
+                echo "::warning::Registry pull failed for ${image}; retrying in ${delay}s (${attempt}/4)"
+                sleep "$delay"
+              fi
+            done
+            if [ "$pulled" != true ]; then
+              echo "::error::Required disposable image ${image} unavailable after 4 attempts"
+              exit 1
+            fi
+          done
       - name: Lint
         run: npm run lint
       - name: Typecheck

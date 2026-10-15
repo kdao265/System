@@ -20,6 +20,8 @@ on:
       - supabase/tests/helpers/ao-batch-b-p0.mjs
       - supabase/tests/helpers/qa10-run.mjs
       - supabase/tests/helpers/qa10-capture.mjs
+      - supabase/tests/helpers/qa10-capture.test.mjs
+      - supabase/tests/helpers/qa10-disposable.test.mjs
       - supabase/tests/ao-review-disposable-wire.mjs
 
 permissions:
@@ -89,6 +91,18 @@ jobs:
           node --test review/static-preflight.test.mjs
           python3 review/g01-static-audit.py
           node --experimental-strip-types --test tests/activities-opportunities-domain.test.mjs
+      - name: QA-10 observer unit tests (offline, no Docker)
+        shell: bash
+        run: node --test supabase/tests/helpers/qa10-capture.test.mjs
+      - name: QA-10 disposable observer integration (owned fixture only)
+        shell: bash
+        env:
+          AO_DISPOSABLE_QA_APPROVED: 'YES'
+        run: |
+          set -euo pipefail
+          # Fail closed if any external database endpoint were ever injected.
+          test -z "${SUPABASE_DB_URL:-}${DATABASE_URL:-}${SUPABASE_URL:-}${NEXT_PUBLIC_SUPABASE_URL:-}"
+          node --test supabase/tests/helpers/qa10-disposable.test.mjs
       - name: Execute pinned AO SQL and capture same-run QA-10 provenance
         shell: bash
         env:

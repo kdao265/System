@@ -4,13 +4,14 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { dbs,capture,docker,digest,host } from './qa10-capture.mjs';
+import { dbs,capture,docker,digest,host,serverMetadata,liveIdentity,assertStable } from './qa10-capture.mjs';
 const E=process.env;
 const paths=['review/sql/REVIEW_ONLY_create_activities_opportunities_v1.sql',
   'tests/helpers/auth-environment.mjs','supabase/tests/ao-review-disposable-wire.mjs',
   'supabase/tests/helpers/ao-batch-a-p0.mjs','supabase/tests/helpers/ao-residual-evidence.mjs',
   'supabase/tests/helpers/ao-residual-p0-closure.mjs','supabase/tests/ao-catalog.sql',
-  'src/features/activities-opportunities/model.ts','package-lock.json'];
+  'src/features/activities-opportunities/model.ts','package-lock.json',
+  'supabase/tests/helpers/qa10-capture.mjs','supabase/tests/helpers/qa10-run.mjs'];
 const hashes=()=>Object.fromEntries(paths.map(p=>[p,digest(readFileSync(p))]));
 async function main(){
   assert.equal(process.platform,'linux');assert.equal(E.CI,'true');
@@ -26,34 +27,67 @@ async function main(){
   assert(resolve(out).startsWith(resolve(E.RUNNER_TEMP)+'/'));mkdirSync(out);
   const before=hashes(),baseline=new Set((await dbs()).map(x=>x[0]));
   const startedAt=new Date().toISOString();
-  const record={schema:'system.ao.qa10.same-run.v1',startedAt,status:'PENDING',
+  const record={schema:'system.ao.qa10.same-run.v2',startedAt,status:'PENDING',
     github:{head:E.AO_EXPECTED_PR_HEAD,merge:E.GITHUB_SHA,run:E.GITHUB_RUN_ID,attempt:E.GITHUB_RUN_ATTEMPT},
     node:{version:process.versions.node,icu:process.versions.icu,tzdb:process.versions.tz},sources:before,
-    limitation:'Finite zone corpus only; retained-data cross-upgrade rehearsal is NOT verified.'};
+    limitation:'Finite zone corpus only; retained-data cross-upgrade rehearsal is NOT verified. Continuity is sampled until fixture removal, not continuous tracing or post-cleanup attestation.'};
   const child=spawn(process.execPath,['supabase/tests/ao-review-disposable-wire.mjs'],{
     env:{...E,SYSTEM_E2E_PRESERVE:'0'},stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',s=>process.stdout.write(s));child.stderr.on('data',s=>process.stderr.write(s));
   const done=new Promise(resolve=>{child.once('error',()=>resolve(127));
     child.once('exit',(code,sig)=>resolve(code??(sig?128:127)));});
-  let finished=false,proof=null,observerError=null;
+  let finished=false,proof=null,observerError=null,observedRunId=null;
+  const diagnostic=identity=>{
+    record.partialIdentity=structuredClone(identity);observedRunId=identity.runId;
+    writeFileSync(join(out,'capture-progress.json'),JSON.stringify(record.partialIdentity,null,2)+'\n');
+  };
   const watch=(async()=>{
     for(let i=0;i<360&&!finished;i++){
       const next=(await dbs()).filter(x=>!baseline.has(x[0]));
       assert(next.length<=1,'Ambiguous test container');
-      if(next.length){proof=await capture(...next[0],startedAt);
+      if(next.length){
+        // Match the existing fixture's final-start readiness marker; an initial
+        // successful SQL connection can belong to the entrypoint's temporary DB.
+        if(!(await docker(['logs',next[0][0]])).toString('utf8').includes('ready for start up')) {
+          await sleep(500);continue;
+        }
+        proof=await capture(...next[0],startedAt,{diagnostic});
         writeFileSync(join(out,'timezone-manifest-v1.sha256'),proof.manifest,{flag:'wx'});
         writeFileSync(join(out,'timezone-aliases.tsv'),proof.aliases,{flag:'wx'});
-        console.log('QA-10 same-run manifest SHA-256: '+proof.identity.manifestSha256);return;}
+        console.log('QA-10 same-run manifest SHA-256: '+proof.identity.manifestSha256);
+        record.continuity={samples:0,removed:false};
+        while(!finished) {
+          if(!(await dbs()).some(([id])=>id===next[0][0])) {record.continuity.removed=true;return;}
+          try {
+            const pg=await serverMetadata(next[0][0]);
+            assert.deepEqual(pg.build,proof.identity.build,'Server build changed after capture');
+            assertStable(proof.identity.activeExecutable,await liveIdentity(next[0][0],pg));
+            record.continuity.samples++;
+            record.continuity.lastVerifiedAt=new Date().toISOString();
+          } catch(error) {
+            // Cleanup may remove the fixture between our read operations. Only
+            // confirmed absence is cleanup; a still-present unreadable DB fails.
+            // Contradictory evidence is never downgraded to cleanup, even when
+            // removal happens immediately after an assertion failed.
+            if(error.code!=='QA10_PROBE_UNAVAILABLE' ||
+              (await dbs()).some(([id])=>id===next[0][0])) throw error;
+            record.continuity.removed=true;return;
+          }
+          await sleep(500);
+        }
+        return;
+      }
       await sleep(500);
     }
     throw Error('No new owned DB observed');
   })().catch(e=>{observerError=e.message;console.error('QA-10 OBSERVER: '+e.message)});
   record.runtimeExit=await done;finished=true;await watch;
-  if(proof){record.postgres=proof.identity;
+  if(proof)record.postgres=proof.identity;
+  if(observedRunId){
     const containers=(await docker(['ps','-a','--no-trunc','--filter',
-      'label=system.run='+proof.runId,'--format','{{.ID}}'])).toString('utf8').trim();
+      'label=system.run='+observedRunId,'--format','{{.ID}}'])).toString('utf8').trim();
     const networks=(await docker(['network','ls','--filter',
-      'label=system.run='+proof.runId,'--format','{{.ID}}'])).toString('utf8').trim();
+      'label=system.run='+observedRunId,'--format','{{.ID}}'])).toString('utf8').trim();
     record.cleanup=!containers&&!networks?'PASS':'PENDING';
   }else record.cleanup='UNVERIFIED';
   record.observerError=observerError;

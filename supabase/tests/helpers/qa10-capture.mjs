@@ -108,7 +108,8 @@ export async function capture(id,name,start){
   const installedPath=txt(await stage('postgres-installed-executable',()=>docker([
     'exec',id,'readlink','-f',bindir.value+'/postgres'])));
   assert.match(activePath,/^\/[a-zA-Z0-9_.+/-]+$/);
-  assert.equal(activePath,installedPath,'Active postmaster binary differs from pg_config installation');
+  // Paths may legitimately differ (e.g. separate hard links or copied binaries).
+  // Byte identity, not an assumed pathname, must bind pg_config to the live server.
   const hashBinary=async(p,label,proc=false)=>{
     const output=txt(proc?
       (await ownedProcRead('sha256sum',[p],label)).bytes:
@@ -118,7 +119,8 @@ export async function capture(id,name,start){
   };
   const liveBinaryHash=await hashBinary(procExe,'postgres-active-executable-sha256',true);
   const installedBinaryHash=await hashBinary(bindir.value+'/postgres','postgres-installed-executable-sha256');
-  assert.equal(liveBinaryHash,installedBinaryHash,'Live PostgreSQL binary SHA-256 mismatch');
+  assert.equal(liveBinaryHash,installedBinaryHash,
+    'Live PostgreSQL executable SHA-256 differs from pg_config installation');
   assert.deepEqual((await readPidfile()).toString('utf8').trim().split('\n'),
     pidfile,'Postmaster restarted during evidence capture');
 
@@ -149,7 +151,8 @@ export async function capture(id,name,start){
     buildConfigureSource:configure.source,
     activeExecutable:{postmasterPid:Number(postmasterPid),startEpoch:pg.postmaster_start_epoch,
       path:activePath,sha256:liveBinaryHash,installedPath,reader:active.reader,
-      installedSha256:installedBinaryHash,matchedPgConfigInstallation:true,
+      installedSha256:installedBinaryHash,sameExecutablePath:activePath===installedPath,
+      matchedPgConfigInstallationBySha256:true,
       identityMethod:'live SQL start time + postmaster.pid + /proc/PID/exe + SHA-256'},
     buildBindir:bindir.value,buildBindirSource:bindir.source,
     serverVersion:pg.server_version,tzRoot:root,tzInfo,manifestSha256:digest(manifest),

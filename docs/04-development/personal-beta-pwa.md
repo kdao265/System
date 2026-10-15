@@ -194,6 +194,51 @@ the icons and worker exist there; the copy allowlist in
 Run against the Product Owner's authorized deployment, on a real phone, after the PR is
 merged. Every step is a manual confirmation; none of it can be done from the repository.
 
+### Mandatory gate before real personal-life data
+
+The PO decision in [Issue #60](https://github.com/kdao265/System/issues/60) requires
+verified backup and restore readiness before personal-use go-live. Follow the
+[Backup & Restore operations plan](backup-restore-operations.md) for coverage, runbooks,
+evidence and incident handling. **Documentation Prepared is not Backup Operationally
+Verified**; the historical backup checksum and PWA test results do not satisfy this gate.
+These checks remain open until separately authorized operational work supplies evidence:
+
+- [ ] PO approves coverage, RPO/RTO, cadence, retention, independent private storage,
+      encryption/key custody, operator and budget.
+- [ ] Ongoing backups and failure/missed-run alerts are configured and verified,
+      including Auth-relevant data, migrations, Storage metadata and actual object bytes
+      (or a verified empty Storage inventory), plus external recovery dependencies.
+- [ ] Unattended consistency is proven independently of a manual controlled backup:
+      DB/Auth share a verified snapshot, external writers are accounted for, and Storage
+      bytes match that recovery point. Closing browser tabs is not a verified write-freeze;
+      missing consistency controls remain operational blockers.
+- [ ] Each retained Storage point has independently preserved and verified bytes,
+      including after overwrite/delete; source object version history is not assumed.
+- [ ] PO selects a proven Auth recovery route: compatible manual logical restore or
+      managed Restore to a new project with verified paid-plan/physical-backup eligibility,
+      side-effect containment and approved cost. Managed availability for SYSTEM is unknown.
+- [ ] At least one complete backup passes integrity/completeness and external retrieval
+      checks; a recorded restore drill succeeds in a separate disposable environment,
+      including Auth, owner access/RLS, application checks and Storage recovery.
+- [ ] Periodic verification and incident response are owned; the documentation-only PR
+      is separately reviewed and PO accepts operational readiness before real data use.
+- [ ] Every subsequent Production schema migration requires a fresh verified pre-migration
+      backup, scoped reviewed deployment/recovery plan and explicit PO approval under the
+      [pre-migration gate](backup-restore-operations.md#6-mandatory-pre-migration-gate-after-personal-use-go-live).
+
+Full restore of the exact fresh backup before **every** migration is a proposed enhanced
+gate awaiting a separate PO decision, not a requirement stated by Issue #60. The mandatory
+pre-go-live restore drill and minimum pre-migration requirements above remain unchanged.
+RPO/RTO, the 12-hour schedule, retention, provider and budget remain proposals pending PO
+approval; conditional documentation approval does not approve these operating choices.
+
+No restore may overwrite Production. The Issue #60 test-stage exception for the single
+Library migration `20261007120000_create_books_v1.sql` does not waive this go-live gate
+or authorize other migrations. Phone checks below require their own deployment/test
+authorization; use approved synthetic test content until the real-data gate is satisfied.
+
+### Device and installation checks
+
 - [ ] HTTPS loads, the app is in a secure context, and the console shows no
       mixed-content or certificate warning.
 - [ ] `/manifest.webmanifest` returns 200 with `application/manifest+json`, and the

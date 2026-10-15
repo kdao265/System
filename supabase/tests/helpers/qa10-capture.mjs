@@ -38,6 +38,8 @@ export async function capture(id,name,start){
   // superuser-only in PostgreSQL 17. Read installation flags from its CLI first.
   const sql=`SELECT jsonb_build_object('server_version',current_setting('server_version'),
     'timezone',current_setting('TimeZone'),
+    'data_directory',current_setting('data_directory'),
+    'postmaster_start_epoch',floor(extract(epoch from pg_postmaster_start_time()))::bigint,
     'zones',(SELECT count(*) FROM pg_catalog.pg_timezone_names))::text;`;
   let pg;
   for(let i=0;i<60;i++){
@@ -48,6 +50,9 @@ export async function capture(id,name,start){
     catch(e){if(i===59)throw Error('PostgreSQL basic metadata unavailable: '+e.message);await sleep(500);}
   }
   assert.match(pg.server_version,/^17\.6(?:[.\s]|$)/);assert.equal(pg.timezone,'UTC');
+  assert.match(pg.data_directory,/^\/[a-zA-Z0-9_.+/-]+$/);
+  assert(!pg.data_directory.includes('..'),'Unsafe PostgreSQL data directory');
+  assert(Number.isSafeInteger(pg.postmaster_start_epoch)&&pg.postmaster_start_epoch>0);
   const path='PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
   async function buildFlag(option,viewName){
     try {
@@ -68,6 +73,42 @@ export async function capture(id,name,start){
   const configure=await stage('postgres-build-flags',()=>buildFlag('--configure','CONFIGURE'));
   const version=await stage('postgres-build-version',()=>buildFlag('--version','VERSION'));
   assert.match(version.value,/PostgreSQL 17\.6\b/,'Build/client version differs from live PostgreSQL 17.6');
+  const bindir=await stage('postgres-build-bindir',()=>buildFlag('--bindir','BINDIR'));
+  assert.match(bindir.value,/^\/[a-zA-Z0-9_.+/-]+$/);
+  assert(!bindir.value.includes('..'),'Unsafe PostgreSQL installation path');
+
+  // Link the postmaster that answered our SQL preflight to the actual binary.
+  // That same installation's pg_config is the source of --with-system-tzdata.
+  // A container tag or matching version string is not sufficient provenance.
+  const readPidfile=()=>stage('postgres-postmaster-pidfile',()=>docker([
+    'exec',id,'/bin/sh','-c','set -eu; sed -n "1,3p" "$1/postmaster.pid"',
+    'sh',pg.data_directory]));
+  const pidfile=(await readPidfile()).toString('utf8').trim().split('\n');
+  assert.equal(pidfile.length,3,'Incomplete postmaster identity');
+  const [postmasterPid,pidDataDirectory,epochText]=pidfile;
+  assert.match(postmasterPid,/^[1-9][0-9]*$/);
+  assert.equal(pidDataDirectory,pg.data_directory,'PID file differs from live server data_directory');
+  assert.match(epochText,/^[1-9][0-9]*$/);
+  assert.equal(Number(epochText),pg.postmaster_start_epoch,'Live SQL server and postmaster start time differ');
+  const activePath=txt(await stage('postgres-active-executable',()=>docker([
+    'exec',id,'/bin/sh','-c',
+    'set -eu; test "$(cat "/proc/$1/comm")" = postgres; readlink -f "/proc/$1/exe"',
+    'sh',postmasterPid])));
+  const installedPath=txt(await stage('postgres-installed-executable',()=>docker([
+    'exec',id,'readlink','-f',bindir.value+'/postgres'])));
+  assert.match(activePath,/^\/[a-zA-Z0-9_.+/-]+$/);
+  assert.equal(activePath,installedPath,'Active postmaster binary differs from pg_config installation');
+  const hashBinary=async(p,label)=>{
+    const output=txt(await stage(label,()=>docker(['exec',id,'sha256sum',p])));
+    assert.match(output,/^[a-f0-9]{64}  \/[/a-zA-Z0-9_.+-]+$/);
+    return output.slice(0,64);
+  };
+  const liveBinaryHash=await hashBinary('/proc/'+postmasterPid+'/exe','postgres-active-executable-sha256');
+  const installedBinaryHash=await hashBinary(bindir.value+'/postgres','postgres-installed-executable-sha256');
+  assert.equal(liveBinaryHash,installedBinaryHash,'Live PostgreSQL binary SHA-256 mismatch');
+  assert.deepEqual((await readPidfile()).toString('utf8').trim().split('\n'),
+    pidfile,'Postmaster restarted during evidence capture');
+
   const z=configure.value.match(/--with-system-tzdata=(?:'([^']+)'|"([^"]+)"|([^\s'";]+))/);
   assert(z,'Missing system tzdata build configuration');const root=z[1]??z[2]??z[3];
   assert.match(root,/^\/[a-zA-Z0-9_.+/-]+$/);assert(!root.includes('..'));
@@ -93,7 +134,11 @@ export async function capture(id,name,start){
     image:{os:img[1],arch:img[2],repoDigests},postgres:pg,
     buildVersion:version.value,buildVersionSource:version.source,
     buildConfigureSource:configure.source,
-    activeExecutable:'NOT_INSPECTED; server binary path linkage pending separate review',
+    activeExecutable:{postmasterPid:Number(postmasterPid),startEpoch:pg.postmaster_start_epoch,
+      path:activePath,sha256:liveBinaryHash,installedPath,
+      installedSha256:installedBinaryHash,matchedPgConfigInstallation:true,
+      identityMethod:'live SQL start time + postmaster.pid + /proc/PID/exe + SHA-256'},
+    buildBindir:bindir.value,buildBindirSource:bindir.source,
     serverVersion:pg.server_version,tzRoot:root,tzInfo,manifestSha256:digest(manifest),
     manifestVersion:1,entries:lines.length-1,aliasesSha256:digest(aliases)}};
 }

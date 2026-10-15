@@ -62,7 +62,7 @@ export async function capture(id,name,start){
           '-h','/var/run/postgresql','-p','5432','-U','postgres','-d','postgres',
           '-v','ON_ERROR_STOP=1','-c',query])),
           source:'pg_catalog.pg_config view in the same identified container'};
-      } catch(e){throw Error('Build metadata unavailable ('+viewName+'): CLI and view rejected');}
+      } catch {throw Error('Build metadata unavailable ('+viewName+'): CLI and view rejected');}
     }
   }
   const configure=await stage('postgres-build-flags',()=>buildFlag('--configure','CONFIGURE'));

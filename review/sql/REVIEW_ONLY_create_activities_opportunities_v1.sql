@@ -990,6 +990,20 @@ BEGIN
      o:=o||jsonb_build_object(k,normalized); CONTINUE;
    END IF;
    IF k='resource_links' THEN
+     -- QA-11-B01: normalize labels before validation and canonical command intent.
+     -- Preserve every other member/key and array order; malformed values remain
+     -- intact for the existing strict validator/CHECKs to reject.
+     IF jsonb_typeof(v)='array' THEN
+       -- Leave oversized arrays intact for the existing validator to reject.
+       IF jsonb_array_length(v)<=30 THEN
+         SELECT COALESCE(jsonb_agg(
+           CASE WHEN jsonb_typeof(item)='object' AND jsonb_typeof(item->'label')='string'
+             THEN jsonb_set(item,'{label}',to_jsonb(system_internal.ao_trim_v1(item->>'label')),false)
+             ELSE item END ORDER BY ordinal),'[]'::jsonb)
+           INTO v
+           FROM jsonb_array_elements(v) WITH ORDINALITY AS links(item,ordinal);
+       END IF;
+     END IF;
      IF NOT system_internal.ao_resources_valid_v1(v) THEN
       RAISE EXCEPTION 'Invalid AO resource links' USING ERRCODE='22023'; END IF;
      o:=o||jsonb_build_object(k,v); CONTINUE;
@@ -1006,7 +1020,7 @@ BEGIN
    normalized:=v #>> '{}';
    IF k=ANY(ARRAY['category','priority','closed_reason']) AND normalized IS NULL THEN
      o:=o||jsonb_build_object(k,NULL); CONTINUE; END IF;
-   IF NOT CASE k
+   IF NOT (CASE k
      WHEN 'category' THEN CASE WHEN p_kind='opportunity' THEN normalized=ANY(ARRAY['scholarship','internship','fellowship','competition','research','training','program','event','other'])
        ELSE normalized=ANY(ARRAY['research','project','club','volunteer','training','competition','internship','event','other']) END
      WHEN 'priority' THEN normalized=ANY(ARRAY['low','medium','high'])
@@ -1015,7 +1029,7 @@ BEGIN
      WHEN 'selection_outcome' THEN normalized=ANY(ARRAY['unknown','pending','shortlisted','waitlisted','accepted','rejected'])
      WHEN 'entry_mode' THEN normalized=ANY(ARRAY['unknown','application','registration','invitation','direct_access','other'])
      WHEN 'selection_applicability' THEN normalized=ANY(ARRAY['unknown','applicable','not_applicable'])
-     ELSE false END THEN RAISE EXCEPTION 'Invalid AO enum value' USING ERRCODE='22023'; END IF;
+     ELSE false END) THEN RAISE EXCEPTION 'Invalid AO enum value' USING ERRCODE='22023'; END IF;
    o:=o||jsonb_build_object(k,normalized);
  END LOOP;
  IF p_create AND o->>'title' IS NULL THEN
@@ -1117,7 +1131,7 @@ BEGIN
     v_stage_note:=replace(replace(v_stage_note,E'\r\n',E'\n'),E'\r',E'\n');
     IF system_internal.ao_trim_v1(v_stage_note)='' THEN v_stage_note:=NULL; END IF;
    END IF;
-   v_intent:=jsonb_set(v_intent,'{details,closed_note}',to_jsonb(v_stage_note),false);
+   v_intent:=jsonb_set(v_intent,'{details,closed_note}',COALESCE(to_jsonb(v_stage_note), 'null'::jsonb),false);
   END IF;
  ELSE
   v_intent:=p_req;
@@ -1294,7 +1308,7 @@ BEGIN
    IF (SELECT count(*) FROM jsonb_object_keys(p_req))<>2 OR
       NOT(p_req ?& ARRAY['action','details']) OR jsonb_typeof(p_req->'details')<>'object' OR
       p_req->'details'<>'{}'::jsonb THEN RAISE EXCEPTION 'Invalid activity transition details' USING ERRCODE='22023'; END IF;
-   v_status:=CASE v_activity.status ||':'|| p_req->>'action'
+   v_status:=CASE v_activity.status ||':'|| (p_req->>'action')
       WHEN 'upcoming:start' THEN 'ongoing' WHEN 'upcoming:cancel_before_start' THEN 'cancelled_before_start'
       WHEN 'ongoing:pause' THEN 'paused' WHEN 'paused:resume' THEN 'ongoing'
       WHEN 'ongoing:complete' THEN 'completed' WHEN 'paused:complete' THEN 'completed'
@@ -1649,7 +1663,7 @@ BEGIN
     AND (filters->>'tracking_stage' IS NULL OR o.tracking_stage=filters->>'tracking_stage')
     AND (filters->>'selection_outcome' IS NULL OR o.selection_outcome=filters->>'selection_outcome')
     AND (filters->>'deadline_known' IS NULL OR COALESCE(o.application_deadline->>'precision' NOT IN ('unknown'),false)=(filters->>'deadline_known')::boolean)
-    AND (filters->>'search' IS NULL OR o.title ILIKE '%'||filters->>'search'||'%' OR o.organization ILIKE '%'||filters->>'search'||'%')
+    AND (filters->>'search' IS NULL OR o.title ILIKE '%' || (filters->>'search') || '%' OR o.organization ILIKE '%' || (filters->>'search') || '%')
     AND (p_cursor IS NULL OR (o.created_at,o.id)<((p_cursor->>'created_at')::timestamptz,(p_cursor->>'id')::uuid))
    ORDER BY o.created_at DESC,o.id DESC LIMIT p_limit+1 LOOP
     IF emitted=p_limit THEN v_has_extra:=true; EXIT; END IF;
@@ -1674,7 +1688,7 @@ BEGIN
        SELECT 1 FROM public.activity_source_links sl WHERE sl.activity_id=a.id
        AND sl.user_id=actor AND sl.opportunity_id=(filters->>'source_opportunity_id')::uuid
        AND sl.detached_at IS NULL))
-    AND (filters->>'search' IS NULL OR a.title ILIKE '%'||filters->>'search'||'%' OR a.organization ILIKE '%'||filters->>'search'||'%')
+    AND (filters->>'search' IS NULL OR a.title ILIKE '%' || (filters->>'search') || '%' OR a.organization ILIKE '%' || (filters->>'search') || '%')
     AND (p_cursor IS NULL OR (a.created_at,a.id)<((p_cursor->>'created_at')::timestamptz,(p_cursor->>'id')::uuid))
    ORDER BY a.created_at DESC,a.id DESC LIMIT p_limit+1 LOOP
     IF emitted=p_limit THEN v_has_extra:=true; EXIT; END IF;

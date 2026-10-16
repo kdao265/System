@@ -1,0 +1,207 @@
+# SYSTEM AO L1-06 — temporary CI-only validation, not a release workflow.
+# Run exclusively for the approved first-party test/ao-l1-06-disposable-qa PR.
+# Do not merge without a separate Product Owner approval.
+name: AO L1-06 disposable QA (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ao-l1-06-disposable.yml
+      - supabase/tests/helpers/ao-l1-07.mjs
+      - supabase/tests/helpers/ao-l1-07-phase-b.mjs
+      - supabase/tests/helpers/ao-l1-07-hardening.mjs
+      - supabase/tests/helpers/ao-l1-08-gap-closure.mjs
+      - supabase/tests/helpers/ao-l1-09-final-acceptance.mjs
+      - supabase/tests/helpers/ao-l1-10-p0-closure.mjs
+      - supabase/tests/helpers/ao-l1-11-tabs.mjs
+      - supabase/tests/helpers/ao-residual-p0-closure.mjs
+      - supabase/tests/helpers/ao-batch-a-p0.mjs
+      - supabase/tests/helpers/ao-batch-b-p0.mjs
+      - supabase/tests/helpers/qa10-run.mjs
+      - supabase/tests/helpers/qa10-capture.mjs
+      - supabase/tests/helpers/qa10-capture.test.mjs
+      - supabase/tests/helpers/qa10-disposable.test.mjs
+      - supabase/tests/ao-review-disposable-wire.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  ao-disposable-preflight:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'test/ao-l1-06-disposable-qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_CONTEXT: ''
+    steps:
+      - name: Read approved PR source (no repository write)
+        uses: actions/checkout@v4
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install exact locked dependencies
+        run: npm ci
+      - name: Confirm no external Docker host
+        shell: bash
+        run: |
+          test "$GITHUB_EVENT_NAME" = "pull_request"
+          test "$GITHUB_BASE_REF" = "main"
+          test "$GITHUB_HEAD_REF" = "test/ao-l1-06-disposable-qa"
+          test "$DOCKER_HOST" = "unix:///var/run/docker.sock"
+          test -z "$DOCKER_CONTEXT"
+      - name: Cache fixture-only service images
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Docker .Id may identify a config, manifest or index, depending on
+          # the store. Hash actual config bytes exported by the local daemon;
+          # the trusted config also commits to the ordered rootfs layer DiffIDs.
+          # Stream without extracting layers or trusting a config filename alone.
+          # Requires Docker API 1.48+ for platform-specific save (fails closed).
+          verify_store() {
+            local ref="$1" config="$2"
+            if ! docker image save --platform linux/amd64 "$ref" | python3 -c '
+          import hashlib, json, re, sys, tarfile
+
+          def verify():
+              expected = sys.argv[1]
+              if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
+                  raise ValueError("invalid trusted config digest")
+              digest = expected.removeprefix("sha256:")
+              paths = {digest + ".json", "blobs/sha256/" + digest}
+              selected = {}
+              with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as archive:
+                  for member in archive:
+                      if member.name not in paths | {"manifest.json"}:
+                          continue
+                      if (member.name in selected or not member.isfile()
+                              or not 0 < member.size <= 1024 * 1024):
+                          raise ValueError("invalid or duplicate identity member")
+                      selected[member.name] = archive.extractfile(member).read()
+              # Consume final tar padding so the producer can exit successfully.
+              while sys.stdin.buffer.read(1024 * 1024):
+                  pass
+              manifest = json.loads(selected["manifest.json"])
+              if not isinstance(manifest, list) or len(manifest) != 1:
+                  raise ValueError("expected exactly one exported image")
+              path = manifest[0]["Config"]
+              if path not in paths:
+                  raise ValueError("exported image references an untrusted config")
+              raw = selected[path]
+              if "sha256:" + hashlib.sha256(raw).hexdigest() != expected:
+                  raise ValueError("config bytes do not match trusted digest")
+              config = json.loads(raw)
+              if (config.get("os"), config.get("architecture")) != ("linux", "amd64"):
+                  raise ValueError("config is not linux/amd64")
+              print("Verified linux/amd64 config " + expected)
+
+          try:
+              verify()
+          except Exception:
+              sys.exit("Config identity verification failed (missing, invalid or mismatched export)")
+          ' "$config"; then
+              echo "::error::Cannot verify trusted local image config for $ref"
+              return 1
+            fi
+          }
+          pull_image() {
+            local primary="$1" config="$2" fallback="$3" attempt=1 delay=15 output
+            while true; do
+              if output="$(docker pull --platform linux/amd64 "$primary" 2>&1)"; then
+                printf '%s\n' "$output"
+                verify_store "$primary" "$config" || return 1
+                return 0
+              fi
+              if ! grep -Eiq 'toomanyrequests|rate exceeded|too many requests|(^|[[:space:]])429([[:space:]]|$)' <<< "$output"; then
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              if (( attempt >= 4 )); then
+                if [ -n "$fallback" ]; then
+                  echo "::warning::Primary registry exhausted for $primary; trying verified fallback $fallback"
+                  output="$(docker pull --platform linux/amd64 "$fallback" 2>&1)" || {
+                    printf '%s\n' "$output" >&2
+                    echo "::error::Verified fallback pull failed for $fallback"
+                    return 1
+                  }
+                  printf '%s\n' "$output"
+                  verify_store "$fallback" "$config" || return 1
+                  docker image tag "$fallback" "$primary" || {
+                    echo "::error::Failed to tag verified fallback as $primary"
+                    return 1
+                  }
+                  # The harness uses this exact ECR tag with --pull=never.
+                  verify_store "$primary" "$config" || return 1
+                  return 0
+                fi
+                echo "::error::Docker rate limit persisted after 4 attempts for $primary"
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              echo "::warning::Docker rate limited $primary (attempt $attempt/4); retrying in $delay seconds"
+              sleep "$delay"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+          # Shared trusted config digest, then immutable Hub amd64 manifest.
+          # ECR .Id values on containerd identify indexes/manifest lists:
+          # postgres: sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86
+          # gotrue:   sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b
+          # postgrest: sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e
+          # These index/store IDs are provenance, never config acceptance tokens.
+          pull_image public.ecr.aws/supabase/postgres:17.6.1.166 \
+            sha256:f55775729ea7a38743f61e2bb4f9bb1e17eaaeaccb39879ae9d9d3cb1c4cb456 \
+            supabase/postgres:17.6.1.166@sha256:d5424e9f4d0c21d63991c3f3dd77881f23f722c3a212452a61bc91924b79e8c8
+          sleep 5
+          pull_image public.ecr.aws/supabase/gotrue:v2.197.0 \
+            sha256:1181bff5ba4ce440013a63cef9f4cf13024c432d705c9b1fbc9e5b949e852f48 \
+            supabase/auth:v2.197.0@sha256:839f529492d116b4e8b7777c953a27c381d34c15a744b1bcefde5eefaa1f9f9f
+          sleep 5
+          pull_image public.ecr.aws/supabase/postgrest:v16.2 \
+            sha256:f5760d38760adfede0c11fe505b56a82940ed27fe4ada1214ce7a0f7c5f4950f \
+            postgrest/postgrest:v16.2@sha256:6e83b0277ea5de980847e9246d2ec2803e99dfce0e69066f6484bd10c4a5b819
+      - name: Offline AO source-level preflight (not runtime evidence)
+        shell: bash
+        run: |
+          node --test review/static-preflight.test.mjs
+          python3 review/g01-static-audit.py
+          node --experimental-strip-types --test tests/activities-opportunities-domain.test.mjs
+      - name: QA-10 observer unit tests (offline, no Docker)
+        shell: bash
+        run: node --test supabase/tests/helpers/qa10-capture.test.mjs
+      - name: QA-10 disposable observer integration (owned fixture only)
+        shell: bash
+        env:
+          AO_DISPOSABLE_QA_APPROVED: 'YES'
+        run: |
+          set -euo pipefail
+          # Fail closed if any external database endpoint were ever injected.
+          test -z "${SUPABASE_DB_URL:-}${DATABASE_URL:-}${SUPABASE_URL:-}${NEXT_PUBLIC_SUPABASE_URL:-}"
+          node --test supabase/tests/helpers/qa10-disposable.test.mjs
+      - name: Execute pinned AO SQL and capture same-run QA-10 provenance
+        shell: bash
+        env:
+          AO_DISPOSABLE_QA_APPROVED: 'YES'
+          AO_EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node supabase/tests/helpers/qa10-run.mjs
+      - name: Retain scoped QA-10 provenance artifact (no environment or secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ao-qa10-same-run-provenance
+          path: ${{ runner.temp }}/ao-qa10-provenance/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: State scope and remaining tests
+        if: success()
+        run: |
+          echo 'AO L1-06 + L1-07 Final Hardening + L1-08 gap-closure checks PASS only where their fixture assertions passed.'
+          echo 'COVERED: observed owner advisory lock wait-queue both orders; deleted-Quest privacy surfaces; owner fail-closed RPC matrix.'
+          echo 'NOT COVERED: exhaustive scheduling/model checking, full SQL/TS parity, all release acceptance cases, migration readiness.'
+          echo 'NO AO MIGRATION MAY BE DEPLOYED OR ENABLED FROM THIS RESULT.'

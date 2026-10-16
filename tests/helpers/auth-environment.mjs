@@ -31,6 +31,8 @@ function run(command, args, { input = "", env = process.env, cwd = root, signal,
     let output = "";
     let diagnostic = "";
     const timer = setTimeout(() => { child.kill(); reject(new Error(`${label} timed out`)); }, timeout);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", (data) => { output += data; });
     // Redact generated credentials before returning any child failure diagnostic.
     child.stderr.on("data", (data) => { diagnostic += data; });

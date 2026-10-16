@@ -26,34 +26,121 @@ jobs:
         run: npm ci
       - name: Install Chromium and system libraries
         run: npx --no-install playwright install --with-deps chromium
-      - name: Pull required disposable service images (bounded retry)
+      - name: Pull required disposable service images (digest-verified fallback)
         shell: bash
         run: |
           set -euo pipefail
-          images=(
-            public.ecr.aws/supabase/postgres:17.6.1.166
-            public.ecr.aws/supabase/gotrue:v2.197.0
-            public.ecr.aws/supabase/postgrest:v16.2
-          )
-          for image in "${images[@]}"; do
-            pulled=false
-            for attempt in 1 2 3 4; do
-              if docker pull "$image"; then
-                docker image inspect "$image" >/dev/null
-                pulled=true
-                break
-              fi
-              if [ "$attempt" -lt 4 ]; then
-                delay=$((20 * attempt))
-                echo "::warning::Registry pull failed for ${image}; retrying in ${delay}s (${attempt}/4)"
-                sleep "$delay"
-              fi
-            done
-            if [ "$pulled" != true ]; then
-              echo "::error::Required disposable image ${image} unavailable after 4 attempts"
-              exit 1
+          # Fail closed unless Docker traffic uses the runner's local socket.
+          test "$DOCKER_HOST" = "unix:///var/run/docker.sock"
+          test -z "$DOCKER_CONTEXT"
+          # Docker .Id may identify a config, manifest or index, depending on
+          # the store. Hash actual config bytes exported by the local daemon;
+          # the trusted config also commits to the ordered rootfs layer DiffIDs.
+          # Stream without extracting layers or trusting a config filename alone.
+          # Requires Docker API 1.48+ for platform-specific save (fails closed).
+          verify_store() {
+            local ref="$1" config="$2"
+            if ! docker image save --platform linux/amd64 "$ref" | python3 -c '
+          import hashlib, json, re, sys, tarfile
+
+          def verify():
+              expected = sys.argv[1]
+              if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
+                  raise ValueError("invalid trusted config digest")
+              digest = expected.removeprefix("sha256:")
+              paths = {digest + ".json", "blobs/sha256/" + digest}
+              selected = {}
+              with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as archive:
+                  for member in archive:
+                      if member.name not in paths | {"manifest.json"}:
+                          continue
+                      if (member.name in selected or not member.isfile()
+                              or not 0 < member.size <= 1024 * 1024):
+                          raise ValueError("invalid or duplicate identity member")
+                      selected[member.name] = archive.extractfile(member).read()
+              # Consume final tar padding so the producer can exit successfully.
+              while sys.stdin.buffer.read(1024 * 1024):
+                  pass
+              manifest = json.loads(selected["manifest.json"])
+              if not isinstance(manifest, list) or len(manifest) != 1:
+                  raise ValueError("expected exactly one exported image")
+              path = manifest[0]["Config"]
+              if path not in paths:
+                  raise ValueError("exported image references an untrusted config")
+              raw = selected[path]
+              if "sha256:" + hashlib.sha256(raw).hexdigest() != expected:
+                  raise ValueError("config bytes do not match trusted digest")
+              config = json.loads(raw)
+              if (config.get("os"), config.get("architecture")) != ("linux", "amd64"):
+                  raise ValueError("config is not linux/amd64")
+              print("Verified linux/amd64 config " + expected)
+
+          try:
+              verify()
+          except Exception:
+              sys.exit("Config identity verification failed (missing, invalid or mismatched export)")
+          ' "$config"; then
+              echo "::error::Cannot verify trusted local image config for $ref"
+              return 1
             fi
-          done
+          }
+          pull_image() {
+            local primary="$1" config="$2" fallback="$3" attempt=1 delay=15 output
+            while true; do
+              if output="$(docker pull --platform linux/amd64 "$primary" 2>&1)"; then
+                printf '%s\n' "$output"
+                verify_store "$primary" "$config" || return 1
+                return 0
+              fi
+              if ! grep -Eiq 'toomanyrequests|rate exceeded|too many requests|(^|[[:space:]])429([[:space:]]|$)' <<< "$output"; then
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              if (( attempt >= 4 )); then
+                if [ -n "$fallback" ]; then
+                  echo "::warning::Primary registry exhausted for $primary; trying verified fallback $fallback"
+                  output="$(docker pull --platform linux/amd64 "$fallback" 2>&1)" || {
+                    printf '%s\n' "$output" >&2
+                    echo "::error::Verified fallback pull failed for $fallback"
+                    return 1
+                  }
+                  printf '%s\n' "$output"
+                  verify_store "$fallback" "$config" || return 1
+                  docker image tag "$fallback" "$primary" || {
+                    echo "::error::Failed to tag verified fallback as $primary"
+                    return 1
+                  }
+                  # The harness uses this exact ECR tag with --pull=never.
+                  verify_store "$primary" "$config" || return 1
+                  return 0
+                fi
+                echo "::error::Docker rate limit persisted after 4 attempts for $primary"
+                printf '%s\n' "$output" >&2
+                return 1
+              fi
+              echo "::warning::Docker rate limited $primary (attempt $attempt/4); retrying in $delay seconds"
+              sleep "$delay"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+          # Shared trusted config digest, then immutable Hub amd64 manifest.
+          # ECR .Id values on containerd identify indexes/manifest lists:
+          # postgres: sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86
+          # gotrue:   sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b
+          # postgrest: sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e
+          # These index/store IDs are provenance, never config acceptance tokens.
+          pull_image public.ecr.aws/supabase/postgres:17.6.1.166 \
+            sha256:f55775729ea7a38743f61e2bb4f9bb1e17eaaeaccb39879ae9d9d3cb1c4cb456 \
+            supabase/postgres:17.6.1.166@sha256:d5424e9f4d0c21d63991c3f3dd77881f23f722c3a212452a61bc91924b79e8c8
+          sleep 5
+          pull_image public.ecr.aws/supabase/gotrue:v2.197.0 \
+            sha256:1181bff5ba4ce440013a63cef9f4cf13024c432d705c9b1fbc9e5b949e852f48 \
+            supabase/auth:v2.197.0@sha256:839f529492d116b4e8b7777c953a27c381d34c15a744b1bcefde5eefaa1f9f9f
+          sleep 5
+          pull_image public.ecr.aws/supabase/postgrest:v16.2 \
+            sha256:f5760d38760adfede0c11fe505b56a82940ed27fe4ada1214ce7a0f7c5f4950f \
+            postgrest/postgrest:v16.2@sha256:6e83b0277ea5de980847e9246d2ec2803e99dfce0e69066f6484bd10c4a5b819
       - name: Lint
         run: npm run lint
       - name: Typecheck

@@ -18,6 +18,30 @@
 .system-nav-growth-title { color: var(--text-secondary); letter-spacing: .08em; }
 .system-nav-growth-links { display: flex; min-width: 0; flex-wrap: wrap; gap: .5rem; }
 .system-nav-growth-links > .ui-nav-link { flex: 1 1 8rem; }
+/* L2-01 isolated core components reuse SYSTEM primitives and tokens. */
+.ao-core { min-width: 0; width: 100%; display: grid; gap: 1rem; overflow-wrap: anywhere; }
+.ao-core form, .ao-core fieldset { min-width: 0; display: grid; gap: 1rem; }
+.ao-core fieldset { padding: 0; border: 0; margin: 0; }
+.ao-core .ao-core-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.ao-core-field { min-width: 0; display: grid; align-content: start; gap: .4rem; }
+.ao-core-field label, .ao-core legend { font-weight: 600; }
+.ao-core input:not([type="radio"]), .ao-core select, .ao-core textarea { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; }
+.ao-core textarea { resize: vertical; }
+.ao-core .ao-date-fields, .ao-core .ao-intent { padding: 1rem; border: 1px solid var(--border-default, #41516a); border-radius: .75rem; }
+.ao-intent { grid-column: 1 / -1; }
+.ao-intent label { min-height: 44px; display: flex; align-items: center; gap: .75rem; cursor: pointer; }
+.ao-intent input { flex: 0 0 auto; }
+.ao-core-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.ao-core button, .ao-resource-link { min-height: 44px; max-width: 100%; white-space: normal; }
+.ao-resource-link { display: inline-flex; align-items: center; }
+.ao-command-feedback, .ao-date-value { display: grid; gap: .75rem; }
+.ao-core dl { display: grid; gap: 1rem; }
+.ao-core dt { color: var(--text-secondary); font-weight: 600; }
+.ao-core dd { margin: .25rem 0 0; white-space: pre-wrap; }
+.ao-core :focus-visible { outline: var(--focus-ring, 2px solid #77eaff); outline-offset: 3px; }
+.ao-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 639px) { .ao-core .ao-core-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .ao-core *, .ao-core *::before, .ao-core *::after { scroll-behavior: auto; transition-duration: 0ms !important; animation-duration: 0ms !important; } }
 @media (min-width: 900px) {
   .system-nav-growth-links { display: grid; grid-template-columns: minmax(0, 1fr); gap: .375rem; }
   .system-nav-growth-links > .ui-nav-link { flex: unset; justify-content: flex-start; }

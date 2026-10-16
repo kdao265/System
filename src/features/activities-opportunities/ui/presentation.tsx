@@ -28,7 +28,7 @@ export function AoRecordCard({ item, locale }: { item: AoView; locale: AoLocale 
       <Badge tone="muted">{item.archived ? t.archived : t.active}</Badge>
       {item.kind === "opportunity" ? <>
         <Badge tone="accent">{t.stage}: {t.stageLabels[item.trackingStage]}</Badge>
-        <Badge tone="muted">{t.outcome}: {t.outcomeLabels[item.selectionOutcome]}</Badge>
+        <Badge tone="muted">{t.outcome}: {item.applicability === "not_applicable" ? t.applicabilityLabels.not_applicable : t.outcomeLabels[item.selectionOutcome]}</Badge>
         <Badge tone="muted">{t.applicability}: {t.applicabilityLabels[item.applicability]}</Badge>
       </> : <Badge tone="accent">{t.participation}: {t.activityStatusLabels[item.participationStatus]}</Badge>}
     </div>
